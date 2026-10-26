@@ -118,7 +118,14 @@ What `compile --base base.obj` does:
 4. Re-targets every PTCH record **of the base** through this map and adds a record for the base build, so a mod
    can be rebuilt on top of its previous version (`--base mod_v1.obj`) and both stock and v1 savegames load.
 5. Checks that every return address of the base lands after the same call (same native, same method) inside a
-   method with the same frame size: an added local would shift every local of a suspended call.
+   method with the same frame size: an added local would shift every local of a suspended call. Only calls a task
+   can be suspended in are return addresses a savegame can hold: natives that may wait and methods that reach one,
+   transitively (a call by name counts if any method of that name can). Which natives always answer at once is in
+   `x3kc/sync_natives.txt`: flow analysis of the native dispatchers in X3AP.exe for the groups B3D, INS, SA, X2
+   and SE (every path of a handler resumes the task before the dispatcher returns), plus the SE/TI handler specs.
+   Natives of the other groups count as possibly waiting. So a frame change in a method that only draws or
+   computes (B3D, SE, most SA calls) does not stop the build; one in a method that waits (TI_Delay, flight
+   commands, MSCI commands) does.
 6. When something breaks savegames — lost fields, a removed class, a changed parent, wrong return addresses —
    nothing is written and the exit code is 3; `--force` writes anyway.
 

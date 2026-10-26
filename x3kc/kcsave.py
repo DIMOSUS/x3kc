@@ -233,11 +233,75 @@ def frame_at(fr, pc):
     return fr[lo - 1][2] if lo else None
 
 
-def check_return_sites(base, new, segs):
-    """Every call/native return site of base must map to the same kind of site in new (or to nothing), inside a
-    method with the same frame: the saved stack holds the old number of locals, so an added or removed local
-    shifts every local of a suspended call."""
+CALLS = (0x82, 0x84, 0x85, 0x86, 0x87, 0x88)
+
+
+def load_sync(path=None):
+    """Natives that always answer at once (sync_natives.txt): no task ever waits in them."""
+    import os
+    path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sync_natives.txt')
+    return {l.strip() for l in open(path, encoding='utf-8') if l.strip() and not l.startswith('#')}
+
+
+def load_known():
+    """Every native name the exe has (natives.txt); a call to any other name answers int 0 at once."""
+    import os
+    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'natives.txt')
+    return {l.strip() for l in open(p, encoding='utf-8') if l.strip() and not l.startswith('#')}
+
+
+def waiting_sites(o, sync=None, known=None):
+    """Call sites of o at which a task can be suspended, i.e. whose return address can be in a savegame:
+    natives that may wait (not in `sync`; unknown names answer at once) and calls of methods that can reach one,
+    transitively (a call by name counts when any method of that name can). Returns the set of instruction ends."""
+    sync = load_sync() if sync is None else sync
+    known = load_known() if known is None else known
+    spans = method_spans(o)
+    by_entry = {e: (e, end) for _, (e, end) in spans.items()}
+    by_name = {}
+    for (cid, name), (e, _) in spans.items():
+        by_name.setdefault(name, []).append(e)
+    calls = {}          # method entry -> [(insn end, kind, target)]
+    for e, end in by_entry.values():
+        lst = []
+        for i in kcisa.walk(o.code, e, end):
+            if i.op == 0x82:
+                n = o.string(i.arg)
+                lst.append((i.end, 'native', n in known and n not in sync))
+            elif i.op in (0x85, 0x87):
+                lst.append((i.end, 'name', o.string(i.arg)))
+            elif i.op in (0x84, 0x86, 0x88):
+                lst.append((i.end, 'entry', i.arg))
+        calls[e] = lst
+    waits = set()
+    changed = True
+    while changed:
+        changed = False
+        for e, lst in calls.items():
+            if e in waits:
+                continue
+            for _, kind, t in lst:
+                if (kind == 'native' and t) or (kind == 'entry' and t in waits) or \
+                        (kind == 'name' and any(x in waits for x in by_name.get(t, ()))):
+                    waits.add(e)
+                    changed = True
+                    break
+    sites = set()
+    for e, lst in calls.items():
+        for end, kind, t in lst:
+            if (kind == 'native' and t) or (kind == 'entry' and t in waits) or \
+                    (kind == 'name' and any(x in waits for x in by_name.get(t, ()))):
+                sites.add(end)
+    return sites
+
+
+def check_return_sites(base, new, segs, sync=None):
+    """Every return site of base where a task can be suspended (waiting_sites) must map to the same kind of site in
+    new (or to nothing), inside a method with the same frame: the saved stack holds the old number of locals, so an
+    added or removed local shifts every local of a suspended call. Calls that always come back at once (synchronous
+    natives, methods that never wait) are never in a savegame and are not checked."""
     bad = ok = gone = 0
+    live = waiting_sites(base, sync)
     bnames = {e: k for k, (e, _) in method_spans(base).items()}
     nnames = {e: k for k, (e, _) in method_spans(new).items()}
 
@@ -252,7 +316,7 @@ def check_return_sites(base, new, segs):
         nkeys[i.end] = (i.op, key(new, nnames, i))
     bfr, nfr = frames(base), frames(new)
     for i in kcisa.walk(base.code, 1):
-        if i.op not in (0x82, 0x84, 0x85, 0x86, 0x87, 0x88):
+        if i.op not in CALLS or i.end not in live:
             continue
         d = lookup(segs, i.end)
         if d is None:

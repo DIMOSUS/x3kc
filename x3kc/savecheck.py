@@ -3,7 +3,8 @@
     x3kc savecheck <source.kc> <base.obj>
 
 For every WRONG site: the method, the base offset, and the reason — the call after the mapped address differs
-(`call`), or the method's frame size changed (`frame old -> new`).
+(`call`), or the method's frame size changed (`frame old -> new`). Only sites where a task can be suspended are
+checked (kcsave.waiting_sites): calls that always come back at once are never in a savegame.
 """
 import sys
 from collections import defaultdict
@@ -32,8 +33,9 @@ def main():
     import bisect
     starts = [e for e, _ in spans]
     out = defaultdict(list)
+    live = kcsave.waiting_sites(base)
     for i in kcisa.walk(base.code, 1):
-        if i.op not in (0x82, 0x84, 0x85, 0x86, 0x87, 0x88):
+        if i.op not in kcsave.CALLS or i.end not in live:
             continue
         d = kcsave.lookup(segs, i.end)
         if d is None:

@@ -49,7 +49,8 @@ class Emulator(unittest.TestCase):
         gameio.extract(GAME, cls.objs)
         work = os.path.join(cls.dir, 'msci')
         gameio.msci_setup(GAME, work)
-        cls.db = json.load(open(os.path.join(work, 'msci_db.json'), encoding='utf-8'))
+        with open(os.path.join(work, 'msci_db.json'), encoding='utf-8') as f:
+            cls.db = json.load(f)
         cls.stock_path = os.path.join(cls.objs, 'x3story.obj')
         cls.stock = kcobj.load(cls.stock_path)
         cls.modded = cls.build_mod()
@@ -60,17 +61,26 @@ class Emulator(unittest.TestCase):
 
     @classmethod
     def build_mod(cls):
+        """The object with command 5000, or None when the game's x3story is itself modified in __runScript: the
+        bundled names do not reach a changed method, so the inserted case (written with names) would not compile."""
         src = os.path.join(cls.dir, 'named')
         assert cli(['decompile', cls.stock_path, src, '--names', 'auto']) == 0
         p = os.path.join(src, 'x3story.kc')
-        s = open(p, encoding='latin1').read()
-        assert s.count(SIGNATURE[0]) == 1 and s.count(CASE_ANCHOR) == 1
+        with open(p, encoding='latin1') as f:
+            s = f.read()
+        if s.count(SIGNATURE[0]) != 1 or s.count(CASE_ANCHOR) != 1 or 'resultVar = instruction[1];' not in s:
+            return None
         s = s.replace(SIGNATURE[0], SIGNATURE[1]).replace(CASE_ANCHOR, CASE + CASE_ANCHOR)
         with open(p, 'w', encoding='latin1', newline='\n') as f:
             f.write(s)
         out = os.path.join(cls.dir, 'mod.obj')
         assert cli(['compile', p, '-o', out, '--base', cls.stock_path]) == 0
         return kcobj.load(out)
+
+    def mod(self):
+        if self.modded is None:
+            self.skipTest("the game's x3story is modified in __runScript (a mod is installed)")
+        return self.modded
 
     def vm(self, obj):
         vm = kcvm.VM(obj)
@@ -122,16 +132,16 @@ class Emulator(unittest.TestCase):
         self.assertEqual(self.msci(self.stock).run_text(src).value, 212)
 
     def test_new_command_verifies_and_keeps_saves(self):
-        V = kcverify.Verifier(self.modded, kcverify.load_natives())
+        V = kcverify.Verifier(self.mod(), kcverify.load_natives())
         V.run()
         self.assertEqual(dict(V.errors), {})
-        segs = kcsave.code_map(self.stock, self.modded)
-        ok, gone, bad = kcsave.check_return_sites(self.stock, self.modded, segs)
+        segs = kcsave.code_map(self.stock, self.mod())
+        ok, gone, bad = kcsave.check_return_sites(self.stock, self.mod(), segs)
         self.assertEqual(bad, 0)
         self.assertGreater(ok, 0)
 
     def test_new_command_runs(self):
-        m = self.msci(self.modded, self.mod_db())
+        m = self.msci(self.mod(), self.mod_db())
         r = m.run_text(['$x = triple value: 14', 'return $x'])
         self.assertEqual((r.type, r.value), (4, 42))
         r = m.run_text(['$a = 5', '$x = triple value: $a', 'return $x'])
@@ -143,6 +153,7 @@ class Emulator(unittest.TestCase):
         self.assertNotEqual(r.value, 42)
 
     def test_saved_wait_continues_on_the_modded_build(self):
+        modded = self.mod()
         vm = self.vm(self.stock)
         m = kcmsci.Msci(vm, self.db)
         code = m.codearray(['$a = 6', '@ = wait 5000 ms', '$b = $a * 7', 'return $b'])
@@ -154,7 +165,7 @@ class Emulator(unittest.TestCase):
         vm.execute(t)
         vm.run(1000)
         self.assertEqual(t.state, 'wait')                     # saved here
-        nv = vm.migrate(self.modded)
+        nv = vm.migrate(modded)
         nv.run(10000)
         self.assertIsNone(t.error)
         self.assertEqual(t.state, 'done')

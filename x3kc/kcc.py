@@ -82,7 +82,8 @@ def natives_of(node):
 
 
 def compile_source(path):
-    src = open(path, encoding='latin1').read()
+    with open(path, encoding='latin1') as f:
+        src = f.read()
     base = os.path.dirname(os.path.abspath(path))
     P = kcparse.Parser(src, os.path.basename(path))
     u = P.unit()
@@ -233,7 +234,8 @@ def main():
                 broken |= 'will not load' in line
             segs = kcsave.code_map(base, o)
             ok, gone, bad = kcsave.check_return_sites(base, o, segs)
-            print('base return sites: %d mapped, %d gone, %d WRONG; new build %d' % (ok, gone, bad, build))
+            print('base return sites (calls a task can wait in): %d mapped, %d gone, %d WRONG; new build %d'
+                  % (ok, gone, bad, build))
             if (broken or bad) and not a.force:
                 print('error: old saves would break (see above); nothing written. --force writes anyway')
                 return 3

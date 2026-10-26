@@ -164,17 +164,19 @@ class Diagnostics(Base):
 
 class SaveCompat(Base):
     def test_base_insert_and_added_local(self):
-        base = self.compile(SOURCE, 'base.kc')
+        # Describe waits (TI_Delay), so its calls are savegame return sites and its frame must not change
+        src = SOURCE.replace('        while (x > 0) {', '        TI_Delay(1);\n        while (x > 0) {')
+        base = self.compile(src, 'base.kc')
         bp = os.path.join(self.dir, 'base.obj')
         with open(bp, 'wb') as f:
             f.write(base.serialize())
         out = os.path.join(self.dir, 'mod.obj')
-        ins = SOURCE.replace('        while (x > 0) {', '        SE_Random(1);\n        while (x > 0) {')
+        ins = src.replace('        while (x > 0) {', '        SE_Random(1);\n        while (x > 0) {')
         self.assertEqual(cli(['compile', self.write('mod.kc', ins), '-o', out, '--base', bp]), 0)
         mod = kcobj.load(out)
         self.assertNotEqual(mod.build, base.build)
         self.assertEqual([b for b, _ in mod.ptch], [base.build])
-        loc = SOURCE.replace('        while (x > 0) {', '        var extra = SE_Random(1);\n        while (x > 0) {')
+        loc = src.replace('        while (x > 0) {', '        var extra = SE_Random(1);\n        while (x > 0) {')
         self.assertEqual(cli(['compile', self.write('mod2.kc', loc), '-o', out + '2', '--base', bp]), 3)
         self.assertFalse(os.path.exists(out + '2'))
 

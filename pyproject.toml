@@ -26,4 +26,4 @@ packages = ["x3kc"]
 version = {attr = "x3kc.__version__"}
 
 [tool.setuptools.package-data]
-x3kc = ["natives.txt", "data/*.json"]
+x3kc = ["natives.txt", "sync_natives.txt", "data/*.json"]

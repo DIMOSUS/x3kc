@@ -19,6 +19,8 @@ fields and functions, plus a decoder and assembler for ordinary **MSCI** scripts
 - **Checked before the game.** Every build passes a bytecode verifier, and an emulator of the game's script VM
   runs the object's own code — natives as the exe implements them, MSCI scripts through the game's own
   interpreter, savegames moved to a new build — so a mod can be tested without starting the game.
+- **On screen.** How the HUD is drawn from the scripts and how a mod adds its own element:
+  [docs/screen.md](docs/screen.md), with a working FPS counter as the example below.
 
 Only the Python standard library is needed (Python 3.8+).
 
@@ -51,12 +53,112 @@ x3kc msci asm work/msci_db.json work/scripts/plugin.foo.xml foo.txt > plugin.foo
 
 `x3kc help` lists all commands.
 
+## Example: an FPS counter
+A mod written against the decompiled `x3story.kc`: frames per second in the top right corner of the screen,
+counted in the per-frame hook `Client.Vbi` and printed into a strip of the tooltip texture that only this counter's
+quad shows. Two lines hook it in:
+
+```c
+class Client = 150 {
+    function Vbi() {
+        FpsCounter.Vbi();
+        ...
+    }
+    function Restart(arg1) {
+        FpsCounter.Reset();
+        ...
+    }
+}
+```
+
+and the class:
+
+```c
+class FpsCounter = 9500 {
+    var scene = 0;  // B3D scene of the counter, 0 until created
+    var camera = 0;  // camera of that scene
+    var inst = 0;  // tooltip body instance
+    var frames = 0;  // frames counted since startTime
+    var startTime = 0;  // real time (ms) the count started
+
+    function Vbi() {
+        var now = TI_GetRealTime();
+        if (!scene) {
+            Create();
+            frames = 0;
+            startTime = now;
+            return;
+        }
+        frames += 1;
+        var elapsed = TI_CmpTime(now, startTime);
+        if (elapsed >= 1000) {
+            Draw(frames * 1000 / elapsed);
+            frames = 0;
+            startTime = now;
+        }
+    }
+
+    function Create() {
+        scene = B3D_SceneAlloc();
+        if (!scene) {
+            return;
+        }
+        B3D_SceneSetName(scene, "FPS scene");
+        camera = B3D_CameraAlloc();
+        if (camera) {
+            B3D_CameraAddToScene(camera, scene);
+            B3D_InstSetPos(camera, 0, 0, 0);
+            B3D_InstSetRot(camera, 0, 0, 0);
+            B3D_InstSetName(camera, "FPS camera");
+            B3D_CameraSetViewPort(camera, 0, 65536, 0, 65536);
+            B3D_CameraSetFlags(camera, 0);
+            // above the HUD overlay (61), subtitles (140) and game tips (150)
+            B3D_CameraSetPri(camera, 155);
+        }
+        inst = B3D_InstAlloc();
+        if (inst) {
+            B3D_InstSetBody(inst, B3D_GetBodyID("effects/menugfx/GUI/tooltip"));
+            B3D_InstAddToScene(inst, scene);
+            B3D_InstSetRot(inst, 0, 0, 0);
+            // 0x200 pixel-space 2D, 0x1000 | 0x4000 position = centre of the quad from the top left corner
+            B3D_InstSetFlags2(inst, B3D_InstGetFlags2(inst) | 0x5200);
+            B3D_InstSetInvis(inst, 0);
+        }
+        B3D_SceneEnable(scene);
+    }
+
+    function Draw(fps) {
+        var text = SE_SPrintf("%d FPS", fps);
+        B3D_TexRectFill(1230, 0, 232, 256, 24, 0);
+        B3D_TexTextBlock(1230, text, gHudFont, 256 - 6 - B3D_TexTextWidth(text, gHudFont, 129), 236, 0, 0xFFD2D2D2, 129);
+        // centre 128 - 232 from the top: texture rows 232..255 are screen rows 0..23, the rest is above the screen;
+        // set every second, as the screen width may not be known yet when the scene is made in the first frame
+        if (inst) {
+            B3D_InstSetPos(inst, B3D_ScreenGetWidth() - 128, -104, 0);
+        }
+    }
+
+    // The handles of a saved game are stale after a load: forget them (never free them, they may belong to others now).
+    function Reset() {
+        scene = 0;
+        camera = 0;
+        inst = 0;
+    }
+}
+```
+
+Build it with `x3kc compile src/x3story.kc -o x3story.obj --base objs/x3story.obj` and pack it as
+`addon/05.cat`; the stock savegames keep loading. Why every line is there — scenes, bodies, writable textures,
+pixel coordinates, what does not work — is in [docs/screen.md](docs/screen.md).
+
 ## Documentation
 - [docs/kc.md](docs/kc.md) — the KC language, how Egosoft's compiler generated code, the `STOR` object format,
   mods and savegames, annotations.
 - [docs/msci.md](docs/msci.md) — MSCI script format, command and condition encoding, the interpreter.
 - [docs/checking.md](docs/checking.md) — checking a mod without the game: the verifier, the emulator, savegame
   checks, what the tests cover.
+- [docs/screen.md](docs/screen.md) — drawing on screen from KC: scenes, bodies, writable textures, pixel
+  coordinates, the per-frame hook, what does not work; the FPS counter.
 
 ## Annotating
 `x3kc decompile --pcs` marks every statement with its code offset (`// @0012fb`). Write names and comments in the

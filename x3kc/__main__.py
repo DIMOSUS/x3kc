@@ -19,7 +19,8 @@ KC objects (l/*.obj: x3story, x3galedit, x3intro, x3config)
 
 Checking a build without the game
   verify <obj> [-v]                     static bytecode verifier (compile runs it on every build)
-  savecheck <file.kc> <base.obj>        which return sites of old savegames the new source breaks, and why
+  savecheck <file.kc> <base.obj>        which savegame return sites (calls a task can wait in) the new source
+                                        breaks, and why
   methoddiff <old.obj> <new.obj>        methods whose code differs between two builds
   smoke <old.obj> <new.obj> [--budget N] [-v]
                                         run every method of both builds on the emulator, compare outcomes
@@ -35,6 +36,9 @@ MSCI scripts (addon/scripts/*.pck|xml)
   msci verify <db.json> <dir>           assembler vs the <codearray> of every script
   msci map <x3story.kc> <texts.tsv> <out.md> [--json F]
                                         which KC methods/natives every MSCI command calls
+  msci cost <x3story.obj> <db.json> [line ...]
+                                        cost of MSCI lines in KC instructions (emulator, game interpreter)
+  msci usage <db.json> <dir>            which commands the scripts use, how often inside loops
 
 Game files
   cat <file.cat> [pattern] [-o dir] [--pack PATH=FILE...]   list, extract or write catalogues
@@ -59,7 +63,8 @@ def main(argv=None):
             return 2
         sub, rest = rest[0], rest[1:]
         table = {'dis': ('msci', 'dis'), 'check': ('msci', 'check'), 'asm': ('msci_asm', 'asm'),
-                 'verify': ('msci_asm', 'check'), 'map': ('msci_map', None)}
+                 'verify': ('msci_asm', 'check'), 'map': ('msci_map', None),
+                 'cost': ('msci_cost', None), 'usage': ('msci_usage', None)}
         if sub not in table:
             print('unknown msci command %r' % sub)
             return 2
