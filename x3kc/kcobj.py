@@ -182,7 +182,8 @@ class KcObj:
 
 
 def load(path):
-    return KcObj(open(path, 'rb').read())
+    with open(path, 'rb') as f:
+        return KcObj(f.read())
 
 
 if __name__ == '__main__':

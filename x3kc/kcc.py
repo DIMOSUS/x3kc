@@ -196,7 +196,7 @@ def main():
     ap.add_argument('--base', help='object the existing saves were made with: makes the output load them '
                                    '(new build id, stamps of added fields, PTCH remap)')
     ap.add_argument('--build', type=lambda x: int(x, 0), help='build id with --base (default: now)')
-    ap.add_argument('--force', action='store_true', help='with --base: write even when old saves would break')
+    ap.add_argument('--force', action='store_true', help='write even when old saves would break (--base) or kcverify finds errors')
     a = ap.parse_args()
     try:
         o, pool, fns = compile_source(a.src)
@@ -239,6 +239,19 @@ def main():
                 return 3
     if pool.added:
         print('%d new strings appended to the pool' % len(pool.added))
+    from . import kcverify
+    V = kcverify.Verifier(o, kcverify.load_natives())
+    V.run()
+    for m, lines in sorted(V.warnings.items()):
+        for l in lines:
+            print('verify warning: %s %s' % (m, l))
+    if V.errors:
+        for m, lines in sorted(V.errors.items()):
+            for l in lines:
+                print('verify ERROR: %s %s' % (m, l))
+        if not a.force:
+            print('error: the bytecode would break tasks in the game; nothing written. --force writes anyway')
+            return 4
     if a.out:
         open(a.out, 'wb').write(o.serialize())
         print('wrote %s (%d bytes, %d methods)' % (a.out, len(o.serialize()), len(fns)))

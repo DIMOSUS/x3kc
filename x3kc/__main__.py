@@ -17,6 +17,15 @@ KC objects (l/*.obj: x3story, x3galedit, x3intro, x3config)
   names pack <obj> <names.json> <out>   offset-keyed annotations made on <obj> -> portable form
   names unpack <obj> <names.json> <out> portable annotations -> offset-keyed form for <obj>
 
+Checking a build without the game
+  verify <obj> [-v]                     static bytecode verifier (compile runs it on every build)
+  savecheck <file.kc> <base.obj>        which return sites of old savegames the new source breaks, and why
+  methoddiff <old.obj> <new.obj>        methods whose code differs between two builds
+  smoke <old.obj> <new.obj> [--budget N] [-v]
+                                        run every method of both builds on the emulator, compare outcomes
+  bugscan <obj> [--names auto|FILE] -o <out.jsonl>
+                                        static scan for typical bug patterns (candidates to review by hand)
+
 MSCI scripts (addon/scripts/*.pck|xml)
   msci-setup <game dir> <work dir>      texts, ware names, command database, unpacked scripts
   msci dis <db.json> <script.xml>...    script as the game's editor shows it
@@ -61,7 +70,9 @@ def main(argv=None):
     table = {'extract': ('gameio', 'main_extract'), 'msci-setup': ('gameio', 'main_msci_setup'),
              'decompile': ('kcd', 'main'), 'compile': ('kcc', 'main'), 'selftest': ('kcselftest', 'main'),
              'test': ('kctest', 'main'), 'dis': ('kcdis', 'main'), 'cat': ('catx', 'main'),
-             'unpck': ('unpck', 'main'), 'texts': ('texts_tsv', 'main'), 'wares': ('wares', 'main')}
+             'unpck': ('unpck', 'main'), 'texts': ('texts_tsv', 'main'), 'wares': ('wares', 'main'),
+             'verify': ('kcverify', 'main'), 'savecheck': ('savecheck', 'main'), 'methoddiff': ('methoddiff', 'main'),
+             'smoke': ('smoke', 'main'), 'bugscan': ('bugscan', 'main')}
     if cmd not in table:
         print('unknown command %r (x3kc help)' % cmd)
         return 2

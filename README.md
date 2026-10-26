@@ -16,6 +16,9 @@ fields and functions, plus a decoder and assembler for ordinary **MSCI** scripts
   change would break savegames.
 - **MSCI.** `msci dis` prints a script as the in-game editor shows it (99.6 % of lines identical to the game's own
   text), `msci asm` turns edited text back into a script XML.
+- **Checked before the game.** Every build passes a bytecode verifier, and an emulator of the game's script VM
+  runs the object's own code — natives as the exe implements them, MSCI scripts through the game's own
+  interpreter, savegames moved to a new build — so a mod can be tested without starting the game.
 
 Only the Python standard library is needed (Python 3.8+).
 
@@ -31,6 +34,7 @@ x3kc decompile objs/x3story.obj src --names auto             src/x3story.kc (+ .
 x3kc compile src/x3story.kc -o check.obj --check objs/x3story.obj   "identical" before you change anything
 # edit src/x3story.kc
 x3kc compile src/x3story.kc -o x3story.obj --base objs/x3story.obj  a mod that keeps savegames loading
+x3kc smoke objs/x3story.obj x3story.obj                      run every method of both builds, compare
 x3kc cat mod/08.cat --pack L/x3story.obj=x3story.obj         pack it into a catalogue
 ```
 With `--names auto` the source reads like `class Station = 2016 : ScriptObject { … function Hit(shieldDamage,
@@ -51,6 +55,8 @@ x3kc msci asm work/msci_db.json work/scripts/plugin.foo.xml foo.txt > plugin.foo
 - [docs/kc.md](docs/kc.md) — the KC language, how Egosoft's compiler generated code, the `STOR` object format,
   mods and savegames, annotations.
 - [docs/msci.md](docs/msci.md) — MSCI script format, command and condition encoding, the interpreter.
+- [docs/checking.md](docs/checking.md) — checking a mod without the game: the verifier, the emulator, savegame
+  checks, what the tests cover.
 
 ## Annotating
 `x3kc decompile --pcs` marks every statement with its code offset (`// @0012fb`). Write names and comments in the
@@ -59,20 +65,22 @@ working JSON form ([docs/kc.md](docs/kc.md#annotations)), check them with `decom
 agents from the code and the game texts and have not been proof-read by a human.
 
 ## Status and caveats
-- Round trips are verified; running a **changed** object or an assembled MSCI script in the game has not been
-  tested yet. Expect the game to mark itself "modified" (signatures will not match).
+- Round trips are verified, changed objects are checked by the verifier and the emulator; running a **changed**
+  object or an assembled MSCI script in the game has not been tested yet. Expect the game to mark itself
+  "modified" (signatures will not match).
 - Comments that the agents attached to an offset of another method are reported as `names: comment not placed`.
 - `for (;;)` is not supported (write `while (1)`).
 
 ## Tests
 ```
 python -m unittest discover tests                      no game files needed
-X3_GAME="C:/Games/X3 Terran Conflict" python -m unittest discover tests   also round trips of the game's objects
+X3_GAME="C:/Games/X3 Terran Conflict" python -m unittest discover tests   also the game's objects: round trips, emulator
 ```
 
 ## Legal
 X3: Terran Conflict and X3: Albion Prelude are © Egosoft. This repository contains no game files and no
 decompiled game code; it reads them from your own installation. The bundled annotations (names, descriptions,
-comments) and the list of native function names are original work describing the game's interfaces.
+comments), the list of native function names and the descriptions of native behaviour (`docs/natives`) are
+original work describing the game's interfaces.
 
 Licensed under the MIT license, see [LICENSE](LICENSE).
