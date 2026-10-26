@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+*.egg-info/
+build/
+dist/
+.venv/
+# game files and decompiled game code never go into the repository
+*.obj
+*.kc
+*.pool
+*.ptch
+*.cat
+*.dat
+*.pck
+work/
+objs/
+src/

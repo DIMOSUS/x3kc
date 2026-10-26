@@ -1,0 +1,29 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "x3kc"
+dynamic = ["version"]
+description = "Decompiler, compiler and annotations for the KC scripts of X3: Terran Conflict / Albion Prelude, plus an MSCI script decoder and assembler"
+readme = "README.md"
+license = {text = "MIT"}
+requires-python = ">=3.8"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "License :: OSI Approved :: MIT License",
+    "Topic :: Games/Entertainment",
+    "Topic :: Software Development :: Disassemblers",
+]
+
+[project.scripts]
+x3kc = "x3kc.__main__:main"
+
+[tool.setuptools]
+packages = ["x3kc"]
+
+[tool.setuptools.dynamic]
+version = {attr = "x3kc.__version__"}
+
+[tool.setuptools.package-data]
+x3kc = ["natives.txt", "data/*.json"]
