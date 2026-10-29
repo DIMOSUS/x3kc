@@ -125,5 +125,54 @@ class Verify(unittest.TestCase):
         self.assertTrue(self.mutate(f))
 
 
+CLASSES = r'''
+class Ship = 20 : Thing {
+    var m1 = 0;
+}
+class Thing = 10 {
+    var m0 = 0;
+}
+'''
+
+
+class ClassOrder(unittest.TestCase):
+    """Script::LoadObject finds a parent only among the CLAS records before the class, and slot 0 is empty then."""
+
+    def write(self, text):
+        d = tempfile.mkdtemp()
+        p = os.path.join(d, 't.kc')
+        with open(p, 'w') as f:
+            f.write(text)
+        return p
+
+    def compile(self, text):
+        o, _, _ = kcc.compile_source(self.write(text))
+        return o
+
+    def test_child_before_parent(self):
+        errs = ' | '.join(verify(self.compile(CLASSES)))
+        self.assertIn('class 20 comes before its parent 10', errs)
+
+    def test_parent_first_is_clean(self):
+        o = self.compile(CLASSES)
+        o.classes.sort(key=lambda c: c.id)
+        self.assertEqual(verify(o), [])
+
+    def test_parent_zero_and_duplicates(self):
+        o = build()
+        c = o.classes[0]
+        o.classes.append(type(c)(c.id, 0, c.name, [], []))
+        errs = ' | '.join(verify(o))
+        self.assertIn('has parent 0', errs)
+        self.assertIn('appears twice', errs)
+
+    def test_compile_refuses_to_write(self):
+        from x3kc.__main__ import main as cli
+        p = self.write(CLASSES)
+        out = p[:-3] + '.obj'
+        self.assertEqual(cli(['compile', p, '-o', out]), 4)
+        self.assertFalse(os.path.exists(out))
+
+
 if __name__ == '__main__':
     unittest.main()

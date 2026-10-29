@@ -14,6 +14,8 @@ Per method (abstract interpretation of the stack, every path):
   * direct calls go to method entries and pass as many arguments as the callee declares; calls by name and natives
     name something that exists (a missing name is not a crash — the VM answers 0 — so these are warnings);
   * argc of every call is a constant known at the call.
+Per object: every class comes after its parent in CLAS, no class has parent 0, class ids are unique (the loader
+sizes a class's fields from the parent records read before it; otherwise the heap overflows at load time).
 Errors would break or crash the task in the game; warnings are suspicious but legal.
 """
 import argparse
@@ -222,7 +224,32 @@ class Verifier:
         if first is not None and first.op == 0x6e and maxd > frame + 4:
             self.err(e, e, 'stack reaches %d cells above the frame, frame %d reserves %d' % (maxd, frame, frame + 4))
 
+    def classes(self):
+        """CLAS order rules of Script::LoadObject (0x0049d030): while reading CLAS the loader looks a class's parent up
+        only among the records already read, and slot 0 (class 0) is still empty then; the inherited field count comes
+        from that lookup, while the static cells are filled later along the whole parent chain (resolved again by id
+        after the sort). A parent that comes later, or parent 0, leaves the class with a cell array too small for its
+        inherited fields: a heap overflow at load time. Class ids must be unique, as parents are resolved by id."""
+        seen = {}
+        for k, c in enumerate(self.o.classes):
+            where = '(classes)'
+            if c.id in seen:
+                self.errors[where].append('class %d appears twice in CLAS (records %d and %d)' % (c.id, seen[c.id], k))
+            seen.setdefault(c.id, k)
+            if c.parent == 0xffffffff:
+                continue
+            if c.parent == 0:
+                self.errors[where].append('class %d has parent 0 (the globals): the loader does not count its fields'
+                                          % c.id)
+            elif c.parent not in seen:
+                later = any(x.id == c.parent for x in self.o.classes[k + 1:])
+                self.errors[where].append(
+                    'class %d comes before its parent %d in CLAS: the loader then does not count the inherited fields '
+                    '(heap overflow at load); put the class after its parent in the source' % (c.id, c.parent)
+                    if later else 'class %d has an unknown parent %d' % (c.id, c.parent))
+
     def run(self):
+        self.classes()
         for e, _, _ in self.rows:
             self.method(e)
 

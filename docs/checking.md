@@ -15,6 +15,11 @@ verifier of the bytecode, and an emulator of the game's script VM that runs the 
     every call is a known constant;
   - (warnings) names of calls by name and of natives exist; a missing one is not a crash — the VM answers 0.
 
+  - per object: every class comes after its parent in CLAS, no class has parent 0, class ids are unique. The
+    game's loader (`Script::LoadObject`) counts a class's inherited fields from the parent records read before
+    it, while the static cells are filled along the whole chain later: a class above its parent in the source is
+    a heap overflow when the game loads the object, so `compile` refuses it.
+
   Every object of every TC and AP version passes without errors.
 - `x3kc methoddiff old.obj new.obj` — methods whose code differs (pure moves do not count).
 - `x3kc savecheck src.kc base.obj` — which savegame return addresses a change breaks, and why (the call after
