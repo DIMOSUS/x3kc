@@ -106,7 +106,14 @@ How the game uses it (`Script::LoadVmState`, X3AP.exe 0x004a0880):
 - a record is a piecewise shift: for a pc the last pair with `old ≤ pc` applies and pc becomes `pc + (new − old)`;
   `new = 0` means "gone"; pcs below the first pair stay;
 - this remaps the pc of every task and every return address on its stack;
-- a field whose stamp is newer than the savegame's build is not read from it and keeps its initial value.
+- a field whose stamp is newer than the savegame's build is not read from it and keeps its initial value — **with
+  one exception** (a bug of the game): the fields of an object are read level by level from the root class down,
+  and the walk stops after the last level that still had saved fields. New fields on the levels below stay null.
+  Example: `Ship : Thing` had no fields of its own in the base, the mod adds `Ship.s0 = 7`: `Ship` objects from
+  old savegames get `s0 = null`. Static fields are not affected;
+- an object of a class the new object lacks crashes the load; static fields of such a class make the game refuse
+  the savegame;
+- after the remap a task pc must follow a native call and every return address a call, or the load fails.
 
 What `compile --base base.obj` does:
 1. Gives the object a new build: the current time, but above every build the base knows. `--build` or `#object`
@@ -130,10 +137,16 @@ What `compile --base base.obj` does:
    nothing is written and the exit code is 3; `--force` writes anyway.
 
 Rules for a mod: add fields **only at the end** of a class; never remove or reorder fields; changing an initial
-value does not reach old savegames (the compiler warns).
+value does not reach old savegames (the compiler warns); do not add fields to a class that had none of its own in
+the base (the compiler warns with `B19`): put them into an ancestor that already has fields, or set them in code;
+never remove or renumber a class whose objects old savegames may hold.
 
-**Not verified in the game:** loading a rebuilt object, and loading an old savegame with it. The signature of
-x3story in `x3files.xml` will not match a changed file, so the game marks itself "modified".
+The emulator repeats the load: `vm.migrate(new_object)` moves objects level by level the way the game does,
+B19 included, checks task pcs and return addresses, and raises `VMError` where the game would refuse or crash.
+
+A rebuilt x3story in `addon/05.cat` loads and runs in the game. **Not verified in the game:** loading an old
+savegame with it. The signature in `addon/x3files.xml` (a signed `<data>` block with the hash of x3story.obj) will
+not match a changed file, so the game marks itself "modified".
 
 ## Annotations
 The object has no names except method names, so `x3kc decompile` prints `C150`, `m12`, `v3`, `arg1`. Names and

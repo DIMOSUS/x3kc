@@ -89,6 +89,7 @@ An expression line (`$c = $a + $b * 2`) costs about 40 instructions per token, a
 | `test_vm.py` | the language on the emulator: arithmetic, strings, containers, loops, `switch`, objects, class objects, `fork`, timers, hangs |
 | `test_fuzz_compiler.py` | ~900 random expressions and programs: `compile` + emulator against a reference evaluator in Python |
 | `test_verify.py` | the verifier finds 8 kinds of damaged bytecode |
+| `test_b19.py` | an old savegame loaded with a `--base` build moves objects as the game does: new fields on a level with saved fields get their initial value, below the last such level they stay null (game bug B19, the compiler warns); an object of a removed class breaks the load |
 | `test_savesites.py` | only calls a task can wait in are savegame return sites (directly or through a callee) |
 | `test_emulator_game.py` | every game object verifies; MSCI scripts through the game's interpreter; a mod adds an MSCI command (build with `--base`, verified, savegames map, the command runs, the stock object neither crashes nor hangs on it); a task saved mid-wait on the stock object finishes on the modded build |
 

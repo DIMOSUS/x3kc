@@ -193,7 +193,9 @@ def make_compatible(o, base, build, explicit_stamps):
             # inherited fields come first: a new parent shifts every field of the class
             report.append('WARNING: class %d changed its parent: old saves will not load' % c.id)
     for cid in sorted(set(bcls) - {c.id for c in o.classes}):
-        report.append('WARNING: class %d was removed: old saves with its objects will not load' % cid)
+        report.append('WARNING: class %d was removed: old saves with its objects will not load (an object of it '
+                      'crashes LoadVmState, static fields of it make the game refuse the save)' % cid)
+    report.extend(lost_inits(o, base))
     for j, r in enumerate(o.vars):
         if j >= len(base.vars) and not explicit_stamps('field', 0, j):
             r[3] = build
@@ -214,6 +216,34 @@ def make_compatible(o, base, build, explicit_stamps):
     gone = sum(1 for _, d in m if d is None)
     report.append('PTCH for base build %d: %d pairs (%d ranges gone)' % (base.build, len(segs_to_pairs(m)), gone))
     return report
+
+
+def lost_inits(o, base):
+    """B19: LoadVmState walks the levels of an object's class from the root down and leaves the walk after a level
+    that is not the object's own class once the saved fields are used up (0x004a15c4). Stamped (new) fields on the
+    levels below the last level with saved fields keep null instead of their initial value. Run after stamping."""
+    cls = {c.id: c for c in o.classes}
+    out = []
+    for c in o.classes:
+        if c.id not in {b.id for b in base.classes}:
+            continue                    # no old object of a new class
+        chain, k = [], c
+        while k is not None and k.id not in [x.id for x in chain]:
+            chain.append(k)
+            k = cls.get(k.parent)
+        chain.reverse()
+        last = 0
+        for n, k in enumerate(chain):
+            if any((r[3] & 0xffffffff) <= base.build for r in k.fields):
+                last = n
+        for k in chain[last + 1:]:
+            new = [j for j, r in enumerate(k.fields) if (r[3] & 0xffffffff) > base.build]
+            if new:
+                out.append('WARNING: objects of class %d from old saves get null, not the initial value, in the new '
+                           'fields %s of class %d (B19: LoadVmState stops at class %d, the last level with saved '
+                           'fields); add the fields to a class that already has fields, or set them in code'
+                           % (c.id, ','.join(map(str, new)), k.id, chain[last].id))
+    return out
 
 
 def frames(o):

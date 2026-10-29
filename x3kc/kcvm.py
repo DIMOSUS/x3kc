@@ -31,6 +31,9 @@ def s32(v):
     return v - 0x100000000 if v & 0x80000000 else v
 
 
+STACK_CELLS = 0x4000                    # GrowTaskStack: the limit of a task stack, in cells
+
+
 class VMError(Exception):
     pass
 
@@ -306,7 +309,63 @@ class VM:
             return pc + d
         nv = VM(new_obj)
         nv.field_names = self.field_names
-        nv.objects, nv.statics, nv.next_id, nv.clock = self.objects, self.statics, self.next_id, self.clock
+        saved = None if same else self.o.build
+
+        def fresh(r):
+            return saved is not None and (r[3] & 0xffffffff) > saved
+
+        def levels(cid):
+            return [nv.cls[c].fields for c in reversed(nv.chain(cid))]
+
+        def instance(inst):
+            # INST: levels from the root down; a stamped field keeps its init, the others take the next saved cell.
+            # B19: below a level that is not the instance's own class the walk goes on only while saved cells are
+            # left, so the levels after the last saved cell stay null (the block comes zeroed from TrackedAlloc).
+            if inst.cls not in nv.cls:
+                raise VMError('object %d of class %d: the class is not in the new object, LoadVmState reads its '
+                              'field count through NULL (FindClassRecord, 0x004a14a5)' % (inst.id, inst.cls))
+            old, out, read = inst.fields, [], 0
+            ls = levels(inst.cls)
+            for k, rows in enumerate(ls):
+                for r in rows:
+                    out.append(nv.const(r[2], r[1]))
+                    if fresh(r):
+                        continue
+                    read += 1
+                    if read > len(old):
+                        raise VMError('object %d of class %d: the save has %d fields, the new class wants more; '
+                                      'the game refuses the save' % (inst.id, inst.cls, len(old)))
+                    out[-1] = old[read - 1]
+                if k == len(ls) - 1:
+                    if read < len(old):
+                        raise VMError('object %d of class %d: %d saved fields are left over; the game refuses the '
+                                      'save' % (inst.id, inst.cls, len(old) - read))
+                elif read >= len(old):
+                    out.extend(EMPTY for rows in ls[k + 1:] for _ in rows)
+                    break
+            return Instance(inst.id, inst.cls, out)
+
+        def statics(cid, old):
+            # OBJE reads over the block LoadObject already filled with init values: no B19 here
+            if cid != 0 and cid not in nv.cls:
+                raise VMError('static fields of class %d: the class is not in the new object, the game refuses '
+                              'the save (0x004a1175)' % cid)
+            rows = list(new_obj.vars) if cid == 0 else [r for rs in levels(cid) for r in rs]
+            out = [nv.const(r[2], r[1]) for r in rows]
+            read = 0
+            for j, r in enumerate(rows):
+                if read >= len(old):
+                    break
+                if not fresh(r):
+                    out[j] = old[read]
+                    read += 1
+            return out
+        if saved is None:
+            nv.objects, nv.statics = self.objects, self.statics
+        else:
+            nv.objects = {oid: instance(inst) for oid, inst in self.objects.items()}
+            nv.statics = {cid: statics(cid, v) for cid, v in self.statics.items()}
+        nv.next_id, nv.clock = self.next_id, self.clock
         nv.rand.seed = self.rand.seed
         nv.natives.update({k: v for k, v in self.natives.items() if k not in nv.natives})
         nv.overrides = self.overrides
@@ -317,6 +376,16 @@ class VM:
             t.vm = nv
             t.pc = move(t.pc, 'task pc')
             t.stack = [RetPC(move(x.pc, 'return address')) if isinstance(x, RetPC) and x.pc else x for x in t.stack]
+            # LoadVmState checks the moved addresses: a task pc follows a native call, a return address a call
+            code = new_obj.code
+            # (a task held by an override waits after a method call instead: an artefact of the emulator)
+            if t.state == 'wait' and (t.pc < 5 or code[t.pc - 5] not in (0x82, 0x84, 0x85, 0x86, 0x87, 0x88)):
+                raise VMError('task pc %06x does not follow a native call in the new object: the game refuses '
+                              'the save' % t.pc)
+            for x in t.stack:
+                if isinstance(x, RetPC) and x.pc and (x.pc < 5 or not 0x84 <= code[x.pc - 5] <= 0x88):
+                    raise VMError('return address %06x does not follow a call in the new object: the game refuses '
+                                  'the save' % x.pc)
             nv.tasks[t.id] = t
         return nv
 
@@ -638,7 +707,8 @@ class VM:
                 v = st[-1]
                 st[-1] = s32(~v) if isinstance(v, int) else v
             elif op == 0x6e:
-                pass
+                if len(st) > STACK_CELLS:
+                    raise VMError('task stack over 0x4000 cells at %06x: GrowTaskStack fails' % i.pc)
             elif op == 0x6f:
                 self.fork(t)
             elif op == 0x70:
@@ -870,6 +940,10 @@ class VM:
         st = t.stack
         argc = st[-1]
         if argc < r[3]:
+            if len(st) + r[3] - argc > STACK_CELLS:
+                # 0x85/0x87 pad with GrowTaskStack but do not check it (0x6e does): the game writes below the block
+                raise VMError('call by name of %s pads past the task stack limit of 0x4000 cells: the game writes '
+                              'outside the stack block' % name)
             st.pop()
             args = [st.pop() for _ in range(argc)]
             st.extend([0] * (r[3] - argc))
