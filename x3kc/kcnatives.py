@@ -876,8 +876,9 @@ def install_2(vm):
 
 def convert_text_string(x):
     """Script::UnescapeTextPageString on a copy, as SE_ConvertTextString uses it: escapes \\n \\b \\t \\r,
-    octal \\NNN, \\c -> c, a raw LF -> space, unescaped (...) dropped. It never writes a terminator, so a shorter
-    result keeps the stale tail of the input (cut at the first NUL)."""
+    octal \\NNN, \\c -> c, a raw LF -> space, unescaped (...) dropped. The function writes no terminator, but the
+    handler passes the new length on (ResumeTaskWithString -> SetCellStringDup -> StrNDupReplace copies
+    min(length, strlen) bytes), so the result has no tail of the input; it is cut at the first NUL (octal 000)."""
     b = x.encode('latin1', 'replace')
     out = bytearray()
     i, skip = 0, False
@@ -909,7 +910,7 @@ def convert_text_string(x):
             skip = False
         elif not skip:
             out.append(0x20 if c == 0x0a else c)
-    res = bytes(out) + b[len(out):]
+    res = bytes(out)
     z = res.find(b'\0')
     return (res[:z] if z >= 0 else res).decode('latin1')
 
