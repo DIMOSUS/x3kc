@@ -58,7 +58,9 @@ def game_text(v):
 
 
 # ---- database from the decompiled object --------------------------------------------------------------------
-def literal(e):
+def literal(e, inner=False):
+    """A constant table as Python data. Inside a table or array an element that is computed (FL builds
+    some constant names with ReadText/SPrintf) becomes None; at the top it raises ValueError."""
     from . import kcast as A
     t = type(e)
     if t is A.Int:
@@ -66,9 +68,11 @@ def literal(e):
     if t is A.Str:
         return e.s
     if t is A.MkArr:
-        return [literal(x) for x in e.items]
+        return [literal(x, True) for x in e.items]
     if t is A.MkTab:
-        return {str(literal(k)): literal(v) for k, v in e.pairs}
+        return {str(literal(k, True)): literal(v, True) for k, v in e.pairs}
+    if inner:
+        return None
     raise ValueError(t.__name__)
 
 
