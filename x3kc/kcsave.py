@@ -53,6 +53,15 @@ def insn_keys(o, entry, end, names):
     return keys
 
 
+def matching_blocks(a, b):
+    """difflib's matching blocks of two key lists (without the empty last one). An unchanged method - most of
+    them - is one block without running difflib, whose result for equal lists is exactly that block."""
+    if a == b:
+        return [(0, 0, len(a))] if a else []
+    sm = difflib.SequenceMatcher(None, a, b, autojunk=False)
+    return [blk for blk in sm.get_matching_blocks() if blk[2]]
+
+
 def code_map(base, new):
     """Segments [(old_start, delta or None)] mapping base code offsets to new ones, method by method;
     instructions inside changed parts of a method map to None (gone)."""
@@ -69,8 +78,7 @@ def code_map(base, new):
         a = insn_keys(base, be, bend, bnames)
         b = insn_keys(new, ne, nend, nnames)
         segs.append((be, None))
-        sm = difflib.SequenceMatcher(None, [k for _, k in a], [k for _, k in b], autojunk=False)
-        blocks = [blk for blk in sm.get_matching_blocks() if blk[2]]
+        blocks = matching_blocks([k for _, k in a], [k for _, k in b])
         for i, j, n in blocks:
             # a saved pc is always the address after an instruction (a return address, or a task pc after a
             # native): the start of instruction k belongs to instruction k-1, so it moves with k-1's block
@@ -96,8 +104,7 @@ def insn_map(base, new):
             continue
         a = insn_keys(base, be, bend, bnames)
         b = insn_keys(new, ns[key][0], ns[key][1], nnames)
-        sm = difflib.SequenceMatcher(None, [k for _, k in a], [k for _, k in b], autojunk=False)
-        for i, j, n in sm.get_matching_blocks():
+        for i, j, n in matching_blocks([k for _, k in a], [k for _, k in b]):
             for t in range(n):
                 out[a[i + t][0]] = b[j + t][0]
     return out
@@ -202,6 +209,7 @@ def make_compatible(o, base, build, explicit_stamps):
     if len(o.vars) < len(base.vars):
         report.append('WARNING: global variables removed: old saves will not load')
     m = code_map(base, o)
+    o.code_segs = m                     # compile's return-site check uses the same map: computed once
     ptch = []
     for b, pairs in base.ptch:          # older saves were mapped to the base offsets: re-target them
         if b == build:

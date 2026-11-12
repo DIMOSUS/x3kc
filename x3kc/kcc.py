@@ -237,7 +237,7 @@ def main():
             for line in kcsave.make_compatible(o, base, build, explicit):
                 print(line)
                 broken |= 'will not load' in line
-            segs = kcsave.code_map(base, o)
+            segs = getattr(o, 'code_segs', None) or kcsave.code_map(base, o)
             ok, gone, bad = kcsave.check_return_sites(base, o, segs)
             print('base return sites (calls a task can wait in): %d mapped, %d gone, %d WRONG; new build %d'
                   % (ok, gone, bad, build))
