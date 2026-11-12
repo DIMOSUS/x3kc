@@ -21,6 +21,12 @@ C-like syntax, dynamic values: int, double, string, array, table, object.
   `"SB_String(0)"`, not as `""`.
 - `@0x…` after a class or field — the build stamp of the build that added it (see «Mods and savegames»).
 
+**A split project** is the same text cut into files (`x3kc split` / `join`, `decompile --split`, `x3kc/kcsplit.py`):
+the index `<name>.kcs` lists the parts in source order (`//` comment lines allowed); a part starts at the line after
+the previous declaration's last line, so the comments above a class go with it. `compile` concatenates the parts
+in index order and parses the result exactly as one file, so the object is the same; line numbers in messages are
+mapped back to the part. Each part also parses alone (`kcsplit.parse_part`: pass 1, parents unresolved).
+
 **Variables.** Parameters are `arg1…`, locals `v1…`, fields `mN`, globals `gN` (until annotations name them).
 A local lives until the end of its `{ }` block; every `case` section is a block.
 

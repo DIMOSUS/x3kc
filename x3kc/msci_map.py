@@ -1,6 +1,6 @@
 """MSCI command id -> what C702::__runScript does for it: KC methods and natives each `case` calls.
 
-    x3kc msci map <x3story.kc (kcd output)> <texts tsv> <out.md> [--json out.json]
+    x3kc msci map <x3story.kc or split project (kcd output)> <texts tsv> <out.md> [--json out.json]
 
 The interpreter's big `switch (v18)` (v18 = command id of the current script line) is cut into its case
 sections; the syntax of each id comes from text pages 2003, 302003 and 352003.
@@ -27,7 +27,8 @@ def main():
         p, _, i = k.partition(':')
         if p in ('2003', '302003', '352003') and i.isdigit():
             syn.setdefault(int(i), v)
-    lines = open(a.src, encoding='latin1').read().split('\n')
+    from . import kcsplit
+    lines = kcsplit.load(a.src).text.split('\n')        # a single .kc or a split project
     start = next(k for k, l in enumerate(lines) if 'function __runScript(' in l)
     end = next(k for k in range(start, len(lines)) if lines[k] == '    }')
     body = lines[start:end]

@@ -54,6 +54,17 @@ globals by type and initial value); only new ones get new numbers, above the pre
 inserted local or global renumbers everything after it (Farnham's Legacy's community patch: 131 000 diff lines in
 x3story with renumbering, 22 000 without).
 
+**Split projects.** x3story.kc is 8–12 MB in one file. `decompile … --split` (it combines with `--names`,
+`--no-offsets`, `--names-from`) writes a directory instead: `x3story.kcs`, the index that lists the parts in source
+order (the only thing that decides the order), `@header.kc` (directives and global variables), one `<Class>.kc`
+per class (`C2259.kc` when unnamed) and one `@<Function>.kc` per global function, with `.pool` and `.ptch`
+unchanged. `x3kc split src/x3story.kc src/x3story` and `x3kc join src/x3story src/x3story.kc` convert an existing
+project either way as plain text — your comments and formatting included, `join(split(x))` is `x` byte for byte.
+`compile`, `savecheck` and `msci map` take the directory (or its `.kcs`) wherever they take a `.kc`, and give
+errors as `Client.kc:123:`. One project per directory. A part file name only helps you find a class: on a name
+that collides case-insensitively with an earlier one (or a Windows device name like `Con`) it becomes
+`Name~<class id>.kc`; rename a class and the old file name still works, the next `split` renames the file.
+
 MSCI:
 ```
 x3kc msci-setup "C:/Games/X3 Terran Conflict" work           texts, ware names, command database, scripts

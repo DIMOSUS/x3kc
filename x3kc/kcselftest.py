@@ -1,6 +1,8 @@
 """Full round trip: obj -> source project (kcd) -> obj (kcc), byte for byte, for every object given.
 
-    x3kc selftest <obj>... [--work DIR]
+    x3kc selftest <obj>... [--work DIR] [--split]
+
+--split decompiles into a split project (decompile --split) and compiles that.
 """
 import argparse
 import os
@@ -15,6 +17,7 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('objs', nargs='+')
     ap.add_argument('--work')
+    ap.add_argument('--split', action='store_true', help='round trip through a split project')
     a = ap.parse_args()
     work = a.work or tempfile.mkdtemp(prefix='kcrt')
     bad = 0
@@ -22,9 +25,9 @@ def main():
     for k, obj in enumerate(a.objs):
         name = os.path.splitext(os.path.basename(obj))[0]
         d = os.path.join(work, '%02d_%s' % (k, name))
-        r1 = subprocess.run([sys.executable, '-m', 'x3kc', 'decompile', obj, d], capture_output=True, text=True,
-                            env=env)
-        r2 = subprocess.run([sys.executable, '-m', 'x3kc', 'compile', os.path.join(d, name + '.kc'),
+        r1 = subprocess.run([sys.executable, '-m', 'x3kc', 'decompile', obj, d] + (['--split'] if a.split else []),
+                            capture_output=True, text=True, env=env)
+        r2 = subprocess.run([sys.executable, '-m', 'x3kc', 'compile', d if a.split else os.path.join(d, name + '.kc'),
                              '-o', os.path.join(d, name + '.out.obj'), '--check', obj], capture_output=True, text=True, env=env)
         ok = r2.returncode == 0
         bad += not ok

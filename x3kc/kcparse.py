@@ -33,14 +33,14 @@ class Tok:
         return '%s:%r@%d' % (self.kind, self.text, self.line)
 
 
-def lex(src):
+def lex(src, loc=None):
     toks = []
     pos, line = 0, 1
     n = len(src)
     while pos < n:
         m = TOKEN.match(src, pos)
         if not m:
-            raise ParseError('line %d: bad character %r' % (line, src[pos]))
+            raise ParseError('%s: bad character %r' % (loc(line) if loc else 'line %d' % line, src[pos]))
         k = m.lastgroup
         t = m.group()
         if k != 'ws':
@@ -124,10 +124,15 @@ class Unit:
 
 
 class Parser:
-    def __init__(self, src, name='<src>'):
-        self.toks = lex(src)
-        self.p = 0
+    def __init__(self, src, name='<src>', loc=None):
+        """loc(line) -> 'file:line' for messages (a split project maps its joined lines back to the part files)."""
         self.name = name
+        self.loc = loc or self.default_loc
+        self.toks = lex(src, self.loc)
+        self.p = 0
+
+    def default_loc(self, line):
+        return '%s:%d' % (self.name, line)
 
     # ---- token helpers -----------------------------------------------------------------------
     def peek(self, k=0):
@@ -170,10 +175,12 @@ class Parser:
 
     def err(self, msg, t=None):
         t = t or self.peek()
-        return ParseError('%s:%d: %s' % (self.name, t.line, msg))
+        return ParseError('%s: %s' % (self.loc(t.line), msg))
 
     # ---- pass 1 ------------------------------------------------------------------------------
-    def unit(self):
+    def unit(self, resolve=True):
+        """Pass 1. resolve=False (one part of a split project read alone): parent class names stay unresolved in
+        Unit.class_parent_names, as the parent may be declared in another part."""
         u = Unit()
         self.u = u
         while self.peek().kind != 'eof':
@@ -193,13 +200,15 @@ class Parser:
                 u.items.append(('class', self.klass()))
             else:
                 raise self.err('declaration expected, found %r' % t.text)
+        if not resolve:
+            return u
         for cid, (pname, line) in u.class_parent_names.items():
             k = u.syms.classes[cid]
             if pname is None:
                 k.parent = NO_PARENT
             else:
                 if pname not in u.syms.by_name:
-                    raise ParseError('%s:%d: unknown parent class %s' % (self.name, line, pname))
+                    raise ParseError('%s: unknown parent class %s' % (self.loc(line), pname))
                 k.parent = u.syms.by_name[pname]
         return u
 
@@ -312,11 +321,12 @@ class Parser:
 class BodyParser(Parser):
     """Pass 2: one function body with symbols known."""
 
-    def __init__(self, toks, syms, decl, name, natives=()):
+    def __init__(self, toks, syms, decl, name, natives=(), loc=None):
         self.toks = toks
         self.syms = syms
         self.decl = decl
         self.name = name
+        self.loc = loc or self.default_loc
         self.cls = decl.cls
         self.p = decl.start
 

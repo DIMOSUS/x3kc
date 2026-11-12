@@ -9,13 +9,20 @@ KC objects (l/*.obj: x3story, x3galedit, x3intro, x3config)
   extract <game dir> <out dir> [--addon addon2]
                                         copy the objects the game loads out of its catalogues
   decompile <obj> <out dir> [--names auto|FILE] [--pcs] [--asm-all] [--no-offsets] [--names-from PREV.obj]
-                                        object -> source project (.kc + .pool + .ptch); --no-offsets: no
+            [--split]                   object -> source project (.kc + .pool + .ptch; --split: a split
+                                        project, see split); --no-offsets: no
                                         code offset after `function` lines; --names-from: the previous
                                         build's identifiers (v12, m5, g7 too) stay where the code still
                                         matches (both: small diffs between builds)
-  compile <file.kc> -o <out.obj> [--check ORIG] [--base OBJ [--build N] [--force]]
-                                        source project -> object; --base keeps old savegames loading
-  selftest <obj>...                     decompile and recompile, compare byte for byte
+  compile <src> -o <out.obj> [--check ORIG] [--base OBJ [--build N] [--force]]
+                                        source project -> object; --base keeps old savegames loading.
+                                        <src>: a .kc file or a split project (its directory or .kcs index)
+  split <file.kc> <dir>                 single-file project -> split project: <name>.kcs index (the order),
+                                        @header.kc (directives, globals), one <Class>.kc per class, one
+                                        @<Function>.kc per global function; .pool/.ptch copied unchanged
+  join <dir | index.kcs> <file.kc>      split project -> single file; join(split(x)) == x byte for byte
+  selftest <obj>... [--split]           decompile and recompile, compare byte for byte (--split: through a
+                                        split project)
   test <obj> [-v N]                     per-method decompile/regenerate check
   dis <obj> [method | 0xOFFSET] [-n N]  plain disassembly
   names pack <obj> <names.json> <out>   offset-keyed annotations made on <obj> -> portable form
@@ -23,7 +30,7 @@ KC objects (l/*.obj: x3story, x3galedit, x3intro, x3config)
 
 Checking a build without the game
   verify <obj> [-v]                     static bytecode verifier (compile runs it on every build)
-  savecheck <file.kc> <base.obj>        which savegame return sites (calls a task can wait in) the new source
+  savecheck <src> <base.obj>            which savegame return sites (calls a task can wait in) the new source
                                         breaks, and why
   methoddiff <old.obj> <new.obj>        methods whose code differs between two builds
   smoke <old.obj> <new.obj> [--budget N] [-v]
@@ -49,7 +56,7 @@ MSCI scripts (addon/scripts/*.pck|xml)
                                         gives name, description and arguments
   msci check <db.json> <dir>            decoder vs the <sourceplaintext> of every script
   msci verify <db.json> <dir>           assembler vs the <codearray> of every script
-  msci map <x3story.kc> <texts.tsv> <out.md> [--json F]
+  msci map <x3story.kc|dir> <texts.tsv> <out.md> [--json F]
                                         which KC methods/natives every MSCI command calls
   msci cost <x3story.obj> <db.json> [line ...]
                                         cost of MSCI lines in KC instructions (emulator, game interpreter)
@@ -94,7 +101,8 @@ def main(argv=None):
              'test': ('kctest', 'main'), 'dis': ('kcdis', 'main'), 'cat': ('catx', 'main'),
              'unpck': ('unpck', 'main'), 'texts': ('texts_tsv', 'main'), 'wares': ('wares', 'main'),
              'verify': ('kcverify', 'main'), 'savecheck': ('savecheck', 'main'), 'methoddiff': ('methoddiff', 'main'),
-             'smoke': ('smoke', 'main'), 'bugscan': ('bugscan', 'main')}
+             'smoke': ('smoke', 'main'), 'bugscan': ('bugscan', 'main'),
+             'split': ('kcsplit', 'main_split'), 'join': ('kcsplit', 'main_join')}
     if cmd not in table:
         print('unknown command %r (x3kc help)' % cmd)
         return 2

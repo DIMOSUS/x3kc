@@ -182,6 +182,10 @@ class KcObj:
 
 
 def load(path):
+    import os
+    if os.path.isdir(path) or path.lower().endswith(('.kc', '.kcs')):
+        raise SystemExit('error: %s is a source project; this command takes a compiled object (x3kc compile it '
+                         'first)' % path)
     with open(path, 'rb') as f:
         return KcObj(f.read())
 

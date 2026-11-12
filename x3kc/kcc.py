@@ -1,6 +1,6 @@
-"""Compile a KC source project (<name>.kc + .pool + .ptch) into an object file.
+"""Compile a KC source project (<name>.kc + .pool + .ptch, or a split project) into an object file.
 
-    x3kc compile <file.kc> -o <out.obj> [--check <original.obj>]
+    x3kc compile <file.kc | dir | index.kcs> -o <out.obj> [--check <original.obj>]
 
 --check compares the result with an object byte for byte and names the first differing methods.
 """
@@ -14,6 +14,7 @@ from . import kcast as A
 from . import kcgen
 from . import kcobj
 from . import kcparse
+from . import kcsplit
 from .kcsym import NO_PARENT
 
 
@@ -82,10 +83,14 @@ def natives_of(node):
 
 
 def compile_source(path):
-    with open(path, encoding='latin1') as f:
-        src = f.read()
-    base = os.path.dirname(os.path.abspath(path))
-    P = kcparse.Parser(src, os.path.basename(path))
+    """A source project -> (object, pool, functions). `path`: a single .kc file, or a split project (its .kcs
+    index or its directory, see kcsplit), whose parts are joined in index order; messages name the part file."""
+    try:
+        source = kcsplit.load(path)
+    except kcsplit.SplitError as x:
+        raise CompileError(str(x))
+    src, base, loc = source.text, source.base, source.loc
+    P = kcparse.Parser(src, source.name, loc)
     u = P.unit()
     dirs = dict(u.directives)
     o = kcobj.KcObj()
@@ -104,7 +109,7 @@ def compile_source(path):
     # pass 2: bodies
     fns = []
     for f in u.funcs:
-        bp = kcparse.BodyParser(P.toks, S, f, os.path.basename(path))
+        bp = kcparse.BodyParser(P.toks, S, f, source.name, loc=loc)
         f.ast = bp.function()
         fns.append(f)
 
@@ -115,7 +120,7 @@ def compile_source(path):
             for name in sorted(set(natives_of(f.ast))):
                 if name not in known:
                     print('warning: %s (%s): native %s is unknown to X3AP.exe (it would return 0)'
-                          % (os.path.basename(path), f.name, name))
+                          % (loc(f.line), f.name, name))
 
     # layout in source order; addresses of calls are fixed up afterwards
     env = kcgen.Env(pool, {})
@@ -126,7 +131,7 @@ def compile_source(path):
         try:
             g.function()
         except kcgen.GenError as x:
-            raise CompileError('%s: %s' % (f.name, x))
+            raise CompileError('%s: %s: %s' % (loc(f.line), f.name, x))
         env.methods[(f.cls, f.name)] = len(code)
         f.entry = len(code)
         f.frame_size = g.frame
@@ -136,7 +141,7 @@ def compile_source(path):
         try:
             b = g.resolve()
         except kcgen.GenError as x:
-            raise CompileError('%s: %s' % (f.name, x))
+            raise CompileError('%s: %s: %s' % (loc(f.line), f.name, x))
         code[f.entry:f.entry + len(b)] = b
     o.code = bytes(code)
 

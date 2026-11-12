@@ -1,6 +1,9 @@
 """Decompile a KC object (x3story.obj ...) into a source project: <name>.kc, <name>.pool, <name>.ptch.
 
-    x3kc decompile <obj> <outdir> [--name NAME] [--asm-all] [--no-offsets] [--names-from PREV.obj]
+    x3kc decompile <obj> <outdir> [--name NAME] [--asm-all] [--no-offsets] [--names-from PREV.obj] [--split]
+
+--split writes a split project (kcsplit: <name>.kcs index, one file per class and per global function) instead of
+<name>.kc: what `x3kc split` makes of the single file (only the `// rebuild:` hint names the .kcs).
 
 Every method is decompiled, regenerated from its AST and compared with the original bytes; a method that does not
 match (or cannot be decompiled or printed) is written as `asm { }` so the project always rebuilds the same object.
@@ -174,16 +177,28 @@ def main():
     ap.add_argument('--names-from', metavar='OBJ',
                     help='the previous build of this object: identifiers it decompiles with (named or v12 / m5 / '
                          'g7 / arg2) stay on the code that still matches, new ones get numbers above its own')
+    ap.add_argument('--split', action='store_true',
+                    help='write a split project into outdir: <name>.kcs index, one file per class and per global '
+                         'function (x3kc split / join convert between the two forms)')
     a = ap.parse_args()
-    o = kcobj.KcObj(open(a.obj, 'rb').read())
+    o = kcobj.load(a.obj)
     name = a.name or os.path.splitext(os.path.basename(a.obj))[0]
     os.makedirs(a.outdir, exist_ok=True)
     carry = None
     if a.names_from:
-        prev = kcobj.KcObj(open(a.names_from, 'rb').read())
+        prev = kcobj.load(a.names_from)
         carry = (prev, decompile(prev, name, a, os.path.basename(a.names_from))[4])
     files, stats, report, unplaced, _ = decompile(o, name, a, os.path.basename(a.obj), carry)
     data = {f: t.encode('latin1') for f, t in files.items()}      # all encoded before any file is opened
+    if a.split:
+        from . import kcsplit
+        text = files.pop(name + '.kc')
+        del data[name + '.kc']
+        try:
+            index, parts = kcsplit.write_project(a.outdir, name, text)
+        except kcsplit.SplitError as x:
+            raise SystemExit('error: %s' % x)
+        print('%6d  parts in %s' % (len(parts), index))
     for f, b in data.items():
         with open(os.path.join(a.outdir, f), 'wb') as h:
             h.write(b)
@@ -385,7 +400,8 @@ def decompile(o, name, a, objname, carry=None):
     L = pr.lines
     built = datetime.datetime.fromtimestamp(o.build, datetime.timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')
     L.append('// %s: KC source decompiled by kcd.py (build %d, %s)' % (objname, o.build, built))
-    L.append('// rebuild: x3kc compile %s.kc -o %s.obj' % (name, name))
+    L.append('// rebuild: x3kc compile %s%s -o %s.obj' % (name, '.kcs' if getattr(a, 'split', False) else '.kc',
+                                                            name))
     L.append('#object %d %d' % (o.version, o.build))
     L.append('#sections %s' % ' '.join(o.order))
     L.append('#pool %s.pool' % name)
