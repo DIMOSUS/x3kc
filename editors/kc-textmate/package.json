@@ -1,0 +1,27 @@
+{
+  "name": "x3kc-kc",
+  "displayName": "KC (X3 script objects)",
+  "description": "Syntax highlighting for KC, the script language of X3 Albion Prelude / Farnham's Legacy, as x3kc decompiles and compiles it.",
+  "version": "0.1.0",
+  "publisher": "x3kc",
+  "license": "SEE LICENSE IN ../../LICENSE",
+  "engines": { "vscode": "^1.60.0" },
+  "categories": ["Programming Languages"],
+  "contributes": {
+    "languages": [
+      {
+        "id": "kc",
+        "aliases": ["KC", "kc"],
+        "extensions": [".kc"],
+        "configuration": "./language-configuration.json"
+      }
+    ],
+    "grammars": [
+      {
+        "language": "kc",
+        "scopeName": "source.kc",
+        "path": "./syntaxes/kc.tmLanguage.json"
+      }
+    ]
+  }
+}
