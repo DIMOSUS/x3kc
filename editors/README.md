@@ -52,6 +52,34 @@ Installing:
 - VS Code: `python editors/install.py vscode`;
 - the VSIX (0.2.0) carries both grammars and the content type `msci`.
 
+## MSCI in the language server (editors/kclsp/msci_ls.py)
+
+The server process is the same; it treats a file by its extension (`.msci`).
+
+- **Diagnostics** come from x3kc's assembler (`msci_asm.Assembler.line`), fed line by line, so every bad line gets
+  its own diagnostic: an unknown or mistyped command, a bad value or expression, block errors (`end` without `if`,
+  `else` after `else` ...). On top of that: blocks left open (at the opening line), undefined labels (at the line
+  that jumps), header errors (no header, unknown argument type, script name ≠ file name).
+  - The assembler has no notion of "a variable used before assignment", so that is not reported.
+  - The arguments of `call script X : desc=value` are checked against the header of `X.msci` in the same folder.
+  - The assembler needs the game's `msci_db.json` (`x3kc msci-setup`). It is looked for in this order:
+    `KCLSP_MSCI_DB_AP` / `_FL`; `KCLSP_MSCI_DB`; `msci_db.json` in the script's folder or above;
+    `<repo>/build/msci/<ed>/`; `<repo>/build/tmp/queue/msci/<ed>/`. Without one, only the header is checked, and an
+    information diagnostic says so.
+- **Hover**:
+  - on a command line: the command from `docs/msci_commands_<ed>.json` (syntax, group, what it does, parameter
+    types, result, effects, edge cases, bugs, whether it waits, the KC natives its handler calls, how often stock
+    scripts use it);
+  - on `{page,id}` or `pageid=N textid=M`: the text in every language, as for KC.
+- **Completion**: every command's syntax line, ordered by how often stock scripts use it. Parameters stay as
+  `<Type>` text; no snippets.
+- **Go to definition**:
+  - `gosub X` / `goto label X` go to `X:`;
+  - `call script X` / `script=X` go to `X.msci` in the same folder (or `../scripts/`);
+  - text references go to the `<t>` entries.
+- **Document symbols**: the script with its arguments, and the labels.
+- **Edition**: `fl` when a path component is `fl` or `addon2`, else `ap`; `KCLSP_MSCI_EDITION` overrides.
+
 ## Language server (editors/kclsp)
 
 ```

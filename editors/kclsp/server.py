@@ -17,7 +17,7 @@ import traceback
 import urllib.parse
 
 from . import project as P
-from . import texts, textrefs
+from . import msci_ls, texts, textrefs
 
 DEBOUNCE = 0.3
 
@@ -198,6 +198,8 @@ class Server:
                 'textDocumentSync': {'openClose': True, 'change': 2, 'save': {'includeText': False}},
                 'definitionProvider': True,
                 'documentSymbolProvider': True,
+                'hoverProvider': True,
+                'completionProvider': {'resolveProvider': False},
             },
             'serverInfo': {'name': 'x3kc-kclsp', 'version': '0.1'},
         }
@@ -219,6 +221,9 @@ class Server:
         d = self.docs.get(key)
         if d:
             return d
+        if path.lower().endswith('.msci'):  # an MSCI script: no project, pr is None
+            self.docs[key] = (None, msci_ls.Doc(path))
+            return self.docs[key]
         index, _ = P.find_project(path)
         pkey = P.norm(index) if index else key
         pr = self.projects.get(pkey)
@@ -263,7 +268,8 @@ class Server:
     def on_textDocument_didSave(self, p):
         with self.lock:
             pr, part = self.doc(p['textDocument']['uri'])
-            self.full.add(pr)
+            if pr is not None:
+                self.full.add(pr)
             self.schedule(part, 0.0)
 
     def on_textDocument_didClose(self, p):
@@ -304,6 +310,11 @@ class Server:
                     self.logf('analysis error', traceback.format_exc())
 
     def analyse(self, pr, part, full):
+        if pr is None:                      # MSCI
+            if full or part.diags is None:
+                part.diags = msci_ls.diagnostics(part)
+            self.publish_list(part, part.diags, 'msci')
+            return
         changed = pr.refresh()
         if full:
             pr.check(part)
@@ -324,21 +335,41 @@ class Server:
         self.logf('project check %s: %.2f s' % (pr.name(), time.perf_counter() - t0))
 
     def publish(self, pr, part):
-        ds = pr.diagnostics(part)
+        self.publish_list(part, pr.diagnostics(part), 'kc')
+
+    def publish_list(self, part, ds, source):
         self.published[part.key] = len(ds)
         self.notify('textDocument/publishDiagnostics', {
             'uri': self.uris.get(part.key) or path_to_uri(part.path),
             'diagnostics': [{
                 'range': {'start': {'line': d.line - 1, 'character': d.col},
                           'end': {'line': d.line - 1, 'character': d.end}},
-                'severity': d.severity, 'source': 'kc', 'message': d.msg} for d in ds]})
+                'severity': d.severity, 'source': source, 'message': d.msg} for d in ds]})
 
     def fresh(self, uri):
         """(Project, Part) analysed up to the current text (requests may come before the debounce fires)."""
         pr, part = self.doc(uri)
-        pr.refresh()
-        pr.check(part)
+        if pr is not None:
+            pr.refresh()
+            pr.check(part)
         return pr, part
+
+    def locations(self, locs):
+        return [{'uri': self.uris.get(P.norm(path)) or path_to_uri(path),
+                 'range': {'start': {'line': ln - 1, 'character': c},
+                           'end': {'line': ln - 1, 'character': c + n}}} for path, ln, c, n in locs]
+
+    def on_textDocument_completion(self, p):
+        with self.lock:
+            pr, part = self.doc(p['textDocument']['uri'])
+            if pr is not None:
+                return None
+            pos = p['position']
+            return {'isIncomplete': False, 'items': msci_ls.completion(part, pos['line'], pos['character'])}
+
+    def msci_text_hover(self, part, page, tid):
+        found = texts.index_for(part.path).lookup(page, tid)
+        return text_hover(part.path, page, tid, None, found), found
 
     # ---- requests ----------------------------------------------------------------------------------------------
     def text_at(self, pr, part, pos):
@@ -356,6 +387,12 @@ class Server:
         with self.lock:
             pr, part = self.fresh(p['textDocument']['uri'])
             pos = p['position']
+            if pr is None:
+                h = msci_ls.hover(part, pos['line'], pos['character'])
+                if h is None:
+                    return None
+                md = self.msci_text_hover(part, h[1], h[2])[0] if h[0] == 'text' else h[1]
+                return {'contents': {'kind': 'markdown', 'value': md}}
             tr = self.text_at(pr, part, pos)
             if tr is not None:
                 return {'contents': {'kind': 'markdown', 'value': text_hover(part.path, *tr)}}
@@ -373,6 +410,13 @@ class Server:
         with self.lock:
             pr, part = self.fresh(p['textDocument']['uri'])
             pos = p['position']
+            if pr is None:
+                lines = part.lines()
+                tr = msci_ls.text_ref_at(lines[pos['line']], pos['character']) if pos['line'] < len(lines) else None
+                if tr:
+                    found = self.msci_text_hover(part, *tr)[1]
+                    return self.locations([(e.path, e.line, e.col, 2) for _, e, _ in found])
+                return self.locations(msci_ls.definition(part, pos['line'], pos['character']))
             tr = self.text_at(pr, part, pos)
             if tr is not None and tr[3]:
                 return [{'uri': path_to_uri(e.path),
@@ -386,7 +430,8 @@ class Server:
     def on_textDocument_documentSymbol(self, p):
         with self.lock:
             pr, part = self.doc(p['textDocument']['uri'])
-            pr.refresh()
+            if pr is not None:
+                pr.refresh()
 
             def conv(s):
                 name, kind, r, sel, kids = s
@@ -396,7 +441,7 @@ class Server:
                         'selectionRange': {'start': {'line': sel[0] - 1, 'character': sel[1]},
                                            'end': {'line': sel[2] - 1, 'character': sel[3]}},
                         'children': [conv(k) for k in kids]}
-            return [conv(s) for s in pr.symbols(part)]
+            return [conv(s) for s in (msci_ls.symbols(part) if pr is None else pr.symbols(part))]
 
 
 def main():

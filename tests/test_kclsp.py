@@ -22,6 +22,7 @@ from test_kc import SOURCE
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 STORY = os.environ.get('X3KC_STORY_KC', 'D:/GAMES/x3_src/kc/ap/x3story.kc')
+MSCI_DB = os.environ.get('X3KC_MSCI_DB', 'D:/GAMES/x3_src/build/tmp/queue/msci/ap/msci_db.json')
 
 
 def uri(path):
@@ -29,9 +30,11 @@ def uri(path):
 
 
 class Client:
-    def __init__(self):
+    def __init__(self, extra_env=None):
         env = dict(os.environ)
-        env.pop('KCLSP_TEXT_DIRS', None)
+        for k in ('KCLSP_TEXT_DIRS', 'KCLSP_MSCI_DB', 'KCLSP_MSCI_DB_AP', 'KCLSP_MSCI_DB_FL', 'KCLSP_MSCI_EDITION'):
+            env.pop(k, None)
+        env.update(extra_env or {})
         self.p = subprocess.Popen([sys.executable, '-X', 'utf8', '-B', '-m', 'editors.kclsp'], cwd=ROOT, env=env,
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.q = queue.Queue()
@@ -129,7 +132,7 @@ def pos_of(text, needle, k=0):
 class LanguageServer(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.mkdtemp(prefix='kclsp')
-        self.c = Client()
+        self.c = Client({'KCLSP_MSCI_DB': MSCI_DB} if self._testMethodName == 'test_msci_with_database' else None)
         r = self.c.request('initialize', {'processId': None, 'rootUri': None, 'capabilities': {}})
         self.assertTrue(r['capabilities']['definitionProvider'])
         self.c.notify('initialized', {})
@@ -232,6 +235,74 @@ class LanguageServer(unittest.TestCase):
         ds = self.c.wait_diags(uri(p), lambda ds: len(ds) > 0)
         self.assertIn('field or function expected', ds[0]['message'])
         self.assertEqual(ds[0]['range']['start'], dict(zip(('line', 'character'), pos_of(bad, 'junk'))))
+
+    def msci_project(self):
+        """The two x3kc example scripts as .msci files, a text page 8870 next to them (repo layout)."""
+        repo = os.path.join(self.dir, 'repo')
+        d = os.path.join(repo, 'scripts', 'ap', 'scripts')
+        os.makedirs(d)
+        ex = os.path.join(ROOT, 'docs', 'examples', 'msci_hello')
+        for n in ('plugin.x3kc.hello', 'lib.x3kc.hello.thousands'):
+            shutil.copyfile(os.path.join(ex, n + '.txt'), os.path.join(d, n + '.msci'))
+        t = os.path.join(repo, 'kc', 'ap', 't')
+        os.makedirs(t)
+        shutil.copyfile(os.path.join(ex, '8870-L044.xml'), os.path.join(t, '8870-L044.xml'))
+        return d
+
+    def test_msci_without_database(self):
+        """No msci_db.json: header check, outline, labels / script calls, command completion and text hover."""
+        d = self.msci_project()
+        p = os.path.join(d, 'plugin.x3kc.hello.msci')
+        u = uri(p)
+        text = self.c.open(p)
+        ds = self.c.wait_diags(u, lambda ds: len(ds) > 0)
+        self.assertIn('no msci_db.json', ds[0]['message'])
+        self.assertEqual(ds[0]['severity'], 3)
+        lib = os.path.join(d, 'lib.x3kc.hello.thousands.msci')
+        lt = self.c.open(lib)
+        syms = self.c.request('textDocument/documentSymbol', {'textDocument': {'uri': uri(lib)}})
+        self.assertEqual([s['name'] for s in syms], ['lib.x3kc.hello.thousands', 'pad3'])
+        self.assertEqual(syms[0]['children'][0]['name'], '$value: Var/Number')
+        line, col = pos_of(lt, 'gosub pad3', 7)
+        r = self.c.request('textDocument/definition', {'textDocument': {'uri': uri(lib)},
+                                                        'position': {'line': line, 'character': col}})
+        self.assertEqual(r[0]['range']['start'], dict(zip(('line', 'character'), pos_of(lt, 'pad3:'))))
+        line, col = pos_of(text, 'lib.x3kc.hello.thousands', 3)
+        r = self.c.request('textDocument/definition', {'textDocument': {'uri': u},
+                                                        'position': {'line': line, 'character': col}})
+        self.assertTrue(unquote(r[0]['uri']).endswith('/lib.x3kc.hello.thousands.msci'), r)
+        c = self.c.request('textDocument/completion', {'textDocument': {'uri': u},
+                                                        'position': {'line': 3, 'character': 0}})
+        labels = [i['label'] for i in c['items']]
+        self.assertGreater(len(labels), 700)
+        self.assertIn('$ret = get player name', labels)
+        line, col = pos_of(text, 'pageid=8870', 8)
+        h = self.c.request('textDocument/hover', {'textDocument': {'uri': u},
+                                                   'position': {'line': line, 'character': col}})
+        self.assertIn('Text {8870,2}', h['contents']['value'])
+        self.assertIn('English', h['contents']['value'])
+
+    @unittest.skipUnless(os.path.isfile(MSCI_DB), 'msci_db.json not found')
+    def test_msci_with_database(self):
+        d = self.msci_project()
+        p = os.path.join(d, 'plugin.x3kc.hello.msci')
+        u = uri(p)
+        text = self.c.open(p)
+        self.assertEqual(self.c.wait_diags(u, lambda ds: True, 60), [])
+        bad = text.replace('$ship = get player ship', '$ship = get playr ship') \
+                  .replace('return null', 'gosub nowhere\nif $count\nreturn null')
+        self.c.notify('textDocument/didChange', {'textDocument': {'uri': u, 'version': 2},
+                                                 'contentChanges': [{'text': bad}]})
+        ds = self.c.wait_diags(u, lambda ds: len(ds) == 3)
+        got = sorted((x['range']['start']['line'], x['message'].split(' ')[0]) for x in ds)
+        lines = bad.split('\n')
+        self.assertEqual(got, sorted([(lines.index('$ship = get playr ship'), 'cannot'),
+                                      (lines.index('gosub nowhere'), 'undefined'),
+                                      (lines.index('if $count'), 'if')]))
+        line, col = pos_of(text, 'get player name', 4)
+        h = self.c.request('textDocument/hover', {'textDocument': {'uri': u},
+                                                   'position': {'line': line, 'character': col}})
+        self.assertIn('command 1070', h['contents']['value'])
 
     def test_text_references(self):
         """Hover / definition on SE_ReadText and on a KC wrapper with literal arguments, pages found through the
