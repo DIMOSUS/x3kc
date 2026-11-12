@@ -105,7 +105,11 @@ The grammar has to stay fast on `x3story.kc` (8 MB, 190 000 lines):
    The patterns use only constructs that mean the same in `re` and Oniguruma.
 
 Result on the first 2000 lines of AP `x3story.kc`: 49 929 non-blank characters, 100 % scoped, 82.1 % with a
-specific scope (the rest are plain identifiers), no `invalid.*`, no untouched line.
+specific scope (the rest are plain identifiers), no `invalid.*`, no untouched line. The whole file (`--lines 0`,
+189 815 lines, 4.7 M non-blank characters): 100 % scoped, 76.2 % specific, no `invalid.*`, 42 s in this Python
+interpreter (the editors' native engines are much faster); the slowest line is the 97 933-character `chartSpec`
+literal at 1.07 s - linear, no backtracking blow-up. VS Code stops tokenising lines longer than
+`editor.maxTokenizationLineLength` (20 000 by default), so that one line stays plain there.
 
 Not verified without the IDE: that Visual Studio picks the grammar up from `.vs/Extensions` (the folder layout
 follows the stock Starterkit and the strings in the VS DLLs), the colours the VS theme gives to each scope, and the

@@ -147,15 +147,24 @@ def tokenise(root, lines):
         for fr in stack:
             fr[1] = 0
         pos = 0
+        cache = {}                      # regex -> (searched from, match): reused while the match lies ahead
+
+        def search(rxp):
+            c = cache.get(rxp)
+            if c is not None and c[0] <= pos and (c[1] is None or c[1].start() >= pos):
+                return c[1]
+            m = rxp.search(line, pos)
+            cache[rxp] = (pos, m)
+            return m
         while pos <= n:
             top = stack[-1][0]
             best, bestrule, isend = None, None, False
             if top.end is not None:
-                m = top.end.search(line, pos)
+                m = search(top.end)
                 if m:
                     best, isend = m, True
             for r in top.patterns:
-                m = (r.match or r.begin).search(line, pos)
+                m = search(r.match or r.begin)
                 if m and (best is None or m.start() < best.start()):
                     best, bestrule, isend = m, r, False
             if best is None or (best.start() >= n and not isend):
@@ -245,7 +254,13 @@ def main():
     total = scoped = specific = 0
     untouched, invalid = [], []
     by_scope = {}
+    slowest = (0.0, 0)
+    tl = time.perf_counter()
     for no, (text, sc) in enumerate(zip(lines, tokenise(root, lines)), 1):
+        now = time.perf_counter()
+        if now - tl > slowest[0]:
+            slowest = (now - tl, no)
+        tl = now
         line_total = line_scoped = 0
         for ch, s in zip(text, sc):
             if ch.isspace():
@@ -266,7 +281,8 @@ def main():
             untouched.append(no)
     dt = time.perf_counter() - t0
     invalid = sorted(set(invalid))
-    print('tokenised %d lines of %s in %.2f s' % (len(lines), a.source, dt))
+    print('tokenised %d lines of %s in %.2f s; slowest line %d (%d chars): %.3f s'
+          % (len(lines), a.source, dt, slowest[1], len(lines[slowest[1] - 1]) if slowest[1] else 0, slowest[0]))
     print('non-blank chars: %d; with a scope: %d (%.2f%%); with a specific scope (not variable.other.kc): %d (%.2f%%)'
           % (total, scoped, 100.0 * scoped / max(total, 1), specific, 100.0 * specific / max(total, 1)))
     print('innermost scope families:', ', '.join('%s %.1f%%' % (k, 100.0 * v / max(total, 1))
