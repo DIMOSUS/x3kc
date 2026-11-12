@@ -1,5 +1,8 @@
-// setup.x3kc.hello  (x3kc example: registers the hotkey, runs on every new game and every load)
+// setup.x3kc.hello  (x3kc example: loads the texts, registers the hotkey; runs on every new game and every load)
 // version: 1
+* The game loads only t/0001, 0003 and 0004 by itself (FL: 0001, 0003, 0004, 0005 ... while they exist):
+* load our own file t/8870-L044.xml. Ids 1..9999; the language variant -L<lang> is preferred.
+load text: id=8870
 * Registering the same script again reuses its hotkey id, so this is safe on every load.
 $hotkey = register hotkey: page=8870 id=1, to call script plugin.x3kc.hello
 set global variable: name='x3kc.hello.hotkey' value=$hotkey

@@ -12,13 +12,14 @@ File format and encoding: [msci.md](msci.md)
 
 **Contents.** [Rules in brief](#rules-in-brief) · [Worked example](#worked-example) · [Games and versions](#games-and-versions)
 · [Files and loading](#files-and-loading) · [The text form](#the-text-form) · [Language](#language) ·
-[Objects](#objects-and-this) · [Texts](#texts-t-files) · [Hotkeys, commands, AL plugins](#hotkeys-ship-commands-al-plugins)
+[Objects](#objects-and-this) · [Texts](#texts-t-files) · [Commands, signals, tasks, AL, saves](#commands-signals-tasks-al-saves)
 · [Command reference](#reading-the-command-reference) · [Pitfalls](#pitfalls) · [Testing](#testing-without-the-game)
 · [Checklist](#checklist-before-shipping) · [Older guides](#what-older-guides-get-wrong) · [Limitations](#limitations)
 
 ## Rules in brief
-1. A script is a file `addon/scripts/<name>.xml` (AP; FL: `addon2/scripts`); `<name>` inside must equal the file
-   name. The game runs only the `<codearray>`; write the script as editor text and build it with `x3kc msci new`.
+1. A script is a loose file `addon/scripts/<name>.xml` (AP; FL: `addon2/scripts`); `<name>` inside must equal the
+   file name. Scripts in catalogues are never loaded, and a `<name>.pck` beside it wins over your `.xml`. The game
+   runs only the `<codearray>`; write the script as editor text and build it with `x3kc msci new`.
 2. **An unsigned script loads only in a "modified" game** (code). A name starting with `!` loads anyway and makes
    the game modified. In practice: enable the script editor (`Thereshallbewings`) and reload a save.
 3. `setup.*` runs on every new game and every load; `init.*` and `!init.plugin.*` run when scripts are (re)loaded.
@@ -26,14 +27,15 @@ File format and encoding: [msci.md](msci.md)
 4. There is no time slicing: a loop without a waiting command (`@` in the reference: `wait`, flight commands,
    `call script`) freezes the whole game until it ends. Put `@ = wait N ms` in every long loop.
 5. Integers are 32-bit and wrap silently; `<`/`>` on numbers more than 2³¹ apart give the wrong answer; division
-   and `mod` by zero give `null`; `-2147483648 / -1` crashes the game.
+   and `mod` by zero give `null`; `-2147483648 / -1` crashes the original game. A false comparison stores `null`,
+   not 0.
 6. Test objects with `-> exists`. `if $ship` is true for a destroyed ship, `$ship == null` is false for it.
 7. A value of the wrong type is `null` without an error: `'a' - 1`, `$array[99]`, a command on a dead object.
    Unknown commands (an FL command on AP) are skipped, their result variable is not written.
 8. `call script` runs in the caller's task and waits for it; `START` makes a new task, and on a ship or station
    it **replaces the object's current command** (slot 0).
-9. Write texts in a language file `t/NNNN-L044.xml` and read them with `read text` / `sprintf: pageid=…`; never hard
-   code player-visible English only.
+9. Write texts in a language file `t/NNNN-L044.xml`, load it with `load text: id=NNNN` in your setup script (the
+   game loads only its own files by itself) and read them with `read text` / `sprintf: pageid=…`.
 10. Before shipping: build, `dis` it back, run it through the interpreter (`x3kc.kcmsci`), check the
     [checklist](#checklist-before-shipping).
 
@@ -45,7 +47,7 @@ Sources: [docs/examples/msci_hello](examples/msci_hello).
 |---|---|
 | `lib.x3kc.hello.thousands.txt` | library: `1234567` → `'1,234,567'`; loops, `mod`, `gosub`, string building |
 | `plugin.x3kc.hello.txt` | hotkey target: player data, `call script` of the library, `sprintf` from a text page, subtitle |
-| `setup.x3kc.hello.txt` | runs on every new game and load: registers the hotkey |
+| `setup.x3kc.hello.txt` | runs on every new game and load: loads the texts, registers the hotkey |
 | `8870-L044.xml` | English texts, page 8870 |
 
 The library, as written (the `//` lines are the header: name, description, version, arguments):
@@ -89,9 +91,9 @@ skip if $part >= 10
   $part.text = '0' + $part.text
 endsub
 ```
-`convert number … to string` is used instead of `'' + $part` on purpose: an empty string plus a number is `null`
-(see [Expressions](#expressions)). The script is wrong for exactly one input, `-2147483648`, and the test keeps it
-that way as a demonstration: `-$value` of the smallest integer is itself, so the result is `'--648'`.
+`convert number … to string` makes the type explicit; `'' + $part` would give the same string (`+` with a string on
+either side concatenates). The script is wrong for exactly one input, `-2147483648`, and the test keeps it that way
+as a demonstration: `-$value` of the smallest integer is itself, so the result is `'--648'`.
 
 The hotkey target and the setup script:
 ```
@@ -113,8 +115,11 @@ display subtitle text: text=$text duration=5000 ms
 return null
 ```
 ```
-// setup.x3kc.hello  (x3kc example: registers the hotkey, runs on every new game and every load)
+// setup.x3kc.hello  (x3kc example: loads the texts, registers the hotkey; runs on every new game and every load)
 // version: 1
+* The game loads only t/0001, 0003 and 0004 by itself (FL: 0001, 0003, 0004, 0005 ... while they exist):
+* load our own file t/8870-L044.xml. Ids 1..9999; the language variant -L<lang> is preferred.
+load text: id=8870
 * Registering the same script again reuses its hotkey id, so this is safe on every load.
 $hotkey = register hotkey: page=8870 id=1, to call script plugin.x3kc.hello
 set global variable: name='x3kc.hello.hotkey' value=$hotkey
@@ -186,9 +191,16 @@ writing one:
 - `codearray[1]` (engine version) ≥ 40, `codearray[4] & 1` clear; else not loaded (code).
 - `<sourceplaintext>`/`<sourcetext>` are for people and the editor; the game ignores them. `<signature>` is
   checked against the code.
-- `.pck` is a gzip-packed `.xml` (`x3kc unpck`); the loader lists `addon/scripts/*.xml|*.pck` and reads
-  `addon/scripts/<name>.xml` through the game's file system, which prefers a loose file to one in a catalogue.
-  Ship scripts as loose `.xml`: a script put into a `.cat` does not replace a loose stock `.pck` of the same name.
+- `.pck` is a gzip-packed `.xml` (`x3kc unpck`). How a script file is found (code: `LoadAllScripts`, exe
+  `SE_GetDir`, `SE_ReadFile`, `archive::resolveName`):
+  1. the list of scripts is the **directory listing on disk** of `addon/scripts` (`_findfirst`): `*.xml` and
+     `*.pck`, extension cut off. **A script that exists only inside a catalogue is never loaded.**
+  2. each name is read as `addon/scripts/<name>.xml`, which the file system resolves with the extension list
+     `pck xml`: loose files first (any loose match beats every catalogue), a language variant `<name>-L044.*` before
+     a plain one, then the earlier extension — **`<name>.pck` beats `<name>.xml`**. To replace a stock script, rename
+     its `.pck` away (e.g. `.pck.bak`) and put your `.xml` there.
+  3. only when no loose file matches are the catalogues searched, newest first (so a catalogue copy is used only for
+     a name that is listed on disk but has no loose file of a wanted extension — in practice never).
 
 **Signature and "modified"** (`ScriptDatabase.LoadScript`, same in FL):
 
@@ -208,9 +220,9 @@ game is modified.
 
 | event | what runs |
 |---|---|
-| client start | all scripts loaded; `init.*`, `!init.plugin.*` run |
-| new game, after the universe is built | `setup.*`, then `!setup.*`; then AL plugins init |
-| loading a save | all scripts reloaded from disk; `init.*`, `!init.plugin.*`; later `setup.*`, `!setup.*`; AL plugins reinit |
+| client start | all scripts loaded; the command maps rebuilt by `!init.{ship,station,wing}.*`; `init.*`, `!init.plugin.*` run |
+| new game, after the universe is built | `setup.*`, then `!setup.*`; then `al.plugin.*`, `!al.plugin.*` started as tasks, AL `init` events |
+| loading a save | all scripts reloaded from disk; command maps rebuilt; `init.*`, `!init.plugin.*`; later `setup.*`, `!setup.*`; `al.plugin.*` started again, AL `reinit` events |
 | `Thereshallbewings` typed | all scripts reloaded (no init/setup run) |
 | editor "reinit script caches" | command caches, `init.*`, then `setup.*` |
 
@@ -218,8 +230,8 @@ game is modified.
   order, not alphabetical). Do not depend on another init script having run.
 - Running `setup.*` on every load is normal: write setup scripts so that a second run does no harm (re-registering
   the same hotkey or command reuses it; keep a version in a global variable when you must run something once).
-- `al.plugin.*` is **not** a name the loader runs; AL plugins are registered by a script (`al engine: register
-  script`), usually from a `setup.*` script.
+- `al.plugin.*` and `!al.plugin.*` are started (as separate tasks, not synchronously) by `AlPlugins.Init` /
+  `Reinit` after the setup scripts (code); such a loader script should only `al engine: register script=…`.
 
 ## The text form
 x3kc reads and writes the text the in-game editor shows (`<sourceplaintext>`): one command per line.
@@ -297,20 +309,25 @@ Computed by the native `SE_ScriptComputeExpression` (behaviour as in the exe, ch
 | 10 | unary `-` `~` `!` |
 | 11 | `( )` |
 
+- **Results:** a true comparison or logical operator gives integer 1, **a false one gives `null`** (type 0), not
+  0: after `$c = 1 > 2`, `$c == 0` is false. Test results with `if $c` / `if not $c`.
 - **Integers** are 32-bit signed and wrap: `2147483647 + 1` = `-2147483648`.
 - **Comparisons** subtract and test the sign of the 32-bit difference: `2000000000 > -2000000000` is **false**.
   Compare values that can be far apart with care (subtract and test ranges yourself).
 - **Different types** are never equal: `null == 0` is false, `$s == null` is false when `$s` is `''`; only `!=`
   is true for them. Objects compare only with `==`/`!=` (`<`, `>` are false).
 - **Strings** compare byte by byte, case-sensitive (`'abc' == 'ABC'` is false; `'abc' < 'abd'` is true).
-- `+` adds integers; with a string on either side it concatenates the printed values (`'abc' + 5` = `'abc5'`,
-  `'abc' + null` = `'abcnull'` with the game's text for null). **An empty string on either side gives `null`**:
-  `'' + 5` is `null`. Use `convert number … to string`.
+- `+` adds two integers; anything else is concatenated as printed text by the KC method
+  `ScriptObject.__scriptOpAddString` (`'abc' + 5` = `'abc5'`, `'' + 5` = `'5'`, `null` prints as the game's text for
+  null, so `'a' + $unset` is `'anull'`, and even `null + 1` is a string). Build strings from strings and numbers you
+  know are set.
 - `-`, `*`, `/`, `mod`, `&`, `|`, `^`, `~` and unary `-` work on integers only; on anything else the result is
-  `null` (`&`, `|`, `^` return the left operand).
-- `/` truncates toward zero (`-7 / 2` = `-3`); `mod` keeps the sign of the left operand; **division or `mod` by
-  zero gives `null`**; `-2147483648 / -1` and `-2147483648 mod -1` **crash the game** (unguarded `IDIV`).
-- `AND`, `OR`, `!` give 1 or 0 (`5 AND 7` = 1). Both sides are always evaluated.
+  `null`.
+- `/` truncates toward zero (`-7 / 2` = `-3`); `mod` keeps the sign of the left operand (`-7 mod 3` = `-1`);
+  **division or `mod` by zero gives `null`**; `-2147483648 / -1` and `-2147483648 mod -1` **crash the original
+  game** (unguarded `IDIV`, bugs.md B9; the rebuilt exe of x3_src no longer crashes).
+- `AND`, `OR` give 1 or `null`; `AND` with `null` on either side is false. Both sides are always evaluated.
+- `return` takes one value, not an expression: compute into a variable first (`$r = $a + 1`, `return $r`).
 - **Truth** inside an expression: `null` and integer 0 are false, an object is true only if it exists, every
   string (also `''`) and array is true. See [Pitfalls](#pitfalls) for `if $obj` without an operator.
 - An expression has room for 50 values on its stack and 50 operands; longer ones crash the exe. Split them.
@@ -352,7 +369,11 @@ name:                goto label name       gosub name  endsub
 - `infinite loop detection enabled=[TRUE]` (command 153) turns on a watchdog for that task: every 10 000 commands
   it checks the game clock and, if no time passed, prints "Infinite loop detected" and ends the script. It is off by
   default.
-- `wait N ms` and `wait randomly from A to B ms` are interruptible; `$r = wait N ms` gets a result.
+- `wait N ms` and `wait randomly from A to B ms` count **game time** and end on the frame tick after it is due, so
+  the shortest wait is one frame (exe `TI_WaitForInterrupt`, `TiTick`). `$r = wait N ms` gives 0 when the time
+  ran out and the **remaining milliseconds** when it was cut short. A wait is keyed to the object (`[THIS]`), and
+  any `interrupt` of that object ends the waits of **all** its tasks early — wait again for the remaining
+  milliseconds when the exact duration matters.
 - `get task ID`, `get script priority`, `set script priority to N`.
 
 ### Interrupts and signals
@@ -385,27 +406,132 @@ There is no exception mechanism. What happens instead (code, emulator):
 ## Texts (t files)
 - Language files `t/NNNN-L044.xml` (`L044` English, `L049` German, `L007` Russian …) in the addon's `t/`
   directory, UTF-8, `<language id="44"><page id="P"><t id="I">text</t></page></language>`. Use a page number no
-  one else uses (check `x3kc texts <game> 044 all.tsv`). The stock plugins of AP read their pages without a
-  `load text` command; `load text: id=N` additionally imports `addon/t/NNNN.xml` (no language suffix) (code).
+  one else uses (check `x3kc texts <game> 044 all.tsv`).
+- **The game loads only its own text files** (code, `UiTextFonts.Set`): AP `t/0001`, `0003`, `0004`; FL `0001`,
+  `0003`, then `0004`, `0005` … as long as they exist. The stock plugins' texts are inside `0001`. **Load your file
+  with `load text: id=NNNN`** (ids 1…9999) in a `setup.*` script: it reads `addon/t/NNNN.xml`, which resolves to
+  the loose or catalogue `NNNN-L<language>.xml|pck` first. Loaded files are reloaded by the game after a save load
+  (`RestoreTexts`), and setup runs again anyway.
+- Page numbers 300001–349999, 350000–379999 and 380000–399999 (FL also 390001–399999) are folded to their range
+  start at import (301903 → 1903), so a page in a mod file can replace a stock page (exe `parsePageXml`).
 - `$t = read text: page=P id=I`; `$s = sprintf: pageid=P textid=I, a, b, c, d, e` (up to five values);
   `sprintf: fmt=$t, …` with a format string. `%s` prints any value, `%d` a number.
 - In a text, an unescaped `(…)` is a comment and is not shown; write `\(` and `\)`. `{P,I}` inserts another text.
 - `write to player logbook …`, `send incoming message …`, `display subtitle text …` show texts. In FL the logbook
   and message commands take a message type first (see the FL reference).
 
-## Hotkeys, ship commands, AL plugins
-These patterns are taken from the stock scripts; the command syntax is in the reference.
-- **Hotkey:** in a `setup.*` script `$hk = register hotkey: page=P id=I, to call script <name>` (the text is the
-  key's name in the controls menu); the target runs as a global script. Registering the same script again reuses
-  its id (code), `unregister hotkey $hk` removes it. The registration is part of the savegame.
-- **Ship/station command:** `global script map: set: key=COMMAND_TYPE_…, class=…, race=Player, script=<name>,
-  prio=0` binds the command to your script; `set script command upgrade: command=COMMAND_TYPE_… upgrade=[TRUE]`
-  (or a ware the object must carry, plus an optional check script) shows it in the console. Do both in an `init.*`
-  or `setup.*` script. The command's name and short name are texts on pages 2010/2011 (and 2008, 2022) with the
-  command id. Stock examples: `!init.ship.globalscriptmap*.xml`, `!init.ship.commandupgrade.xml`.
-- **AL plugin:** a setup script calls `al engine: register script=<controller>`; the controller gets `init`,
-  `reinit`, `start`, `stop`, `isenabled`, `timer` events (`al engine: set plugin … timer interval to N s`).
-  Keep the plugin's state in a global variable.
+## Commands, signals, tasks, AL, saves
+Read in the KC code (AP; class and method names of the bundled annotations), checked against FL where noted.
+
+### Task slots
+A ship or station runs scripts in numbered **slots** (`ScriptObject.scriptTasks`); a slot holds one task with its
+call stack. Only ships, stations and class 1700 objects own slots.
+
+| slot | used by |
+|---|---|
+| 0 | the ship's main command (console commands, `START $ship -> call script`, most signals) |
+| 1 … turrets−1 | turret commands |
+| 10, 11 | "additional ship commands" (console, commands 1200–1263) |
+| 10 … 19 | station console commands (1100–1163) |
+| 16 | player ship: sector-change handler while slot 0 is busy |
+| 17 / 21 | command preload scripts on ships / stations |
+| 18 | secondary signal handlers (stopped and reused for every one) |
+| 23 | all station signals |
+| ≥ 30 | free: `get next available task: starting=N` returns the first free slot from max(N, 30) |
+
+- `start task N with script S and prio P` (1017) stops whatever runs in slot N and starts S there;
+  `interrupt task N …` (1016) interrupts it; `is task N in use` (1073). Use slots from 30 up for your own
+  background tasks; slots below 30 are the game's.
+- **Stopping a task runs no MSCI code**: the task and all its `call` frames are killed (`StopThisScriptID`); for
+  slot 0 the ship stops, for turrets the turret. Scripts the task STARTed keep running. When the object is
+  destroyed, all its tasks die without callbacks.
+- **Global tasks** (`START null -> call script`, hotkeys, AL events) have no slot, `[THIS]` = null, and cannot be
+  interrupted by slot interrupts; no MSCI command stops them.
+
+### Ship and station commands
+- **Lookup** (`Ship.GetCommandScript`): first the ship's own binding (`connect ship command/signal … to script …
+  with prio …`, 113; `ignore ship command/signal` stores "ignored" and ends the search; `set … to global default
+  behaviour` removes the binding); then the global map (`global script map: set` 118 / `ignore` 127 / `remove` 119)
+  for the ship's class, its parent class and so on up to `Ship`: at each class a race-specific entry beats an
+  any-race one, and a more derived class beats a less derived one whatever the race. Stations: global map only —
+  113/114/115 do nothing on a station. A script name that is not found in 118 **removes** the entry.
+- **What the player sees** (`CommandScriptRegistry.HasCommandUpgrade`): for player-owned objects a command appears
+  only if `set script command upgrade` (144, or 154 with a check script) is set for it **and** a script is bound
+  and (the upgrade is `[TRUE]` or the ship carries that ware). For other owners the bound script is enough.
+- **Check script** (154): run synchronously as a global script every time the menu is built, with arg 1 = the ship
+  or station and arg 2 = 1 or the upgrade ware; it must not wait. Its return value: low four bits 0 = hide,
+  2 = show greyed, other = show; bits 16 and up are kept as entry flags. The `[CmdConCheck.*]` constants: Available
+  1, Disabled 2, OneTime 16, Infinite 32, NeedHomeStation 64, NeedHomeBase 128, NoAudioConfirmation 256,
+  WingAllShips 512, NoVoice 1024 (no spoken confirmation), NoTempRemove 2048 (the ship is not taken out of its
+  wing); the AP code tests only 1, 2, 512, 1024, 2048.
+- **Free ids** for mod commands (ranges the console lists and no stock code handles): ship 200–263 (navigation),
+  300–363 (combat), 400–463 (trade), 500–563 (special), 600–663 (piracy), 700–763 (custom), 800–863 (general),
+  1300–1363 (fleet), 1200–1263 (additional slots 10/11), 900–963 (turrets); station 1100–1163; any id ≥ 1400 that a
+  script registers as a custom command (shown under Custom). Stock `!init.*` scripts already use some ids in these
+  ranges — check `x3kc msci dis` of `!init.ship.globalscriptmap*.xml` and page 2010 before choosing.
+- **Texts:** the menu shows page 2010 (name), 2011 (short name, in the info line) and 2022 (description) with the
+  command id; page 2008 is the `COMMAND_TYPE_…` name the editor shows. Put these pages in your `t` file.
+- **Running:** the console asks the player for each declared argument of the script in order (picker by its type)
+  and starts the script in slot 0 (turret: its slot; station: its console slot) with the priority given in the
+  binding, `[THIS]` = the ship. There is no implicit "target": it is argument 1 if you declare one. The ship's
+  previous command is stopped when the script starts and again when it ends.
+- **Preload** (`set ship command preload script`, 1466): runs synchronously before the argument pickers with arg 1
+  = the object; return an **array** of values to pre-fill the first arguments, or `null` to cancel the command.
+
+### Signals
+Signals are command ids 1000–1019 bound like commands (`global script map: set: key=SIGNAL_…`, or per ship). Each
+has its own rule (`Ship.Signal_*`):
+
+| signal | id | arguments | how the handler runs |
+|---|---|---|---|
+| ATTACKED | 1000 | attacker, mode | slot 0 busy → interrupt with the bound priority; idle → started in slot 0 |
+| KILLED | 1001 | killer, current command and its parameters | synchronous in slot 0, interrupts off; the object still exists |
+| CAPTURED | 1004 | as KILLED | interrupt if slot 0 is busy, else synchronous |
+| DOCKED | 1012 | station | player ship: synchronous in slot 0; others: interrupt |
+| CHANGESECTOR | 1018 | sector | busy → player: synchronous in slot 16, others: interrupt; idle → synchronous in slot 0 |
+| FORMATIONLEADERCHANGED, LEADERNEEDSHELP, FOLLOWERNEEDSHELP, CALLFORHELP, WINGREMOVE | 1003, 1005, 1006, 1008, 1017 | (leader/follower/caller, attacker …) | interrupt only: nothing happens when slot 0 is idle or the priority is too low |
+| REQUESTUNDOCK, DAMAGED, SCANNED, BUY, SELL, LOAD, UNLOAD | 1009–1011, 1013–1016 | (partner, ware, count …) | interrupt when the ship has a command, else started in slot 0 |
+
+- Stations run every signal in slot 23 (KILLED synchronously). `SIGNAL_ABORTED` (1007) is never raised and
+  `SIGNAL_COLLISIONWARN` (1002) has no sender in the code.
+- **A synchronous handler in slot 0 kills the command script that was running there.** An interrupt handler runs
+  as a call: when it returns, the interrupted script continues at the line **after** the interrupted command (a
+  flight command is not resumed; the interrupt stopped the ship).
+- A second interrupt before the first one has run replaces it (one pending slot).
+- **Secondary signals** (`add secondary signal: signal=… script=… prio=… name=…` per object or with `null` for all
+  objects; `global secondary signal map: add …` by race and class): many handlers per signal, one per name; they run
+  synchronously in slot 18, before the primary handler, with interrupts off, and do not disturb slot 0. Use them to
+  observe signals without replacing the stock handler.
+- `<obj> -> send signal …` (515) delivers 1 ms later; ships accept 1000, 1003, 1005, 1006, 1010–1018, stations
+  1000, 1010, 1013–1016, 1019; others are ignored.
+
+### Hotkeys
+`register hotkey …` stores the hotkey **by script name** (ids from 1536; the same name gets the same id). Pressing
+it starts a new global task of the script found by that name, `[THIS]` = null, argument 1 = the hotkey id, priority
+0 (`InputMapper.TriggerCustomHotkey`). FL can pass a second string argument: `pressed`, `double`, `released`,
+`short`, `long`.
+
+### AL plugins
+- Loader `al.plugin.<name>` (started automatically, see [When scripts run](#files-and-loading)):
+  `al engine: register script=<controller>`; `al engine: set plugin <controller> description to …`, `… timer
+  interval to N s`.
+- The controller is started as a new global task with argument 1 = its own name and argument 2 = the event:
+  `init` (new game), `reinit` (each load), `start` / `stop` (the player toggles it in the AL menu), `timer` (every N
+  seconds of game age; checked once a second, so 1 s is the minimum; a new task each time, runs may overlap), and
+  `isenabled` — run **synchronously** for the menu: return non-zero for "on" and do not wait.
+- The engine keeps no on/off state: keep it in a global variable. Plugins whose script is gone are dropped on load.
+
+### Savegames
+- A running script is saved as a KC task with **its own copy of the code**, variables, line and call stack, and
+  continues after loading with that old code even if the file changed or was removed (inferred from the code and
+  the VM's save format; not checked with a save).
+- Everything looked up by name at the moment it is used gets the new file: `call script`, `START … call script`,
+  hotkeys, AL events, console commands. A `call` to a script that no longer exists does nothing.
+- Per-ship bindings (113) and secondary signal handlers store the script itself: they keep the old code after a
+  load until registered again.
+- The global command map and the command upgrades are cleared and rebuilt on every load from the init/setup
+  scripts: **register commands only in `init.*`/`setup.*`**, never in a script that runs once.
+- Global variables, object variables, hotkeys and AL registrations are saved with the game.
 
 ## Reading the command reference
 [msci_commands_ap.md](msci_commands_ap.md) and [msci_commands_fl.md](msci_commands_fl.md) are generated by `x3kc msci
@@ -455,16 +581,21 @@ x3kc msci ref work/msci_db.json msci_commands.md --game "AP 3.3" --map work/map.
 | a loop without a waiting command freezes the game | `@ = wait 100 ms` (or more) in each pass of a long loop |
 | `if $ship` is true for a destroyed ship; `$ship == null` false | `if $ship -> exists` |
 | `null == 0` is false, `'' == null` is false | compare with the type you stored; `is datatype[…] ==` |
-| `'' + 5` is `null` | `convert number $n to string`, or start from a non-empty string |
+| a false comparison stores `null`: `$c = $a > $b` then `$c == 0` is false | test `if $c` / `if not $c` |
+| `null` inside `+` turns the result into text (`'a' + $unset` = `'anull'`, `null + 1` is a string) | set variables before using them |
+| `return $a + 1` does not parse | `$r = $a + 1`, `return $r` |
+| your `x.xml` is ignored | a stock `x.pck` is beside it (`.pck` wins): rename the `.pck` away |
+| a script inside a `.cat` is never loaded | ship scripts as loose files |
+| texts of your `t` file show as `ReadText…` | `load text: id=NNNN` in your setup script |
+| a `wait` ends early | an interrupt of the object ends all its waits; check the result (remaining ms) |
 | `2000000000 > -2000000000` is false | keep compared values within ±1 073 741 823 or compare differences |
 | integer overflow wraps (money, distances squared) | check ranges; fixed-point commands for fractions |
 | `/ 0`, `mod 0` give `null`, then `null` spreads | test the divisor |
-| `-2147483648 / -1` crashes the game | avoid the minimum int |
+| `-2147483648 / -1` crashes the original game | avoid the minimum int |
 | a command on a destroyed object returns `null` silently | test `-> exists` first |
 | `call script` on a sector, asteroid or dead object does nothing | call on `null` and pass the object as an argument |
 | `START $ship -> call script` stops the ship's command | `call script` without `START`, or another task slot (`start task N …`) |
 | unsigned script not loaded | make the game modified (`Thereshallbewings`, reload) |
-| loose stock `.pck` beats your `.cat` | ship scripts as loose `.xml` |
 | two `init`/`setup` scripts depend on each other | one setup script that calls the others in order |
 | `setup.*` runs on every load | make it idempotent; store a version in a global variable |
 | command ids from FL on AP | skipped silently on AP; check `script engine version` (FL 73, AP 54) |
@@ -522,10 +653,9 @@ patterns. Where it disagrees with the code of AP/FL:
 | the infinite-loop detector "rarely fires" | it is off unless the script turns it on (command 153), then it fires after 10 000 commands in one moment |
 | any value > 0 is true; null is false | `null` and 0 are false; also negative numbers, every string (even `''`) and every array are true; inside expressions objects are true only if they exist |
 | `init.*` runs before the galaxy exists | true for the client start; on a save load `init.*` runs with the universe loaded |
-| `al.plugin.*` scripts are loaded and run automatically | the loader runs only `init.*`, `!init.plugin.*`, `setup.*`, `!setup.*` |
 | unsigned `init`/`setup` run only in a modified game | true, and it holds for every unsigned script whose name does not start with `!` |
 | grouping with `[ ]` | AP/FL expressions use `( )`; `[ ]` are constants |
-
+| an unpacked `.xml` next to the stock `.pck` is used instead | the `.pck` wins (extension order `pck xml`); move the `.pck` away |
 ## Limitations
 What is not known or not done — read before relying on the manual:
 - **Not run in the game.** The worked example and every claim marked (code) were checked in the emulator with the
@@ -545,8 +675,8 @@ What is not known or not done — read before relying on the manual:
   (`COMMAND_AGENT_*` and `role=` values share one text); FL's new menu subgroups have no names in the texts
   (`Group 107` …); FL's own bugs S48–S51 are in the reference.
 - **TC** is not covered by a generated reference (the tools work on a TC directory as well).
-- The loader of `t/NNNN-L0LL.xml` files is in the exe and was not traced; that AP loads them without `load text`
-  is inferred from the stock plugins.
-- Ship command slots, signal priorities, the AL engine and the editor's own behaviour are described from stock
-  scripts and the older guides, not traced in code.
+- Commands, signals, task slots, hotkeys and the AL engine were read in the KC code (a code-reading pass with the
+  key places re-checked by hand), not run in the emulator or the game. What a save keeps of a running script is
+  inferred from the code and the VM's save format, not checked with a savegame. The in-game editor's own behaviour
+  is not covered.
 - `<signature>` cannot be produced: the game's signature check is not reproduced.

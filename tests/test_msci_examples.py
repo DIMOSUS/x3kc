@@ -113,8 +113,11 @@ class Example:
     def test_setup_registers_the_hotkey(self):
         m = self.msci()
         m.vm.call(700, 'AddScript', [kcmsci.to_cells(self.code['plugin.x3kc.hello'])])
+        loaded = []
+        m.vm.overrides['LoadText'] = lambda vm, t, o, a: loaded.append(a[0]) or 1
         r = m.run(self.code['setup.x3kc.hello'])
         self.assertEqual(r.type, 0)
+        self.assertEqual(loaded, [8870])            # its own text file, before the hotkey names a text on it
         self.assertTrue(m.vm.called('RegisterCustomHotkeyTextID'))
 
 
