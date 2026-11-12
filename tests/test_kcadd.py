@@ -58,6 +58,51 @@ class Add(unittest.TestCase):
         self.assertEqual(self.parts(), [f for f, _ in kcsplit.read_index(self.index)])
         self.assertFalse(os.path.exists(os.path.join(self.d, 'Y.kc')))
 
+    def test_parent_as_c_number(self):
+        # Ship is class 11: C11 becomes the declared name, so the part compiles; C0 (the globals) is refused
+        self.assertEqual(cli(['add', self.d, 'class', 'Boat', '--parent', 'C11']), 0)
+        with open(os.path.join(self.d, 'Boat.kc')) as f:
+            self.assertIn(': Ship {', f.read())
+        self.assertEqual(next(c for c in kcc.compile_source(self.d)[0].classes if c.id == 9500).parent, 11)
+        self.assertEqual(cli(['add', self.d, 'class', 'Raft', '--parent', 'C0']), 1)
+        # the ordering check applies to the C<n> form too
+        self.assertEqual(cli(['add', self.d, 'class', 'Y', '--parent', 'C11', '--after', 'Thing.kc']), 1)
+
+    def test_add_adopts_an_unlisted_part(self):
+        with open(os.path.join(self.d, 'Stray.kc'), 'w') as f:
+            f.write('\nfunction Stray() {\n    return 3;\n}\n')
+        self.assertEqual(cli(['compile', self.d]), 1)                                  # not in the index
+        self.assertEqual(cli(['add', self.d, 'class', 'Stray']), 1)                    # it declares a function
+        os.rename(os.path.join(self.d, 'Stray.kc'), os.path.join(self.d, '@Stray.kc'))
+        self.assertEqual(cli(['add', self.d, 'function', 'Stray']), 0)
+        with open(os.path.join(self.d, '@Stray.kc')) as f:
+            self.assertIn('return 3;', f.read())                                       # the file is kept
+        self.assertIn('@Stray.kc', self.parts())
+        self.assertEqual(cli(['compile', self.d]), 0)
+        # a class file with its own id and parent
+        with open(os.path.join(self.d, 'Hull.kc'), 'w') as f:
+            f.write('\nclass Hull = 300 : Ship {\n}\n')
+        self.assertEqual(cli(['add', self.d, 'class', 'Hull', '--id', '301']), 1)      # the file says 300
+        self.assertEqual(cli(['add', self.d, 'class', 'Hull']), 0)
+        self.assertEqual(next(c for c in kcc.compile_source(self.d)[0].classes if c.id == 300).parent, 11)
+        # remove works with an unlisted file around
+        with open(os.path.join(self.d, 'Other.kc'), 'w') as f:
+            f.write('class Other = 301 {\n}\n')
+        self.assertEqual(cli(['remove', self.d, 'Hull']), 0)
+
+    def test_join_and_lock_files(self):
+        self.assertEqual(cli(['join', self.d, os.path.join(self.d, 'all.kc')]), 2)    # inside the project: refused
+        self.assertFalse(os.path.exists(os.path.join(self.d, 'all.kc')))
+        for n in ('.#Ship.kc', '#Ship.kc'):
+            with open(os.path.join(self.d, n), 'w') as f:
+                f.write('lock')
+        self.assertEqual(cli(['compile', self.d]), 0)                                  # editor files are ignored
+
+    def test_remove_refuses_header_and_parents(self):
+        self.assertEqual(cli(['remove', self.d, '@header']), 1)
+        self.assertEqual(cli(['remove', self.d, 'Thing']), 1)                          # Ship's parent
+        self.assertIn('Thing.kc', self.parts())
+
     def test_remove(self):
         self.assertEqual(cli(['add', self.d, 'class', 'Boat']), 0)
         self.assertEqual(cli(['remove', self.d, 'Boat']), 0)

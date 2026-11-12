@@ -23,10 +23,14 @@ def code_version():
     if _code_version is None:
         h = hashlib.sha256(b'kccache %d' % FORMAT)
         d = os.path.dirname(os.path.abspath(__file__))
-        for f in sorted(os.listdir(d)):
-            if f.endswith(('.py', '.txt')):
-                with open(os.path.join(d, f), 'rb') as fh:
-                    h.update(f.encode() + b'\0' + fh.read())
+        for sub in ('', 'data'):            # the modules, natives.txt / sync_natives.txt and the bundled data
+            p = os.path.join(d, sub)
+            if not os.path.isdir(p):
+                continue
+            for f in sorted(os.listdir(p)):
+                if f.endswith(('.py', '.txt', '.json')) and os.path.isfile(os.path.join(p, f)):
+                    with open(os.path.join(p, f), 'rb') as fh:
+                        h.update((sub + '/' + f).encode() + b'\0' + fh.read())
         _code_version = h.hexdigest()[:16]
     return _code_version
 

@@ -42,9 +42,21 @@ def project(path):
             text = h.read().decode('latin1')
         d = [x for x in kcsplit.declarations(text) if x[0] in ('class', 'function')]
         parts.append((f, n, d[0][0] if d else 'other', d[0][1] if d else None))
-    src = kcsplit.load(index)
+    src = kcsplit.load(index, check_unlisted=False)     # add adopts, remove may follow an unlisted file
     u = kcparse.Parser(src.text, src.name, src.loc).unit(resolve=False)
     return index, base, parts, u
+
+
+def class_ref(S, name, what):
+    """A class given by name or as C<n> -> its declared name (the parser resolves parents by name only)."""
+    m = re.fullmatch(r'C(\d+)', name)
+    if m and int(m.group(1)) == 0:
+        raise AddError('%s C0 is the globals, not a class' % what)
+    if name in S.by_name:
+        return name
+    if m and int(m.group(1)) in S.classes:
+        return S.classes[int(m.group(1))].name
+    raise AddError('unknown %s class %s' % (what, name))
 
 
 def insert_line(index, after_line, entry):
@@ -62,10 +74,31 @@ def insert_line(index, after_line, entry):
 
 
 def free_name(base, parts, stem):
-    taken = {f.lower() for f, _, _, _ in parts} | {f.lower() for f in os.listdir(base)}
-    if (stem + '.kc').lower() in taken or stem.split('.')[0].upper() in kcsplit.RESERVED:
-        raise AddError('a part %s.kc exists already (or the name is a Windows device name)' % stem)
-    return stem + '.kc'
+    """-> (part file name, True when an unlisted file of that name is there to be adopted)."""
+    if stem.split('.')[0].upper() in kcsplit.RESERVED:
+        raise AddError('%s is a Windows device name: not usable as a file name' % stem)
+    if (stem + '.kc').lower() in {f.lower() for f, _, _, _ in parts}:
+        raise AddError('the index lists a part %s.kc already' % stem)
+    on_disk = [f for f in os.listdir(base) if f.lower() == (stem + '.kc').lower()]
+    return (on_disk[0] if on_disk else stem + '.kc'), bool(on_disk)
+
+
+def adopted(base, entry, kind, name, S):
+    """The class / function an unlisted part file declares: it must be exactly the one asked for."""
+    with open(os.path.join(base, entry), 'rb') as h:
+        text = h.read().decode('latin1')
+    try:
+        u = kcparse.Parser(text, entry).unit(resolve=False)
+    except kcparse.ParseError as x:
+        raise AddError('%s is there but does not parse: %s' % (entry, x))
+    items = [(k, x) for k, x in u.items]
+    if len(items) != 1 or items[0][0] != ('class' if kind == 'class' else 'func') or items[0][1].name != name:
+        raise AddError('%s is there but does not declare just the %s %s: fix or move it first' % (entry, kind, name))
+    if kind == 'class':
+        k = items[0][1]
+        pname = u.class_parent_names[k.id][0]
+        return k.id, pname
+    return None, None
 
 
 def add(path, kind, name, cid=None, parent=None, after=None):
@@ -77,6 +110,19 @@ def add(path, kind, name, cid=None, parent=None, after=None):
     if kind == 'class':
         if name in S.by_name or (re.fullmatch(r'C\d+', name) and int(name[1:]) in S.classes):
             raise AddError('class %s exists already' % name)
+    elif S.global_function(name):
+        raise AddError('global function %s exists already' % name)
+    entry, adopt = free_name(base, parts, name if kind == 'class' else '@' + name)
+    if adopt:
+        # an unlisted part file of that name (written by hand, or the "not in the index" case of compile): list it
+        fid, fparent = adopted(base, entry, kind, name, S)
+        if kind == 'class':
+            if cid is not None and cid != fid:
+                raise AddError('%s declares class id %d, not %d' % (entry, fid, cid))
+            if parent is not None and parent != fparent:
+                raise AddError('%s declares parent %s, not %s' % (entry, fparent, parent))
+            cid, parent = fid, fparent
+    if kind == 'class':
         m = re.fullmatch(r'C(\d+)', name)
         if m and cid is not None and int(m.group(1)) != cid:
             raise AddError('class %s would have id %s: a C<n> name is class n' % (name, m.group(1)))
@@ -88,15 +134,8 @@ def add(path, kind, name, cid=None, parent=None, after=None):
             raise AddError('class ids are positive (0 is the globals)')
         if cid in S.classes:
             raise AddError('class id %d is %s already' % (cid, S.class_name(cid)))
-        if parent is not None and parent not in S.by_name and not (
-                re.fullmatch(r'C\d+', parent) and int(parent[1:]) in S.classes):
-            raise AddError('unknown parent class %s' % parent)
-        stem = name
-    else:
-        if S.global_function(name):
-            raise AddError('global function %s exists already' % name)
-        stem = '@' + name
-    entry = free_name(base, parts, stem)
+        if parent is not None:
+            parent = class_ref(S, parent, 'parent')
     # where: after the given part, or after the last part of the same kind (or at the end)
     if after is not None:
         hit = [p for p in parts if p[0].lower() == after.lower() or p[0].lower() == (after + '.kc').lower()]
@@ -111,17 +150,18 @@ def add(path, kind, name, cid=None, parent=None, after=None):
         if ppos is not None and ppos > pos:
             raise AddError('the parent %s stands after %s in the index: the class must come after its parent '
                            '(--after %s or later)' % (parent, parts[pos][0], parts[ppos][0]))
-    if kind == 'class':
-        head = 'class %s%s%s' % (name, '' if re.fullmatch(r'C\d+', name) else ' = %d' % cid,
-                                 ' : %s' % parent if parent else '')
-        text = '\n%s {\n}\n' % head
-    else:
-        text = '\nfunction %s() {\n}\n' % name
     p = os.path.join(base, entry)
-    with open(p, 'w', encoding='latin1', newline='\n') as f:
-        f.write(text)
+    if not adopt:
+        if kind == 'class':
+            head = 'class %s%s%s' % (name, '' if re.fullmatch(r'C\d+', name) else ' = %d' % cid,
+                                     ' : %s' % parent if parent else '')
+            text = '\n%s {\n}\n' % head
+        else:
+            text = '\nfunction %s() {\n}\n' % name
+        with open(p, 'w', encoding='latin1', newline='\n') as f:
+            f.write(text)
     insert_line(index, parts[pos][1] if parts else 0, entry)
-    return p, cid
+    return p, cid, adopt
 
 
 def remove(path, what):
@@ -132,7 +172,15 @@ def remove(path, what):
         raise AddError('no part or class / function %s in the index' % what)
     if len(hit) > 1:
         raise AddError('%s names %d parts: give the part file' % (what, len(hit)))
-    f, n = hit[0][0], hit[0][1]
+    f, n, kind, name = hit[0]
+    if kind == 'other':
+        raise AddError('%s holds no class or function (the header: directives and globals): not removed' % f)
+    if kind == 'class':
+        cid = u.syms.by_name.get(name)
+        kids = sorted(u.syms.classes[c].name for c, (pn, _) in u.class_parent_names.items()
+                      if c != cid and pn is not None and (pn == name or pn == 'C%s' % cid))
+        if kids:
+            raise AddError('class %s is the parent of %s: remove or re-parent those first' % (name, ', '.join(kids)))
     with open(index, encoding='utf-8', newline='') as h:
         lines = h.read().splitlines(True)
     del lines[n - 1]
@@ -155,11 +203,12 @@ def main_add():
         print('error: --id and --parent are for classes')
         return 2
     try:
-        p, cid = add(a.project, a.kind, a.name, a.id, a.parent, a.after)
+        p, cid, adopt = add(a.project, a.kind, a.name, a.id, a.parent, a.after)
     except (AddError, kcsplit.SplitError, kcparse.ParseError) as x:
         print('error:', x)
         return 1
-    print('wrote %s%s and listed it in the index' % (p, ' (class id %d)' % cid if a.kind == 'class' else ''))
+    print('%s %s%s and listed it in the index' % ('kept' if adopt else 'wrote', p,
+                                                   ' (class id %d)' % cid if a.kind == 'class' else ''))
     return 0
 
 

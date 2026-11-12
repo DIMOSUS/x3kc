@@ -248,8 +248,9 @@ class Source:
         return '%s:%d' % (f, line - s + 1)
 
 
-def load(path):
-    """A single .kc file, a .kcs index or a split project directory -> Source."""
+def load(path, check_unlisted=True):
+    """A single .kc file, a .kcs index or a split project directory -> Source. check_unlisted: a .kc file in the
+    project folder that the index does not list is an error (x3kc add / remove read without the check)."""
     index = find_index(path)
     if index is None:
         with open(path, encoding='latin1') as f:
@@ -258,10 +259,11 @@ def load(path):
     chunks, parts = [], []
     line = 1
     listed = read_index(index)
-    unlisted = unlisted_parts(index, [f for f, _ in listed])
+    unlisted = unlisted_parts(index, [f for f, _ in listed]) if check_unlisted else []
     if unlisted:
-        raise SplitError('%s: not in the index %s, so not compiled (list it with `x3kc add`, add its line to the '
-                         'index, or delete the file)' % (unlisted[0], os.path.basename(index))
+        raise SplitError('%s: not in the index %s, so not compiled (list it with `x3kc add <dir> class|function '
+                         '<Name>`, which keeps the file, add its line to the index by hand, or delete the file)'
+                         % (unlisted[0], os.path.basename(index))
                          + (' (and %d more: %s)' % (len(unlisted) - 1, ', '.join(unlisted[1:6]))
                             if len(unlisted) > 1 else ''))
     for f, n in listed:
@@ -292,7 +294,7 @@ def unlisted_parts(index, listed):
             continue
         for f in sorted(os.listdir(p)):
             rel = os.path.normpath(os.path.join(d, f))
-            if f.lower().endswith('.kc') and os.path.isfile(os.path.join(p, f)) \
+            if f.lower().endswith('.kc') and not f.startswith(('.', '#')) and os.path.isfile(os.path.join(p, f)) \
                     and os.path.normcase(rel) not in names:
                 out.append(rel.replace(os.sep, '/'))
     return out
@@ -354,6 +356,12 @@ def main_join():
         return 1
     if index is None:
         print('error: %s is not a split project (a directory or a %s index)' % (src, INDEX_EXT))
+        return 2
+    pdir = os.path.normcase(os.path.dirname(os.path.abspath(index)))
+    odir = os.path.normcase(os.path.dirname(os.path.abspath(out)))
+    if odir == pdir or odir.startswith(pdir + os.sep):
+        print('error: %s lies inside the project folder: the next compile would refuse it as a part the index does '
+              'not list; write it elsewhere' % out)
         return 2
     try:
         raw = join_bytes(index)
