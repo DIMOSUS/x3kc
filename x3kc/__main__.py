@@ -8,8 +8,9 @@ USAGE = """x3kc %s - X3: Terran Conflict / Albion Prelude KC script tools
 KC objects (l/*.obj: x3story, x3galedit, x3intro, x3config)
   extract <game dir> <out dir> [--addon addon2]
                                         copy the objects the game loads out of its catalogues
-  decompile <obj> <out dir> [--names auto|FILE] [--pcs] [--asm-all]
-                                        object -> source project (.kc + .pool + .ptch)
+  decompile <obj> <out dir> [--names auto|FILE] [--pcs] [--asm-all] [--no-offsets]
+                                        object -> source project (.kc + .pool + .ptch); --no-offsets: no
+                                        code offset after `function` lines (smaller diffs between builds)
   compile <file.kc> -o <out.obj> [--check ORIG] [--base OBJ [--build N] [--force]]
                                         source project -> object; --base keeps old savegames loading
   selftest <obj>...                     decompile and recompile, compare byte for byte

@@ -1,6 +1,6 @@
 """Decompile a KC object (x3story.obj ...) into a source project: <name>.kc, <name>.pool, <name>.ptch.
 
-    x3kc decompile <obj> <outdir> [--name NAME] [--asm-all]
+    x3kc decompile <obj> <outdir> [--name NAME] [--asm-all] [--no-offsets]
 
 Every method is decompiled, regenerated from its AST and compared with the original bytes; a method that does not
 match (or cannot be decompiled or printed) is written as `asm { }` so the project always rebuilds the same object.
@@ -160,6 +160,8 @@ def main():
     ap.add_argument('--names', help='annotations (JSON, working or portable form; see kcnames.py and '
                                     'annotations.py), or "auto": the bundled names for this object, if any')
     ap.add_argument('--pcs', action='store_true', help='mark every statement with its code offset `// @xxxxxx`')
+    ap.add_argument('--no-offsets', action='store_true',
+                    help='no `// xxxxxx` code offset after `function` lines (sources of two builds diff less)')
     a = ap.parse_args()
     raw = open(a.obj, 'rb').read()
     o = kcobj.KcObj(raw)
@@ -186,7 +188,7 @@ def main():
     env = kcgen.Env(kcgen.Pool(o.strings), {v: k for k, v in by_addr.items()})
     ends = {e: (rows[k + 1][0] if k + 1 < len(rows) else len(o.code)) for k, (e, _, _) in enumerate(rows)}
 
-    pr = kcprint.Printer(S, pcs=a.pcs)
+    pr = kcprint.Printer(S, pcs=a.pcs, offsets=not a.no_offsets)
     stats = Counter()
 
     def emit_function(e, cid, r, d):

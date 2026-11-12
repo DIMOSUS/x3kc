@@ -65,11 +65,12 @@ def dense_rule(ints, strs):
 
 
 class Printer:
-    def __init__(self, syms, natives=(), pcs=False):
+    def __init__(self, syms, natives=(), pcs=False, offsets=True):
         self.syms = syms
         self.natives = set(natives)
         self.lines = []
         self.pcs = pcs              # append `// @offset` to every statement (input for annotators)
+        self.offsets = offsets      # `// offset` of the entry after every `function` line (off: smaller diffs)
         self.comments = {}
         self.stmt_pc = {}
         self.local_names = {}
@@ -357,6 +358,9 @@ class Printer:
         self.out(d, '}')
 
     # ---- functions ---------------------------------------------------------------------------
+    def entry_tail(self, entry):
+        return '  // %06x' % entry if self.offsets else ''
+
     def function(self, fn, cid, name, entry, d, computed_frame=None, ann=None):
         """ann: {'doc', 'params': [names], 'locals': {'v1': name}, 'comments': {pc: text}} (all optional)."""
         ann = ann or {}
@@ -378,7 +382,7 @@ class Printer:
         try:
             if ann.get('doc'):
                 self.comment(d, ann['doc'])
-            self.out(d, 'function %s(%s)%s {  // %06x' % (name, params, frame, entry))
+            self.out(d, 'function %s(%s)%s {%s' % (name, params, frame, self.entry_tail(entry)))
             self.body(fn.body, d + 1)
             self.out(d, '}')
         except Exception:           # nothing half-printed stays behind
@@ -388,7 +392,7 @@ class Printer:
             self.unplaced.append('%d::%s @%06x' % (cid, name, pc))
 
     def asm_function(self, name, params, frame, entry, items, d):
-        self.out(d, 'function %s(%s) frame %d asm {  // %06x' % (name, ', '.join(params), frame, entry))
+        self.out(d, 'function %s(%s) frame %d asm {%s' % (name, ', '.join(params), frame, self.entry_tail(entry)))
         for it in items:
             if it[0] == 'label':
                 self.out(0, '%s:' % it[1])

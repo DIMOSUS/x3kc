@@ -100,6 +100,24 @@ class RoundTrip(Base):
         self.assertEqual(cli(['compile', os.path.join(out, 't.kc'), '-o', rebuilt, '--check', obj]), 0)
         self.assertEqual(open(rebuilt, 'rb').read(), open(obj, 'rb').read())
 
+    def test_no_offsets(self):
+        o = self.compile(SOURCE)
+        obj = os.path.join(self.dir, 'a.obj')
+        with open(obj, 'wb') as f:
+            f.write(o.serialize())
+        a, b = os.path.join(self.dir, 'a'), os.path.join(self.dir, 'b')
+        self.assertEqual(cli(['decompile', obj, a, '--name', 't']), 0)
+        self.assertEqual(cli(['decompile', obj, b, '--name', 't', '--no-offsets']), 0)
+        with_off = open(os.path.join(a, 't.kc'), encoding='latin1').read().splitlines()
+        without = open(os.path.join(b, 't.kc'), encoding='latin1').read().splitlines()
+        self.assertEqual(len(with_off), len(without))
+        changed = [(x, y) for x, y in zip(with_off, without) if x != y]
+        self.assertTrue(changed)
+        for x, y in changed:        # only the `  // xxxxxx` after `function ... {` goes
+            self.assertRegex(x, r'^\s*function .*\{  // [0-9a-f]{6}$')
+            self.assertEqual(x[:-len('  // 000000')], y)
+        self.assertEqual(cli(['compile', os.path.join(b, 't.kc'), '--check', obj]), 0)
+
     def test_names_do_not_change_bytes(self):
         o = self.compile(SOURCE)
         obj = os.path.join(self.dir, 'a.obj')

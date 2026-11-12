@@ -45,6 +45,9 @@ x3kc cat mod/08.cat --pack L/x3story.obj=x3story.obj         pack it into a cata
 With `--names auto` the source reads like `class Station = 2016 : ScriptObject { … function Hit(shieldDamage,
 hullDamage, directHullDamage, hitter) { … } }`, with a comment above most classes, methods and many statements;
 without it, like `class C2016 : C702 { … function Hit(arg1, arg2, arg3, arg4) { … } }`.
+Keeping the source in git? `decompile --no-offsets` leaves out the method's code offset (`// 131f2b`) after each
+`function` line: otherwise any inserted code shifts the offsets of every later method and bloats the diff.
+`compile` does not care either way.
 
 MSCI:
 ```

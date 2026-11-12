@@ -41,6 +41,8 @@ x3kc compile src/x3story.kc -o x3story.obj --base objs/x3story.obj  мод, с �
 x3kc smoke objs/x3story.obj x3story.obj                      прогнать все методы обеих сборок, сравнить
 x3kc cat mod/08.cat --pack L/x3story.obj=x3story.obj         упаковать в каталог
 ```
+Исходник держите в git? `decompile --no-offsets` не пишет адрес метода (`// 131f2b`) после строки `function`:
+иначе любая вставка кода сдвигает адреса всех следующих методов и раздувает diff. `compile` всё равно.
 
 MSCI:
 ```
