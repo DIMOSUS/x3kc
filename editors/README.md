@@ -80,6 +80,43 @@ The server process is the same; it treats a file by its extension (`.msci`).
 - **Document symbols**: the script with its arguments, and the labels.
 - **Edition**: `fl` when a path component is `fl` or `addon2`, else `ap`; `KCLSP_MSCI_EDITION` overrides.
 
+## Mission Director files (XML)
+
+**What Visual Studio's XML editor already gives.** It validates an XML file against the schema its root names with
+`xsi:noNamespaceSchemaLocation` (a path relative to the file), and completes elements and attributes from that
+schema. The stock files already have what it needs:
+- every stock MD file names `director.xsd`: AP 88 of 89 `.xml` files in `game/ap/addon/director/`, FL 85 of 86 in
+  `game/fl/addon2/director/` (the exception is `mdfiles.xml`, a file list, not a `<director>`);
+- `director.xsd` lies next to them and includes `dirobjdb.xsd` from the same folder;
+- `md_schema.py check` resolves every reference, and all four `.xsd` files parse as XML.
+
+So in the repo layout, IntelliSense and validation for stock and edited stock MD files need no wiring.
+
+**Elsewhere.** A director file outside that folder needs the relative path to director.xsd:
+
+```
+python editors/tools/md_schema.py check <file or dir>...
+python editors/tools/md_schema.py fix <file or dir>... [--edition ap|fl] [--schema PATH] [--write]
+```
+
+`fix` points `xsi:noNamespaceSchemaLocation` (adding `xmlns:xsi` when missing) at
+`<repo>/game/<ed>/addon[2]/director/director.xsd`. It changes nothing else in the file, and writes only with
+`--write`.
+
+**What the extension cannot add.**
+- A schema catalog shipped by the extension cannot help: VS's catalog associates schemas by namespace, and MD files
+  have none, or by file extension, which here is `.xml` for everything.
+- The language client is not attached to XML. That would start the server for every XML file VS opens, and the XML
+  editor already owns the content type.
+- So the `{page,id}` text references in MD strings (1 306 in the AP files) get no hover in VS yet. The server's text
+  index would serve them as soon as a client sends MD files.
+
+**Only the user can verify:**
+- that VS validates and completes a stock MD file (squiggles on an unknown element, completion of `<cue>`
+  attributes);
+- that the ISO-8859-1 files and the included `dirobjdb.xsd` load;
+- that a file fixed with `md_schema.py` gets the same.
+
 ## Language server (editors/kclsp)
 
 ```
