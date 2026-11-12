@@ -66,6 +66,18 @@ project either way as plain text — your comments and formatting included, `joi
 errors as `Client.kc:123:`. One project per directory. A part file name only helps you find a class: on a name
 that collides case-insensitively with an earlier one (or a Windows device name like `Con`) it becomes
 `Name~<class id>.kc`; rename a class and the old file name still works, the next `split` renames the file.
+A new class or global function: `x3kc add src/x3story class Radar --parent ScriptObject` (or `function
+DrawRadar`) writes `Radar.kc` from a template and lists it in the index, after the last class (function) part or
+`--after <part>`; without `--id` the class gets the next id above every id of the project, at least 9500 (the stock
+objects use 50..9003); an existing name or id is refused. `x3kc remove src/x3story Radar` takes a part out again.
+`compile` refuses a `.kc` file in the project folder that the index does not list (it would silently not be
+compiled) and an index line whose file is missing.
+
+**Rebuilds.** `compile --cache DIR` keeps what does not change between builds in DIR, outside the sources: the
+parsed function bodies (an edit re-parses only the bodies it touches; a new or renamed class, field, method or
+global re-parses all) and what `--base` derives from the base object. The object is byte for byte the one
+`--no-cache` (or no `--cache`) builds; a missing or stale cache only costs time. AP x3story with `--base`:
+7.5 s without the cache, 6.0 s with it (it was 108 s before `--base` stopped aligning unchanged methods with difflib).
 
 MSCI:
 ```

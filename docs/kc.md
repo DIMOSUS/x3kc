@@ -26,6 +26,16 @@ the index `<name>.kcs` lists the parts in source order (`//` comment lines allow
 the previous declaration's last line, so the comments above a class go with it. `compile` concatenates the parts
 in index order and parses the result exactly as one file, so the object is the same; line numbers in messages are
 mapped back to the part. Each part also parses alone (`kcsplit.parse_part`: pass 1, parents unresolved).
+A `.kc` file in the project folder that the index does not list, or an index line whose file is missing, is an
+error. `x3kc add` writes a new class or global function part and its index line (`x3kc/kcadd.py`).
+
+**Class ids.** An id is any positive number no other class of the object has; 0 is the globals, and the game's
+object ids of instances are negative. Ids are what savegames store for objects: never renumber a class of the
+base. `compile --base` accepts an added class anywhere in the source order (its methods' code moves the later
+methods, which the PTCH map covers) and stamps it with the new build; the class must stand after its parent
+(the loader counts inherited fields only for a parent earlier in CLAS; the verifier refuses the other order).
+`x3kc add` picks the next id above every id of the project and at least 9500, clear of the stock ids (AP and FL
+x3story use 150..9003, x3intro 50..3001).
 
 **Variables.** Parameters are `arg1…`, locals `v1…`, fields `mN`, globals `gN` (until annotations name them).
 A local lives until the end of its `{ }` block; every `case` section is a block.

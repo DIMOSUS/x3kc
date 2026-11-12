@@ -14,13 +14,21 @@ KC objects (l/*.obj: x3story, x3galedit, x3intro, x3config)
                                         code offset after `function` lines; --names-from: the previous
                                         build's identifiers (v12, m5, g7 too) stay where the code still
                                         matches (both: small diffs between builds)
-  compile <src> -o <out.obj> [--check ORIG] [--base OBJ [--build N] [--force]]
+  compile <src> -o <out.obj> [--check ORIG] [--base OBJ [--build N] [--force]] [--cache DIR | --no-cache]
                                         source project -> object; --base keeps old savegames loading.
-                                        <src>: a .kc file or a split project (its directory or .kcs index)
+                                        <src>: a .kc file or a split project (its directory or .kcs index);
+                                        --cache: parsed bodies and base data kept in DIR between builds (the
+                                        same object, faster rebuilds); a .kc file the index does not list is
+                                        an error
   split <file.kc> <dir>                 single-file project -> split project: <name>.kcs index (the order),
                                         @header.kc (directives, globals), one <Class>.kc per class, one
                                         @<Function>.kc per global function; .pool/.ptch copied unchanged
   join <dir | index.kcs> <file.kc>      split project -> single file; join(split(x)) == x byte for byte
+  add <dir | index.kcs> class <Name> [--id N] [--parent C] [--after PART]
+  add <dir | index.kcs> function <Name> [--after PART]
+                                        a new part from a template, listed in the index (after the last
+                                        class / function part by default); a free class id >= 9500
+  remove <dir | index.kcs> <Name | part.kc>   delete a part and its index line
   selftest <obj>... [--split]           decompile and recompile, compare byte for byte (--split: through a
                                         split project)
   test <obj> [-v N]                     per-method decompile/regenerate check
@@ -102,7 +110,8 @@ def main(argv=None):
              'unpck': ('unpck', 'main'), 'texts': ('texts_tsv', 'main'), 'wares': ('wares', 'main'),
              'verify': ('kcverify', 'main'), 'savecheck': ('savecheck', 'main'), 'methoddiff': ('methoddiff', 'main'),
              'smoke': ('smoke', 'main'), 'bugscan': ('bugscan', 'main'),
-             'split': ('kcsplit', 'main_split'), 'join': ('kcsplit', 'main_join')}
+             'split': ('kcsplit', 'main_split'), 'join': ('kcsplit', 'main_join'),
+             'add': ('kcadd', 'main_add'), 'remove': ('kcadd', 'main_remove')}
     if cmd not in table:
         print('unknown command %r (x3kc help)' % cmd)
         return 2

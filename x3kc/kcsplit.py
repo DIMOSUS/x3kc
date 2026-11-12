@@ -257,7 +257,14 @@ def load(path):
     base = os.path.dirname(os.path.abspath(index))
     chunks, parts = [], []
     line = 1
-    for f, n in read_index(index):
+    listed = read_index(index)
+    unlisted = unlisted_parts(index, [f for f, _ in listed])
+    if unlisted:
+        raise SplitError('%s: not in the index %s, so not compiled (list it with `x3kc add`, add its line to the '
+                         'index, or delete the file)' % (unlisted[0], os.path.basename(index))
+                         + (' (and %d more: %s)' % (len(unlisted) - 1, ', '.join(unlisted[1:6]))
+                            if len(unlisted) > 1 else ''))
+    for f, n in listed:
         p = os.path.join(base, f)
         try:
             with open(p, 'rb') as h:
@@ -270,6 +277,25 @@ def load(path):
     if not parts:
         raise SplitError('%s: the index lists no parts' % index)
     return Source(''.join(chunks), os.path.basename(index), base, parts)
+
+
+def unlisted_parts(index, listed):
+    """.kc files in the index's directory (and in the subdirectories its parts lie in) that the index does not list:
+    a part written but never added would silently not be compiled."""
+    base = os.path.dirname(os.path.abspath(index))
+    names = {os.path.normcase(os.path.normpath(f)) for f in listed}
+    dirs = {''} | {os.path.dirname(os.path.normpath(f)) for f in listed}
+    out = []
+    for d in sorted(dirs):
+        p = os.path.join(base, d)
+        if not os.path.isdir(p):
+            continue
+        for f in sorted(os.listdir(p)):
+            rel = os.path.normpath(os.path.join(d, f))
+            if f.lower().endswith('.kc') and os.path.isfile(os.path.join(p, f)) \
+                    and os.path.normcase(rel) not in names:
+                out.append(rel.replace(os.sep, '/'))
+    return out
 
 
 def parse_part(path):
