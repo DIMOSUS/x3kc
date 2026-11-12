@@ -13,7 +13,60 @@ editors/
   install.py                         copies it into the per-user folder of VS or VS Code, or removes it
   tools/gen_grammar.py               writes the grammar from the rules below + x3kc/natives.txt + x3kc/kcisa.py
   tools/check_grammar.py             checks the grammar without an editor
+  kclsp/                             the KC language server (Python stdlib, LSP over stdio)
+  vs/                                the Visual Studio extension: language client + grammar (vs/README.md)
 ```
+
+## Language server (editors/kclsp)
+
+```
+python -X utf8 -B -m editors.kclsp          from the x3kc checkout; speaks LSP on stdin/stdout
+set KCLSP_LOG=<file>                        logs every message
+```
+
+- **Projects.** It opens the split project whose `.kcs` index lists the edited file. It looks in the file's directory
+  and up to three levels above. A `.kc` that no index lists is a project of its own (a single-file source).
+- **How it reads a split project.** Each part goes through pass 1 alone. The declarations of all parts are merged in
+  index order into one symbol table. Pass 2 and codegen of a part then run against that table, so an edit re-reads
+  one part.
+- **When a declaration changes** (a class, field or method added, renamed, or its arity changed), the other open
+  parts are re-checked.
+- **On save** the whole project is checked, and diagnostics are published for every part.
+- **Diagnostics**, with line and column ranges:
+  - lexer and parser errors (both passes; one per function body, the others still checked);
+  - duplicate classes, globals or functions across parts, and unknown parent classes;
+  - codegen errors (`break` outside a loop, duplicate cases, ...), at the function name;
+  - warnings for natives X3AP.exe lacks and for static or global calls whose argument count differs from the
+    declaration. The stock AP x3story has none of either.
+- **Document symbols**: global variables, global functions, classes with their fields and methods.
+- **Go to definition**:
+  - class names (`C150`, `Ship`, `new Ship(`, `: Parent`, `Ship::F`);
+  - static and inherited methods (`F(`, `C::F(`, `C.F(`, `x.C::F(`);
+  - `this->F` (nearest in the class chain, else every method of that name);
+  - `x.F(` (every method of that name: KC calls by name at run time);
+  - global functions (`F(`, `::F(`);
+  - fields of the class and its parents, globals, locals, parameters;
+  - natives: their entry in `docs/natives/spec_*.jsonl` when documented, else their line in `x3kc/natives.txt`.
+- **Text sync** is incremental. After a change, analysis runs after 0.3 s of quiet. A request (definition, symbols)
+  analyses at once if needed.
+
+Measured on AP x3story split into 466 parts:
+
+| What | Time |
+|---|---|
+| Open the first class (pass 1 of all parts + merge) | ~1.4 s |
+| Re-check `Ship.kc` after an edit | ~0.4 s |
+| `ScriptObject.kc` (1.5 MB) after an edit: pass 1 + pass 2 + codegen | 0.21 + 0.58 s |
+| The interpreter function `ScriptObject::__runScript` (168 000 tokens, 30 700 lines) alone | 0.32 s pass 2 + 0.06 s codegen |
+| Single 8 MB `x3story.kc` (slow path) per change | 1.9 s pass 1 + 4.1 s pass 2 / codegen |
+| Whole-project check on save | ~3.5 s, in the background |
+
+Tests: `python -m unittest discover tests -p test_kclsp.py` starts the server as a subprocess and drives it like an
+editor. They need no game files; with `D:/GAMES/x3_src/kc/ap/x3story.kc` (or `X3KC_STORY_KC`) present, one more test
+splits it into a temp dir and opens `Ship.kc`.
+
+VS Code: the folder extension `kc-textmate` gives highlighting only. An LSP client for VS Code needs the npm module
+`vscode-languageclient` (a download) or a hand-written client, so it was left out.
 
 ## Install
 
