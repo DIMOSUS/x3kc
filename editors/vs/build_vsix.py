@@ -30,7 +30,7 @@ BUILD = os.path.join(HERE, 'build')
 DIST = os.path.join(HERE, 'dist')
 VSIX = os.path.join(DIST, 'x3kc-kc.vsix')
 ID = 'x3kc.KcLanguage'
-VERSION = '0.1.0'
+VERSION = '0.2.0'
 DLL = 'X3kc.KcClient.dll'
 BS = chr(92)    # a backslash
 
@@ -46,8 +46,8 @@ FX = ['mscorlib.dll', 'System.dll', 'System.Core.dll', 'System.ComponentModel.Co
       'Facades/System.Threading.Tasks.dll']
 FX_DIR = 'C:/Program Files (x86)/Reference Assemblies/Microsoft/Framework/.NETFramework/v4.7.2'
 
-TITLE = 'KC language (x3kc)'
-DESCRIPTION = ('KC script sources of X3 (x3kc): highlighting, diagnostics, outline and go to definition through '
+TITLE = 'KC and MSCI languages (x3kc)'
+DESCRIPTION = ('KC and MSCI script sources of X3 (x3kc): highlighting, diagnostics, outline and go to definition through '
                'the x3kc language server.')
 
 MANIFEST = '''<?xml version="1.0" encoding="utf-8"?>
@@ -91,9 +91,11 @@ PKGDEF = '\n'.join([
     '',
     '[$RootKey$/TextMate/LanguageConfiguration/GrammarMapping]',
     '"source.kc"="$PackageFolder$/Grammars/language-configuration.json"',
+    '"source.msci"="$PackageFolder$/Grammars/msci-language-configuration.json"',
     '',
     '[$RootKey$/TextMate/LanguageConfiguration/ContentTypeMapping]',
     '"kc"="$PackageFolder$/Grammars/language-configuration.json"',
+    '"msci"="$PackageFolder$/Grammars/msci-language-configuration.json"',
     '']).replace('/', BS)
 
 
@@ -145,6 +147,9 @@ def files(dll, python):
         'Grammars/kc.tmLanguage.json': grammar,
         'Grammars/language-configuration.json': langconf,
     }
+    for name in ('syntaxes/msci.tmLanguage.json', 'msci-language-configuration.json'):
+        with open(os.path.join(GRAMMAR, name), 'rb') as f:
+            out['Grammars/' + os.path.basename(name)] = f.read()
     size = sum(len(b) for b in out.values())
     ext_dir = BS.join(['[installdir]', 'Common7', 'IDE', 'Extensions', 'x3kc-kc'])
     out['manifest.json'] = json.dumps({

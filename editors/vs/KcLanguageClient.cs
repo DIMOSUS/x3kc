@@ -32,6 +32,19 @@ namespace X3kc.Kc
         [FileExtension(".kc")]
         [ContentType(Name)]
         internal static FileExtensionToContentTypeDefinition KcFiles;
+
+        // MSCI scripts in their text form (x3kc msci dis / new): the same server, by file type
+        public const string Msci = "msci";
+
+        [Export]
+        [Name(Msci)]
+        [BaseDefinition(CodeRemoteContentDefinition.CodeRemoteContentTypeName)]
+        internal static ContentTypeDefinition MsciDefinition;
+
+        [Export]
+        [FileExtension(".msci")]
+        [ContentType(Msci)]
+        internal static FileExtensionToContentTypeDefinition MsciFiles;
     }
 
     [DataContract]
@@ -63,6 +76,7 @@ namespace X3kc.Kc
     }
 
     [ContentType(KcContentType.Name)]
+    [ContentType(KcContentType.Msci)]
     [Export(typeof(ILanguageClient))]
     public class KcLanguageClient : ILanguageClient
     {

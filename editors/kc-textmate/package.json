@@ -14,6 +14,12 @@
         "aliases": ["KC", "kc"],
         "extensions": [".kc"],
         "configuration": "./language-configuration.json"
+      },
+      {
+        "id": "msci",
+        "aliases": ["MSCI", "msci"],
+        "extensions": [".msci"],
+        "configuration": "./msci-language-configuration.json"
       }
     ],
     "grammars": [
@@ -21,6 +27,11 @@
         "language": "kc",
         "scopeName": "source.kc",
         "path": "./syntaxes/kc.tmLanguage.json"
+      },
+      {
+        "language": "msci",
+        "scopeName": "source.msci",
+        "path": "./syntaxes/msci.tmLanguage.json"
       }
     ]
   }

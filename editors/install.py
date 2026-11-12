@@ -2,6 +2,7 @@
 
     python editors/install.py vs                 copy to %USERPROFILE%/.vs/Extensions/x3kc-kc/Syntaxes/
     python editors/install.py vs --uninstall     remove that folder
+    python editors/install.py vs-msci            the MSCI grammar: %USERPROFILE%/.vs/Extensions/x3kc-msci/Syntaxes/
     python editors/install.py vscode             copy to %USERPROFILE%/.vscode/extensions/x3kc.x3kc-kc-<version>/
     python editors/install.py vscode --uninstall
     add --dry-run to print what would be done
@@ -29,11 +30,17 @@ def targets():
         'vs': (os.path.join(home, '.vs', 'Extensions', 'x3kc-kc'),
                [('syntaxes/kc.tmLanguage.json', 'Syntaxes/kc.tmLanguage.json'),
                 ('language-configuration.json', 'Syntaxes/language-configuration.json')]),
+        # MSCI in a folder of its own: VS looks for language-configuration.json next to the grammar
+        'vs-msci': (os.path.join(home, '.vs', 'Extensions', 'x3kc-msci'),
+                    [('syntaxes/msci.tmLanguage.json', 'Syntaxes/msci.tmLanguage.json'),
+                     ('msci-language-configuration.json', 'Syntaxes/language-configuration.json')]),
         # VS Code: an unpacked extension folder <publisher>.<name>-<version>
         'vscode': (os.path.join(home, '.vscode', 'extensions', '%s.%s-%s' % (p['publisher'], p['name'], p['version'])),
                    [('package.json', 'package.json'),
                     ('language-configuration.json', 'language-configuration.json'),
-                    ('syntaxes/kc.tmLanguage.json', 'syntaxes/kc.tmLanguage.json')]),
+                    ('msci-language-configuration.json', 'msci-language-configuration.json'),
+                    ('syntaxes/kc.tmLanguage.json', 'syntaxes/kc.tmLanguage.json'),
+                    ('syntaxes/msci.tmLanguage.json', 'syntaxes/msci.tmLanguage.json')]),
     }
 
 
@@ -66,7 +73,7 @@ def uninstall(dest, dry):
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('editor', choices=('vs', 'vscode'))
+    ap.add_argument('editor', choices=('vs', 'vs-msci', 'vscode'))
     ap.add_argument('--uninstall', action='store_true')
     ap.add_argument('--dry-run', action='store_true')
     a = ap.parse_args()

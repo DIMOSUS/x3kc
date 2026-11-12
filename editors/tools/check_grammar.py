@@ -211,8 +211,9 @@ def main():
     ap.add_argument('source', nargs='?', default='D:/GAMES/x3_src/kc/ap/x3story.kc')
     ap.add_argument('--lines', type=int, default=2000, help='0 = the whole file')
     ap.add_argument('--oniguruma', default=None)
+    ap.add_argument('--grammar', default=GRAMMAR, help='default: the KC grammar; msci.tmLanguage.json for MSCI')
     a = ap.parse_args()
-    with open(GRAMMAR, encoding='utf-8') as f:
+    with open(a.grammar, encoding='utf-8') as f:
         g = json.load(f)
     for k in ('scopeName', 'fileTypes', 'patterns', 'repository'):
         assert k in g, 'grammar lacks ' + k
@@ -271,7 +272,7 @@ def main():
                 scoped += 1
                 line_scoped += 1
                 inner = s[-1]
-                if inner != 'variable.other.kc':
+                if inner not in ('variable.other.kc', 'meta.value.msci'):
                     specific += 1
                 top = inner.split('.')[0]
                 by_scope[top] = by_scope.get(top, 0) + 1

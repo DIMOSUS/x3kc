@@ -15,7 +15,42 @@ editors/
   tools/check_grammar.py             checks the grammar without an editor
   kclsp/                             the KC language server (Python stdlib, LSP over stdio)
   vs/                                the Visual Studio extension: language client + grammar (vs/README.md)
+  kc-textmate/syntaxes/msci.tmLanguage.json, msci-language-configuration.json
+                                     MSCI scripts in their text form (.msci)
+  tools/gen_msci_grammar.py          writes the MSCI grammar from docs/msci_commands_ap.json + _fl.json
 ```
+
+## MSCI grammar (.msci)
+
+The text form is what `x3kc msci dis` prints and `x3kc msci new` reads. What it highlights:
+
+| Construct | Scope |
+|---|---|
+| Header lines: `// name (description)`, `// version: N`, `// engine: N`, `// command: N`, `//   $arg: Type "desc"` | `meta.header.*` |
+| `*` comment lines | `comment.line.asterisk` |
+| `@` (interruptible) | `storage.modifier.interruptible` |
+| Labels `name:`, and `gosub name` / `goto label name` | `entity.name.label` |
+| Flow words (`if`, `else if`, `skip if`, `do if`, `while`, `end`, `break`, `continue`, `return`, `endsub`, `START`) | `keyword.control` |
+| Command words: every literal fragment of the command templates (2 900 fragments, matched as one word trie) | `keyword.other.command` |
+| Script names after `call script`, `script=` ... | `entity.name.function.script` |
+| `$variables` | `variable.other` |
+| `[constants]`, `null` | `constant.language` |
+| Numbers | `constant.numeric` |
+| `'strings'` | `string.quoted.single` |
+| `{page,id}`, and `pageid=N textid=M` | `constant.other.text-reference` |
+| Operators | `keyword.operator.*` |
+
+Check on 100 stock AP scripts (7 841 lines, `msci dis` output):
+- `check_grammar.py --grammar .../msci.tmLanguage.json`: 99.96 % of the non-blank characters scoped, 93.5 % with a
+  specific scope, no `invalid.*`;
+- all 26 regexes compile in Python's `re` and in VS's `Oniguruma.dll`;
+- the Python interpreter took 3.3 s.
+
+Installing:
+- per-user grammar for Visual Studio: `python editors/install.py vs-msci` (its own folder `x3kc-msci`, because of
+  `language-configuration.json`);
+- VS Code: `python editors/install.py vscode`;
+- the VSIX (0.2.0) carries both grammars and the content type `msci`.
 
 ## Language server (editors/kclsp)
 
