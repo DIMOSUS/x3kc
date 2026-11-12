@@ -20,14 +20,17 @@ TOKEN = re.compile(r'''
 
 
 class ParseError(Exception):
-    pass
+    """tok: the token the message is about (when known); line / col: 1-based line, 0-based column of the error."""
+    tok = None
+    line = None
+    col = None
 
 
 class Tok:
-    __slots__ = ('kind', 'text', 'line')
+    __slots__ = ('kind', 'text', 'line', 'col')
 
-    def __init__(self, kind, text, line):
-        self.kind, self.text, self.line = kind, text, line
+    def __init__(self, kind, text, line, col=0):
+        self.kind, self.text, self.line, self.col = kind, text, line, col     # col: 0-based, in characters
 
     def __repr__(self):
         return '%s:%r@%d' % (self.kind, self.text, self.line)
@@ -35,19 +38,24 @@ class Tok:
 
 def lex(src, loc=None):
     toks = []
-    pos, line = 0, 1
+    pos, line, ls = 0, 1, 0         # ls: offset of the current line's start
     n = len(src)
     while pos < n:
         m = TOKEN.match(src, pos)
         if not m:
-            raise ParseError('%s: bad character %r' % (loc(line) if loc else 'line %d' % line, src[pos]))
+            e = ParseError('%s: bad character %r' % (loc(line) if loc else 'line %d' % line, src[pos]))
+            e.line, e.col = line, pos - ls
+            raise e
         k = m.lastgroup
         t = m.group()
         if k != 'ws':
-            toks.append(Tok(k, t, line))
-        line += t.count('\n')
+            toks.append(Tok(k, t, line, pos - ls))
+        c = t.count('\n')
+        if c:
+            line += c
+            ls = pos + t.rfind('\n') + 1
         pos = m.end()
-    toks.append(Tok('eof', '', line))
+    toks.append(Tok('eof', '', line, pos - ls))
     return toks
 
 
@@ -175,7 +183,9 @@ class Parser:
 
     def err(self, msg, t=None):
         t = t or self.peek()
-        return ParseError('%s: %s' % (self.loc(t.line), msg))
+        e = ParseError('%s: %s' % (self.loc(t.line), msg))
+        e.tok, e.line, e.col = t, t.line, t.col
+        return e
 
     # ---- pass 1 ------------------------------------------------------------------------------
     def unit(self, resolve=True):
