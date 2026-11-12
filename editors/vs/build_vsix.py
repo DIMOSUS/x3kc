@@ -46,12 +46,16 @@ FX = ['mscorlib.dll', 'System.dll', 'System.Core.dll', 'System.ComponentModel.Co
       'Facades/System.Threading.Tasks.dll']
 FX_DIR = 'C:/Program Files (x86)/Reference Assemblies/Microsoft/Framework/.NETFramework/v4.7.2'
 
+TITLE = 'KC language (x3kc)'
+DESCRIPTION = ('KC script sources of X3 (x3kc): highlighting, diagnostics, outline and go to definition through '
+               'the x3kc language server.')
+
 MANIFEST = '''<?xml version="1.0" encoding="utf-8"?>
 <PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011">
   <Metadata>
     <Identity Id="{id}" Version="{ver}" Language="en-US" Publisher="x3kc" />
-    <DisplayName>KC language (x3kc)</DisplayName>
-    <Description xml:space="preserve">KC script sources of X3 (x3kc): highlighting, diagnostics, outline and go to definition through the x3kc language server.</Description>
+    <DisplayName>{title}</DisplayName>
+    <Description xml:space="preserve">{desc}</Description>
   </Metadata>
   <Installation AllUsers="false">
     <InstallationTarget Id="Microsoft.VisualStudio.Community" Version="[17.0,19.0)">
@@ -134,7 +138,7 @@ def files(dll, python):
     settings = json.dumps({'python': python.replace(BS, '/'), 'x3kc_root': ROOT.replace(BS, '/'), 'log': None},
                           indent=2).encode('utf-8')
     out = {
-        'extension.vsixmanifest': MANIFEST.format(id=ID, ver=VERSION, dll=DLL).encode('utf-8'),
+        'extension.vsixmanifest': MANIFEST.format(id=ID, ver=VERSION, dll=DLL, title=TITLE, desc=DESCRIPTION).encode('utf-8'),
         DLL: dllb,
         'kc.pkgdef': PKGDEF.encode('utf-8'),
         'kclsp.json': settings,
@@ -150,27 +154,53 @@ def files(dll, python):
         'installSizes': {'targetDrive': size},
         'dependencies': {'Microsoft.VisualStudio.Component.CoreEditor': '[17.0,19.0)'},
     }, separators=(',', ':')).encode('utf-8')
-    out['catalog.json'] = json.dumps({
-        'manifestVersion': '1.1',
-        'info': {'id': '%s,version=%s' % (ID, VERSION), 'manifestType': 'Extension'},
-        'packages': [
-            {'id': 'Component.' + ID, 'version': VERSION, 'type': 'Component', 'extension': True,
-             'dependencies': {ID: VERSION, 'Microsoft.VisualStudio.Component.CoreEditor': '[17.0,19.0)'}},
-            {'id': ID, 'version': VERSION, 'type': 'Vsix',
-             'payloads': [{'fileName': os.path.basename(VSIX), 'size': 0}],
-             'vsixId': ID, 'extensionDir': ext_dir, 'installSizes': {'targetDrive': size}},
-        ],
-    }, separators=(',', ':')).encode('utf-8')
+    out['catalog.json'] = catalog(ext_dir, size, 0)
     out['[Content_Types].xml'] = CONTENT_TYPES.encode('utf-8')
     return out
 
 
+def catalog(ext_dir, size, vsix_size):
+    """The VSSDK's catalog.json shape: a Component package (extension: true) with en-US localizedResources and a
+    dependency on the Vsix package, and the Vsix package with its payload (this .vsix and its size)."""
+    return json.dumps({
+        'manifestVersion': '1.1',
+        'info': {'id': '%s,version=%s' % (ID, VERSION), 'manifestType': 'Extension'},
+        'packages': [
+            {'id': 'Component.' + ID, 'version': VERSION, 'type': 'Component', 'extension': True,
+             'dependencies': {ID: VERSION, 'Microsoft.VisualStudio.Component.CoreEditor': '[17.0,19.0)'},
+             'localizedResources': [{'language': 'en-US', 'title': TITLE, 'description': DESCRIPTION}]},
+            {'id': ID, 'version': VERSION, 'type': 'Vsix',
+             'payloads': [{'fileName': os.path.basename(VSIX), 'size': vsix_size}],
+             'vsixId': ID, 'extensionDir': ext_dir, 'installSizes': {'targetDrive': size}},
+        ],
+    }, separators=(',', ':')).encode('utf-8')
+
+
+def zip_bytes(out):
+    import io
+    b = io.BytesIO()
+    with zipfile.ZipFile(b, 'w', zipfile.ZIP_DEFLATED) as z:
+        for n in ['[Content_Types].xml'] + sorted(k for k in out if k != '[Content_Types].xml'):
+            z.writestr(zipfile.ZipInfo(n, (2026, 1, 1, 0, 0, 0)), out[n], zipfile.ZIP_DEFLATED)
+    return b.getvalue()
+
+
 def write_vsix(out):
+    """The catalog names the .vsix with its size: repeat until the size written equals the size of the file."""
+    mj = json.loads(out['manifest.json'])
+    size = 0
+    for _ in range(10):
+        out['catalog.json'] = catalog(mj['extensionDir'], mj['installSizes']['targetDrive'], size)
+        data = zip_bytes(out)
+        if len(data) == size:
+            break
+        size = len(data)
+    else:
+        sys.exit('the payload size in catalog.json does not settle')
     os.makedirs(DIST, exist_ok=True)
     tmp = VSIX + '.tmp'
-    with zipfile.ZipFile(tmp, 'w', zipfile.ZIP_DEFLATED) as z:
-        for n in ['[Content_Types].xml'] + sorted(k for k in out if k != '[Content_Types].xml'):
-            z.writestr(n, out[n])
+    with open(tmp, 'wb') as f:
+        f.write(data)
     os.replace(tmp, VSIX)
 
 
@@ -210,8 +240,66 @@ def check(vs, dll):
         print('asset %s: %s' % (a.split('"')[0], 'ok' if a in man else 'MISSING'))
         ok = ok and a in man
     print('catalog packages:', [p['id'] for p in cat['packages']])
+    problems = catalog_problems(cat, mj, man, names, os.path.getsize(VSIX))
+    for p in problems:
+        print('catalog/manifest PROBLEM:', p)
+    ok = ok and not problems
     print('CHECK', 'OK' if ok else 'FAILED')
     return ok
+
+
+# manifest.json of 52 of the 747 VSIX payloads in C:/ProgramData/Microsoft/VisualStudio/Packages has exactly these
+# keys (the others add _buildInfo, productArch, sdk, language ...); none of them lists manifest.json,
+# [Content_Types].xml or catalog.json in "files"
+MANIFEST_KEYS = {'dependencies', 'extensionDir', 'files', 'id', 'installSizes', 'type', 'version', 'vsixId'}
+UNLISTED = {'manifest.json', '[Content_Types].xml', 'catalog.json'}
+
+
+def catalog_problems(cat, mj, man, names, vsix_size):
+    """What VSIXInstaller's catalog validation (Microsoft.VisualStudio.ExtensionEngine) asks for, as far as its
+    messages tell: package types vsix / component only, a valid vsixId, localizedResources for en-US on a
+    component, every file of the VSIX in manifest.json; plus consistency of ids, versions and the payload size."""
+    out = []
+    if cat.get('manifestVersion') != '1.1':
+        out.append('manifestVersion is not 1.1')
+    if cat.get('info', {}).get('id') != '%s,version=%s' % (ID, VERSION):
+        out.append('info.id is not "<id>,version=<version>"')
+    vs_pk = [p for p in cat['packages'] if p.get('type') == 'Vsix']
+    comps = [p for p in cat['packages'] if p.get('type') == 'Component']
+    if len(vs_pk) + len(comps) != len(cat['packages']):
+        out.append('a package type other than Vsix / Component')
+    if len(vs_pk) != 1:
+        out.append('%d Vsix packages' % len(vs_pk))
+    for p in vs_pk:
+        for k in ('id', 'version', 'type', 'payloads', 'vsixId', 'extensionDir', 'installSizes'):
+            if not p.get(k):
+                out.append('Vsix package lacks %s' % k)
+        if p.get('vsixId') != ID or 'Identity Id="%s"' % ID not in man:
+            out.append('vsixId differs from the vsixmanifest Identity Id')
+        pl = p.get('payloads') or [{}]
+        if pl[0].get('fileName') != os.path.basename(VSIX) or pl[0].get('size') != vsix_size:
+            out.append('payload %r does not name this file with its size %d' % (pl[0], vsix_size))
+    for c in comps:
+        lr = [r for r in c.get('localizedResources', []) if r.get('language') == 'en-US']
+        if not lr or not lr[0].get('title') or not lr[0].get('description'):
+            out.append('component %s lacks localizedResources for en-US with title and description' % c.get('id'))
+        if c.get('extension') is not True:
+            out.append('component %s lacks "extension": true' % c.get('id'))
+        if (c.get('dependencies') or {}).get(ID) != VERSION:
+            out.append('component %s does not depend on the Vsix package' % c.get('id'))
+    for p in cat['packages']:
+        if p.get('version') != VERSION:
+            out.append('package %s version %s' % (p.get('id'), p.get('version')))
+    if set(mj) != MANIFEST_KEYS:
+        out.append('manifest.json keys %s' % sorted(mj))
+    if mj.get('id') != ID or mj.get('vsixId') != ID or mj.get('version') != VERSION or mj.get('type') != 'Vsix':
+        out.append('manifest.json id / vsixId / version / type')
+    listed = {f['fileName'].lstrip('/') for f in mj['files']}
+    if set(names) - UNLISTED != listed:
+        out.append('manifest.json files %s vs the VSIX %s' % (sorted(listed), sorted(set(names) - UNLISTED)))
+    if 'Version="%s"' % VERSION not in man:
+        out.append('vsixmanifest version')
+    return out
 
 
 def main():
