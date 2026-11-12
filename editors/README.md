@@ -47,8 +47,30 @@ set KCLSP_LOG=<file>                        logs every message
   - global functions (`F(`, `::F(`);
   - fields of the class and its parents, globals, locals, parameters;
   - natives: their entry in `docs/natives/spec_*.jsonl` when documented, else their line in `x3kc/natives.txt`.
-- **Text sync** is incremental. After a change, analysis runs after 0.3 s of quiet. A request (definition, symbols)
-  analyses at once if needed.
+- **Hover on a native** shows its entry of `docs/natives/spec_*.jsonl` (arguments, result, whether it waits, what it
+  does).
+- **Text references** (`editors/kclsp/texts.py`, `textrefs.py`): hover and go to definition on a call that reads a
+  text page entry with literal arguments.
+  - Which calls: `SE_ReadText` / `SE_ExistsText` with 1, 2 or 3 arguments (id / page, id / page, language, id), and
+    every KC function that hands its own parameters (or a fixed page) on to one of them, found on the tokens,
+    wrappers of wrappers included. AP x3story has 17 such wrappers, e.g. `GetTextLookup(id)` with page 35, and 80
+    calls of them with literal arguments.
+  - Hover shows the text in every language found, Russian and English first, each with its file and line. It notes
+    the raw page id when the file uses a prefixed one, and the entries a later file replaces.
+  - Go to definition jumps to the `<t>` entries.
+  - Pages are read from `<repo>/game/<edition>/[addon*/]t/*.xml` (the content import) and `<repo>/kc/<edition>/t/`
+    (the project's own pages). `<repo>` is the first folder above the source that holds `kc/` or `game/`;
+    `<edition>` is the folder after `kc/`. `KCLSP_TEXT_DIRS` adds folders (separated by `;`).
+  - Page ids are normalised as the exe's loader does (`normalizeXmlPageNumber` in x3_src `src/script/vm.cpp`):
+    - AP: 380001..399999, 350001..379999 and 300001..349999 drop the prefix;
+    - FL: also 390001..399999.
+
+    A later file replaces earlier entries of the same page and id. The order assumed: stock folders, then the
+    project's own; file names sorted; `NNNN.xml` after `NNNN-LXXX.xml`.
+  - The index reads the AP pages (23 files, 30 MB) in 0.9 s on first use and re-reads only changed files.
+  - Find references from a `<t>` entry back to its uses is not done: the client serves `.kc` files only.
+- **Text sync** is incremental. After a change, analysis runs after 0.3 s of quiet. A request (definition, symbols,
+  hover) analyses at once if needed.
 
 Measured on AP x3story split into 466 parts:
 

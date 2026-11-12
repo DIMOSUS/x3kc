@@ -17,8 +17,62 @@ import traceback
 import urllib.parse
 
 from . import project as P
+from . import texts, textrefs
 
 DEBOUNCE = 0.3
+
+
+def md_escape(s):
+    return s.replace('\\', '\\\\').replace('*', '\\*').replace('_', '\\_').replace('`', '\\`').replace('<', '&lt;')
+
+
+def text_hover(src_path, page, tid, lang, found):
+    head = '**Text {%d,%d}**%s' % (page, tid, '' if lang is None else ' (language %d)' % lang)
+    if not found:
+        dirs, ed = texts.find_text_dirs(src_path)
+        return head + '\n\nnot found in the text pages (%s; edition %s)' % (
+            ', '.join(dirs) or 'no t/ folder found: set KCLSP_TEXT_DIRS', ed)
+    lines = [head, '']
+    for lg, e, replaced in found:
+        t = e.text if len(e.text) <= 400 else e.text[:400] + ' ...'
+        where = '%s:%d' % (os.path.basename(e.path), e.line)
+        if e.raw_page != e.page:
+            where += ', page %d' % e.raw_page
+        if replaced:
+            where += '; replaces ' + ', '.join('%s:%d' % (os.path.basename(r.path), r.line) for r in replaced)
+        lines.append('- **%s**: %s  \n  `%s`' % (texts.lang_name(lg), md_escape(t) or '*(empty)*', where))
+    return '\n'.join(lines)
+
+
+_SPECS = None
+
+
+def native_hover(name):
+    """A native's entry of docs/natives/spec_*.jsonl (args, returns, waits, semantics), else its name only."""
+    global _SPECS
+    if _SPECS is None:
+        _SPECS = {}
+        d = os.path.join(P.ROOT, 'docs', 'natives')
+        if os.path.isdir(d):
+            for fn in sorted(os.listdir(d)):
+                if fn.startswith('spec_') and fn.endswith('.jsonl'):
+                    with open(os.path.join(d, fn), encoding='utf-8') as f:
+                        for line in f:
+                            try:
+                                s = json.loads(line)
+                            except ValueError:
+                                continue
+                            if s.get('name'):
+                                _SPECS[s['name']] = s
+    s = _SPECS.get(name)
+    if not s:
+        return '**%s** (native; not described in docs/natives)' % name
+    out = ['**%s**(%s) -> %s%s' % (name, s.get('args', ''), s.get('returns', '?'),
+                                    ', may wait' if s.get('waits') else '')]
+    if s.get('semantics'):
+        sem = s['semantics']
+        out += ['', md_escape(sem if len(sem) < 1500 else sem[:1500] + ' ...')]
+    return '\n'.join(out)
 
 
 def uri_to_path(uri):
@@ -287,10 +341,43 @@ class Server:
         return pr, part
 
     # ---- requests ----------------------------------------------------------------------------------------------
+    def text_at(self, pr, part, pos):
+        """(page, id, lang, [(lang, effective, replaced)]) for a text-reading call under pos, else None."""
+        i = part.tok_at(pos['line'] + 1, pos['character'])
+        if i is None:
+            return None
+        ref = textrefs.text_ref(pr, part, i, pr.wrappers.get(pr))
+        if ref is None:
+            return None
+        page, tid, lang, _ = ref
+        return page, tid, lang, texts.index_for(part.path).lookup(page, tid, lang)
+
+    def on_textDocument_hover(self, p):
+        with self.lock:
+            pr, part = self.fresh(p['textDocument']['uri'])
+            pos = p['position']
+            tr = self.text_at(pr, part, pos)
+            if tr is not None:
+                return {'contents': {'kind': 'markdown', 'value': text_hover(part.path, *tr)}}
+            i = part.tok_at(pos['line'] + 1, pos['character'])
+            if i is not None:
+                tgt = part.refs.get(i)
+                name = part.toks[i].text
+                if (tgt and tgt[0] == 'native') or (name in pr.known and part.toks[i + 1].text == '('):
+                    doc = native_hover(name)
+                    if doc:
+                        return {'contents': {'kind': 'markdown', 'value': doc}}
+            return None
+
     def on_textDocument_definition(self, p):
         with self.lock:
             pr, part = self.fresh(p['textDocument']['uri'])
             pos = p['position']
+            tr = self.text_at(pr, part, pos)
+            if tr is not None and tr[3]:
+                return [{'uri': path_to_uri(e.path),
+                         'range': {'start': {'line': e.line - 1, 'character': e.col},
+                                   'end': {'line': e.line - 1, 'character': e.col + 2}}} for _, e, _ in tr[3]]
             locs = pr.definition(part, pos['line'] + 1, pos['character'])
             return [{'uri': self.uris.get(P.norm(path)) or path_to_uri(path),
                      'range': {'start': {'line': ln - 1, 'character': c},

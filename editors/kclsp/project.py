@@ -263,6 +263,8 @@ class Project:
         self.known = kcc.known_natives() or set()
         self.natives_doc = native_docs()
         self._built = False
+        from . import textrefs
+        self.wrappers = textrefs.Wrappers()
 
     def name(self):
         return os.path.basename(self.index or self.parts[0].path)

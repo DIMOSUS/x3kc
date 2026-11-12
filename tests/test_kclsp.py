@@ -30,7 +30,9 @@ def uri(path):
 
 class Client:
     def __init__(self):
-        self.p = subprocess.Popen([sys.executable, '-X', 'utf8', '-B', '-m', 'editors.kclsp'], cwd=ROOT,
+        env = dict(os.environ)
+        env.pop('KCLSP_TEXT_DIRS', None)
+        self.p = subprocess.Popen([sys.executable, '-X', 'utf8', '-B', '-m', 'editors.kclsp'], cwd=ROOT, env=env,
                                   stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
         self.q = queue.Queue()
         self.n = 0
@@ -230,6 +232,64 @@ class LanguageServer(unittest.TestCase):
         ds = self.c.wait_diags(uri(p), lambda ds: len(ds) > 0)
         self.assertIn('field or function expected', ds[0]['message'])
         self.assertEqual(ds[0]['range']['start'], dict(zip(('line', 'character'), pos_of(bad, 'junk'))))
+
+    def test_text_references(self):
+        """Hover / definition on SE_ReadText and on a KC wrapper with literal arguments, pages found through the
+        repository layout (game/<ed>/addon/t, kc/<ed>/t), the AP page prefix 35xxxx normalised."""
+        repo = os.path.join(self.dir, 'repo')
+        t = os.path.join(repo, 'game', 'ap', 'addon', 't')
+        own = os.path.join(repo, 'kc', 'ap', 't')
+        os.makedirs(t)
+        os.makedirs(own)
+        page = '<?xml version="1.0" encoding="UTF-8"?>\n<language id="%d">\n<page id="350035" title="x">\n' \
+               '<t id="951">%s</t>\n<t id="952">%s</t>\n</page>\n</language>\n'
+        for lang, a, b in ((44, 'Autosaving Game ...', 'Saving &amp; more'), (7, 'Автосохранение игры...', 'Сохр'),
+                           (49, 'Spielstand wird automatisch gespeichert...', 'Speichern')):
+            with open(os.path.join(t, '0001-L%03d.xml' % lang), 'w', encoding='utf-8', newline='\n') as f:
+                f.write(page % (lang, a, b))
+        with open(os.path.join(own, '9500.xml'), 'w', encoding='utf-8', newline='\n') as f:
+            f.write('<?xml version="1.0" encoding="UTF-8"?>\n<language id="44">\n<page id="9500">\n'
+                    '<t id="1">FPS counter</t>\n</page>\n</language>\n')
+        src = ('#object 801 100\nvar gX = 0;\n\nclass Menu = 10 {\n'
+               '    function Label(id) {\n        return SE_ReadText(35, id);\n    }\n'
+               '    function Show() {\n        var a = SE_ReadText(35, 951);\n        var b = Label(952);\n'
+               '        var c = SE_ReadText(9500, 1);\n        return a + b + c + SE_ReadText(35, 999);\n    }\n}\n')
+        d = os.path.join(repo, 'kc', 'ap', 'menu')
+        kcsplit.write_project(d, 'menu', src)
+        menu = os.path.join(d, 'Menu.kc')
+        u = uri(menu)
+        text = self.c.open(menu)
+        self.c.wait_diags(u, lambda ds: ds == [])
+
+        def hover(needle, k):
+            line, col = pos_of(text, needle, k)
+            r = self.c.request('textDocument/hover', {'textDocument': {'uri': u},
+                                                       'position': {'line': line, 'character': col}})
+            return r and r['contents']['value']
+
+        h = hover('SE_ReadText(35, 951)', 17)          # on the id argument
+        self.assertIn('Text {35,951}', h)
+        self.assertLess(h.index('Russian'), h.index('English'))
+        self.assertLess(h.index('English'), h.index('German'))
+        self.assertIn('Автосохранение игры...', h)
+        self.assertIn('page 350035', h)
+        h = hover('Label(952)', 0)                      # a KC wrapper: page 35 fixed inside it
+        self.assertIn('Text {35,952}', h)
+        self.assertIn('Saving & more', h)
+        h = hover('SE_ReadText(9500, 1)', 0)            # the project's own page
+        self.assertIn('FPS counter', h)
+        self.assertIn('9500.xml', h)
+        h = hover('SE_ReadText(35, 999)', 0)
+        self.assertIn('not found', h)
+        h = hover('SE_ReadText(35, id)', 0)             # not literal: the native's description instead
+        self.assertIn('SE_ReadText', h)
+        self.assertNotIn('Text {', h)
+        line, col = pos_of(text, 'SE_ReadText(35, 951)')
+        r = self.c.request('textDocument/definition', {'textDocument': {'uri': u},
+                                                        'position': {'line': line, 'character': col}})
+        self.assertEqual(len(r), 3)
+        self.assertTrue(r[0]['uri'].endswith('/0001-L007.xml'), r)
+        self.assertEqual(r[0]['range']['start'], {'line': 3, 'character': 0})
 
     @unittest.skipUnless(os.path.isfile(STORY), 'x3story.kc not found')
     def test_real_class(self):
