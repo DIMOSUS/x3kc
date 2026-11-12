@@ -13,6 +13,7 @@ import sys
 from . import kcast as A
 from . import kcgen
 from . import kcobj
+from . import kccache
 from . import kcparse
 from . import kcsplit
 from .kcsym import NO_PARENT
@@ -82,9 +83,10 @@ def natives_of(node):
             stack.extend(getattr(n, k) for k in n.__slots__ if k != 'asm')
 
 
-def compile_source(path):
+def compile_source(path, cache=None):
     """A source project -> (object, pool, functions). `path`: a single .kc file, or a split project (its .kcs
-    index or its directory, see kcsplit), whose parts are joined in index order; messages name the part file."""
+    index or its directory, see kcsplit), whose parts are joined in index order; messages name the part file.
+    cache: a kccache.Cache - function bodies parsed by an earlier build are taken from it (same result)."""
     try:
         source = kcsplit.load(path)
     except kcsplit.SplitError as x:
@@ -106,12 +108,31 @@ def compile_source(path):
         o.ptch = read_ptch(os.path.join(base, dirs['patch']))
     S = u.syms
 
-    # pass 2: bodies
+    # pass 2: bodies (a body whose tokens and global signature are unchanged comes from the cache)
     fns = []
+    bodies, used, new = {}, {}, 0
+    if cache is not None:
+        import hashlib
+        import pickle
+        cname = 'bodies-%s' % hashlib.sha1(os.path.abspath(path).lower().encode('utf-8')).hexdigest()[:12]
+        bodies = cache.load(cname) or {}
+        sig = hashlib.sha1(kccache.signature(S)).digest()
     for f in u.funcs:
-        bp = kcparse.BodyParser(P.toks, S, f, source.name, loc=loc)
-        f.ast = bp.function()
+        key = kccache.body_key(sig, P.toks, f) if cache is not None else None
+        blob = bodies.get(key) if key else None
+        if blob is not None:
+            f.ast = pickle.loads(blob)
+        else:
+            bp = kcparse.BodyParser(P.toks, S, f, source.name, loc=loc)
+            f.ast = bp.function()
+            if key:
+                blob = pickle.dumps(f.ast, protocol=pickle.HIGHEST_PROTOCOL)    # before codegen touches it
+                new += 1
+        if key:
+            used[key] = blob
         fns.append(f)
+    if cache is not None and (new or len(used) != len(bodies)):
+        cache.save(cname, used)         # only this build's bodies: the cache does not grow with edits
 
     # a native the exe does not have resolves to group 0 at load and silently returns 0: warn
     known = known_natives()
@@ -203,9 +224,14 @@ def main():
                                    '(new build id, stamps of added fields, PTCH remap)')
     ap.add_argument('--build', type=lambda x: int(x, 0), help='build id with --base (default: now)')
     ap.add_argument('--force', action='store_true', help='write even when old saves would break (--base) or kcverify finds errors')
+    ap.add_argument('--cache', metavar='DIR',
+                    help='keep what does not change between builds in DIR (parsed bodies, what --base derives from '
+                         'the base object): a rebuild after a small edit is faster; the object is the same')
+    ap.add_argument('--no-cache', action='store_true', help='ignore --cache (neither read nor write it)')
     a = ap.parse_args()
+    cache = kccache.Cache(a.cache) if a.cache and not a.no_cache else None
     try:
-        o, pool, fns = compile_source(a.src)
+        o, pool, fns = compile_source(a.src, cache)
     except (CompileError, kcparse.ParseError) as x:
         print('error:', x)
         return 1
@@ -238,7 +264,7 @@ def main():
                 print(line)
                 broken |= 'will not load' in line
             segs = getattr(o, 'code_segs', None) or kcsave.code_map(base, o)
-            ok, gone, bad = kcsave.check_return_sites(base, o, segs)
+            ok, gone, bad = kcsave.check_return_sites(base, o, segs, cache=cache)
             print('base return sites (calls a task can wait in): %d mapped, %d gone, %d WRONG; new build %d'
                   % (ok, gone, bad, build))
             if (broken or bad) and not a.force:

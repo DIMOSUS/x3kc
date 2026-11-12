@@ -333,14 +333,12 @@ def waiting_sites(o, sync=None, known=None):
     return sites
 
 
-def check_return_sites(base, new, segs, sync=None):
+def check_return_sites(base, new, segs, sync=None, cache=None):
     """Every return site of base where a task can be suspended (waiting_sites) must map to the same kind of site in
     new (or to nothing), inside a method with the same frame: the saved stack holds the old number of locals, so an
     added or removed local shifts every local of a suspended call. Calls that always come back at once (synchronous
     natives, methods that never wait) are never in a savegame and are not checked."""
     bad = ok = gone = 0
-    live = waiting_sites(base, sync)
-    bnames = {e: k for k, (e, _) in method_spans(base).items()}
     nnames = {e: k for k, (e, _) in method_spans(new).items()}
 
     def key(o, names, i):
@@ -352,17 +350,28 @@ def check_return_sites(base, new, segs, sync=None):
     nkeys = {}
     for i in kcisa.walk(new.code, 1):
         nkeys[i.end] = (i.op, key(new, nnames, i))
-    bfr, nfr = frames(base), frames(new)
-    for i in kcisa.walk(base.code, 1):
-        if i.op not in CALLS or i.end not in live:
-            continue
-        d = lookup(segs, i.end)
+    nfr = frames(new)
+    sites = None
+    if cache is not None and sync is None:
+        import hashlib
+        cname = 'base-sites-%s' % hashlib.sha256(base.serialize()).hexdigest()[:16]
+        sites = cache.load(cname)
+    if sites is None:
+        # the base's side depends on the base alone: (end, op, callee key, frame) of every site a task can wait in
+        live = waiting_sites(base, sync)
+        bnames = {e: k for k, (e, _) in method_spans(base).items()}
+        bfr = frames(base)
+        sites = [(i.end, i.op, key(base, bnames, i), frame_at(bfr, i.end - 1))
+                 for i in kcisa.walk(base.code, 1) if i.op in CALLS and i.end in live]
+        if cache is not None and sync is None:
+            cache.save(cname, sites)
+    for end, op, bkey, bframe in sites:
+        d = lookup(segs, end)
         if d is None:
             gone += 1
             continue
-        k = nkeys.get(i.end + d)
-        if k is None or k[0] != i.op or k[1] != key(base, bnames, i) \
-                or frame_at(bfr, i.end - 1) != frame_at(nfr, i.end + d - 1):
+        k = nkeys.get(end + d)
+        if k is None or k[0] != op or k[1] != bkey or bframe != frame_at(nfr, end + d - 1):
             bad += 1
         else:
             ok += 1
