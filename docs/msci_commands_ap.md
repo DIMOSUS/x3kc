@@ -44,1750 +44,4579 @@ Generated from the command database the game builds in `ScriptDatabase.InitDatab
 ## General Commands / Flow Control
 
 - **4** `end`
+  - **Does** (low): Flow control: end of a block (if/while/skip); no case in __runScript, structure is resolved by the line-skipping logic elsewhere.
 - **5** `else`
+  - **Does** (low): Flow control: else branch marker; no case in __runScript.
 - **6** `continue`
+  - **Does** (low): Flow control: continue marker for loops; no case in __runScript.
+    Edge: Never used in stock scripts.
 - **7** `break`
+  - **Does** (low): Flow control: break marker for loops; no case in __runScript.
+    Edge: Never used in stock scripts.
 - **100** `goto label <Label>`
   params: %0 Label; used 305× (!fight.attack.object.bomber)
+  - **Does** (high): Jumps to the label: sets pc to the target pc stored in cell 1.
+    Params: Label is a resolved pc offset within the current script.
+    Effects: changes pc only
+    Edge: Same body as hidden goto 112; gosub (1167) falls into it after pushing the return pc.
 - **1167** `gosub <Label>`
   params: %0 Label; used 380× (!fight.attack.object.bomber); calls: `SE_ArraySize`, `SE_KillTask`, `SE_GetTaskID`, `SE_ArrayAppend`
+  - **Does** (medium): Pushes the return pc on the per-frame gosub stack and jumps to the label.
+    Effects: gosub stack grows by one
+    Edge: Stack above 50 deep is checked (warning path); above 500 the task is killed (SE_KillTask) instead of pushing.
 - **101** `<Label>:`
   params: %0 Label; used 342× (!fight.attack.object.bomber)
+  - **Does** (high): Label definition; no-op at run time.
 - **1168** `endsub`
   used 265× (!fight.attack.object.bomber); calls: `SE_ArraySize`, `SE_ArrayResize`
+  - **Does** (high): Returns from a gosub: pops the return pc from the frame's gosub stack and continues there.
+    Effects: gosub stack shrinks by one
+    Edge: With an empty stack (size 0) pc is not changed, so execution just continues with the next line.
 
 ## General Commands / Script Calls
 
 - **102** `$ret =|if/START <RefObj> -> call script <Script Name> : <arguments…>`
   params: %0 Script Name, %1 RetVar/IF/START, %2 RefObj, %3 Parameter; `@` interruptible, condition; used 1135× (!config.rrf); calls: `C700.FindScript`, `SE_ArraySize`, `SE_ObjectExists`, `SE_ArrayAlloc`, `C700.StartScript`, `SE_ArrayResize`
+  - **Does** (medium): Calls another MSCI script by name as a new stack frame of the same task and continues with its return value, or starts it as a separate task when signalled by the secondary form.
+    Returns: Value passed to the callee's return (any type); null when callee missing.
+    Params: Args are (type,value) pairs; at most the callee's declared parameter count is copied. RefObj becomes 'this' of the callee; must be a ship/station (65542/65543) that exists, or null.
+    Effects: Pushes a frame (grows frame array by 4 frames when full); caller priority is inherited; 'start' form (resultVar -2147483646) calls ScriptDatabase.StartScript instead.
+    Edge: Unknown script or script without code (callee[6]==0): command does nothing, result null. Same case also executes queued interrupt scripts (synthetic call, scriptInstance[4]).
 - **159** `<RefObj> ->interrupt with script <Script Name> and prio <Var/Number>: arg1=<Value> arg2=<Value> arg3=<Value> arg4=<Value>`
   params: %0 RefObj, %1 Script Name, %2 Var/Number, %3 Value, %4 Value, %5 Value, %6 Value; used 9× (!lib.ext.patrolscan); calls: `C700.FindScript`, `.InterruptThisScript`
+  - **Does** (medium): Interrupts the object's running script task with a new script at the given priority and 4 arguments.
+    Params: RefObj is the target object; prio = script priority; arg1..arg4 are passed as 4 (type,value) pairs.
+    Effects: Calls InterruptThisScript(prio, script, args, 0) on the object; the interrupt is queued if its prio beats the running task.
+    Edge: Script not found: nothing happens. Null object: VM answers 0, nothing happens.
 - **1016** `<RefObj> ->interrupt task <Var/Number> with script <Script Name> and prio <Var/Number>: arg1=<Value> arg2=<Value> arg3=<Value> arg4=<Value>`
   params: %0 RefObj, %1 Script Name, %2 Var/Number, %3 Var/Number, %4 Value, %5 Value, %6 Value, %7 Value; used 3× (!job.fight.defencebase); calls: `C700.FindScript`, `.InterruptThisScriptID`
+  - **Does** (medium): Interrupts a specific script task id of the object with a new script at a given priority, up to 4 arguments.
+    Params: Task id and prio are numbers; args are 4 (type,value) pairs.
+    Effects: Calls InterruptThisScriptID(task, prio, script, args, 0) on the object.
+    Edge: Null object or unknown script: nothing happens.
 - **1017** `<RefObj> ->start task <Var/Number> with script <Script Name> and prio <Var/Number>: arg1=<Value> arg2=<Value> arg3=<Value> arg4=<Value> arg5=<Value>`
   params: %0 RefObj, %1 Script Name, %2 Var/Number, %3 Var/Number, %4 Value, %5 Value, %6 Value, %7 Value, %8 Value; used 32× (!fight.fleetcmdr.defend); calls: `C700.FindScript`, `.StartThisScriptID`
+  - **Does** (medium): Starts a new script task with the given task id on the object, at the given priority with up to 5 arguments.
+    Params: Task id, prio numbers; arg1..arg5 as (type,value) pairs (10-slot array).
+    Effects: Calls StartThisScriptID(task, script, args, prio) on the object.
+    Edge: Null object or unknown script: nothing happens, no error.
 - **103** `return <Value>`
   params: %0 Value; used 1752× (!config.add.wares.few.one)
+  - **Does** (high): Returns a value from the current script; at call depth 0 the script ends and the value goes to the result out-array.
+    Returns: The returned (type,value) goes to the caller's result variable (any type).
+    Effects: Pops the frame: clears its slots, restores caller pc, retvar, script, variables, this and gosub stack, and caller priority.
+    Edge: At depth 0 the interpreter returns (task ends); if no result out-array exists nothing is stored.
 - **1072** `$ret =|if <RefObj> -> is script <Script Name> on stack of task=<Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Script Name, %3 Var/Number; condition; used 67× (!fight.fleetcmdr.defend); calls: `.GetScriptTask`, `C700.FindScript`
+  - **Does** (medium): Tests whether the script is on the call stack of the given task of the object.
+    Returns: int 1 if any frame of that task runs a script with that name, else null/0.
+    Params: Task id is a number; script by name.
+    Edge: Unknown task or no frames: null (false). Scans frames 0..depth inclusive by script name.
 - **1073** `$ret =|if <RefObj> -> is task <Var/Number> in use`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number; condition; used 17× (!fight.fleetcmdr.defend); calls: `.GetScriptTask`
+  - **Does** (high): Tests whether the object has a script task with the given id.
+    Returns: int 1 if the task exists, 0 otherwise.
+    Edge: Null object: 0.
 - **1425** `$ret =|if <RefObj> -> call named script: script=<Var/String>, <Value>, <Value>, <Value>, <Value>, <Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/String, %3 Value, %4 Value, %5 Value, %6 Value, %7 Value; condition; used 1× (!lib.get.input.menu); calls: `SE_ObjectExists`, `SE_IsClass`, `C700.FindScript`, `C700.StartScript`, `SE_ArrayResize`, `SE_ArraySize`, `SE_ArrayAlloc`, `C700.RunNamedScript`
+  - **Does** (medium): Calls a script given by a name string with up to 5 arguments: as a new interpreter frame if it is a valid MSCI script, else synchronously via RunNamedScript.
+    Returns: The script's return value (any type); null if it returned nothing or the object is invalid.
+    Params: RefObj must exist and be a ScriptObject (class 702); script is a string expression; at most 5 args as (type,value).
+    Effects: Pushes a frame like command 102, or the fallback runs the script and blocks until finished. With secondary form (-2147483646) starts a separate task.
+    Edge: Missing object or unknown script: command does nothing, result null (not the fallback in the unknown case).
 - **1426** `<RefObj> ->start named script: task=<Var/Number> scriptname=<Var/String> prio=<Var/Number>, <Value>, <Value>, <Value>, <Value>, <Value>`
   params: %0 RefObj, %1 Var/Number, %2 Var/String, %3 Var/Number, %4 Value, %5 Value, %6 Value, %7 Value, %8 Value; used 1× (!lib.restart.task); calls: `C700.FindScript`, `.StartThisScriptID`
+  - **Does** (medium): Starts a script task by name string with a task id, priority and up to 5 arguments on the object.
+    Params: task id and prio numbers; script name is a string; args as (type,value) pairs.
+    Effects: StartThisScriptID(task, script, args, prio).
+    Edge: Null object or unknown script name: silently ignored.
 - **1462** `$ret = <RefObj> -> get next available task: starting=<Var/Number>`
   params: %0 RefObj, %1 RetVar, %2 Var/Number; used 16× (!fight.fleetcmdr.defend); calls: `.GetScriptTask`
+  - **Does** (high): Finds a free script task id on the object starting from a given number.
+    Returns: int: first id >= max(start,30) that the object has no task for.
+    Params: Start omitted (null) or below 30 becomes 30; ids below 30 are reserved.
+    Edge: Linear scan upward; null object returns the start immediately (GetScriptTask answers 0).
 - **111** `<RefObj> ->interrupt with script <Script Name> and prio <Var/Number>`
   params: %0 RefObj, %1 Script Name, %2 Var/Number; used 10× (!plugin.acp.fight.attack.tactics); calls: `C700.FindScript`, `.InterruptThisScript`
+  - **Does** (medium): Interrupts the object's current script with another script at the given priority (no arguments).
+    Params: prio number
+    Effects: InterruptThisScript(prio, script, 0, 0) on the object.
+    Edge: Unknown script or null object: nothing happens.
 
 ## General Commands / Arrays
 
 - **128** `$ret = array alloc: size=<Var/Number>`
   params: %0 RetVar, %1 Var/Number; used 569× (!config.rrf); calls: `SE_ArrayAlloc`
+  - **Does** (high): Allocates a new array of the given size.
+    Returns: array (21); elements are null/0 pairs.
+    Params: size in elements; engine array holds 2*size slots (type,value).
+    Effects: allocates an array
+    Edge: Negative size: no result set (null).
 - **129** `$ret =|if <Var/Array>[<Var/Number>]`
   params: %0 RetVar/IF, %1 Var/Array, %2 Var/Number; condition; used 1326× (!config.add.wares.few.one)
+  - **Does** (medium): Reads an array element.
+    Returns: Element's (type,value) copied as stored (any type).
+    Params: index 0-based; no bounds check in the handler.
+    Edge: Out-of-range index or null array: VM answers 0, i.e. null result.
 - **130** `<Var/Array>[<Var/Number>] = <Value>`
   params: %0 Var/Array, %1 Var/Number, %2 Value; used 1016× (!fight.board.launchmarines)
+  - **Does** (medium): Writes a value into an array element.
+    Params: index 0-based; value stored as type+value pair.
+    Effects: modifies the array in place (shared by reference).
+    Edge: Out-of-range index or null array: write is dropped by the VM (no error).
 - **1081** `$ret =|if <Var/Array>[<Var/Number>][<Var/Number>]`
   params: %0 RetVar/IF, %1 Var/Array, %2 Var/Number, %3 Var/Number; condition; used 260× (!fight.fleet.attackall)
+  - **Does** (medium): Reads element [i][j] of a nested array (outer element is itself an array).
+    Returns: Inner element (any type).
+    Params: Both indices 0-based; no checks.
+    Edge: If the outer element is not an array or index is invalid: null result.
 - **1082** `<Var/Array>[<Var/Number>][<Var/Number>] = <Value>`
   params: %0 Var/Array, %1 Var/Number, %2 Var/Number, %3 Value; used 409× (Graph.SX.stn.select)
+  - **Does** (medium): Writes a value into element [i][j] of a nested array.
+    Params: Both indices 0-based.
+    Effects: modifies the inner array in place.
+    Edge: Invalid outer element: write dropped.
 - **131** `$ret =|if size of array <Var/Array>`
   params: %0 RetVar/IF, %1 Var/Array; condition; used 784× (!config.add.wares.few.one); calls: `SE_ArraySize`
+  - **Does** (high): Returns the number of elements of the array.
+    Returns: int: size/2.
+    Edge: Non-array/null value: 0.
 - **132** `$ret = clone array <Var/Array> : index <Var/Number> ... <Var/Number>`
   params: %0 RetVar, %1 Var/Array, %2 Var/Number, %3 Var/Number; used 8× (!fight.fleet.attackall); calls: `SE_ArraySubClone`
+  - **Does** (medium): Creates a new array holding a copy of elements from index start to end (inclusive).
+    Returns: array (21); null if the sub-clone fails.
+    Params: End index optional (missing = to the end of the array); inclusive.
+    Effects: allocates a new array
+    Edge: Out-of-range handled by SE_ArraySubClone; failure gives null.
 - **133** `copy array <Var/Array> index <Var/Number> ... <Var/Number> into array <Var/Array> at index <Var/Number>`
   params: %0 Var/Array, %1 Var/Number, %2 Var/Array, %3 Var/Number, %4 Var/Number; used 8× (!fight.fleet.attackall); calls: `SE_ArrayCopy`
+  - **Does** (medium): Copies a range of one array into another array at a start index (overwrites).
+    Params: Source range start..end inclusive (end optional = to end); destination index.
+    Effects: SE_ArrayCopy overwrites elements of the destination array.
+    Edge: Not resized automatically; bounds behaviour is that of SE_ArrayCopy.
 - **134** `insert <Value> into array <Var/Array> at index <Var/Number>`
   params: %0 Var/Array, %1 Var/Number, %2 Value; used 4× (Graph.SX.stn.select); calls: `SE_ArrayInsert`
+  - **Does** (medium): Inserts a value into an array at an index, shifting later elements up.
+    Params: index 0-based; array grows by one element.
+    Effects: modifies the array in place (two slots inserted).
+    Edge: Index beyond size: SE_ArrayInsert behaviour (not read).
 - **135** `append <Value> to array <Var/Array>`
   params: %0 Var/Array, %1 Value; used 1112× (!config.rrf); calls: `SE_ArrayAppend`
+  - **Does** (high): Appends a value to the end of the array.
+    Effects: array grows by one element in place.
+    Edge: Null array: nothing.
 - **136** `remove element from array <Var/Array> at index <Var/Number>`
   params: %0 Var/Array, %1 Var/Number; used 181× (!config.add.wares.few.one); calls: `SE_ArrayRemove`
+  - **Does** (medium): Removes the element at the index from the array, shifting later elements down.
+    Params: index 0-based
+    Effects: array shrinks by one element (type and value slots each removed).
+    Edge: Out-of-range index: SE_ArrayRemove behaviour.
 - **137** `resize array <Var/Array> to <Var/Number>`
   params: %0 Var/Array, %1 Var/Number; used 66× (!fight.fleet.attackall); calls: `SE_ArrayResize`
+  - **Does** (medium): Resizes the array to the given number of elements.
+    Params: New size in elements; new elements are null.
+    Effects: array resized in place.
+    Edge: Shrinking drops elements.
 - **1083** `$ret = get index of <Value> in array <Var/Array> offset=<Var/Number> + 1`
   params: %0 RetVar, %1 Var/Array, %2 Value, %3 Var/Number; used 79× (!job.trade.docktrader); calls: `SE_ArraySize`
+  - **Does** (high): Finds the first index of a value in an array, searching after the given offset.
+    Returns: int index, or -1 if not found.
+    Params: Search starts at element offset+1; offset omitted/non-int or negative starts at element 0.
+    Edge: Matches type and value exactly (no int/string conversion).
 - **1092** `<Var/Array>[<Var/Number>] = <Var/Array>[<Var/Number>]`
   params: %0 Var/Array, %1 Var/Number, %2 Var/Array, %3 Var/Number
+  - **Does** (medium): Copies one element from the source array position to the destination array position.
+    Params: Both indices 0-based.
+    Effects: writes one (type,value) pair to destination.
+    Edge: No bounds checks.
 - **1375** `$ret = sort array <Value>`
   params: %0 RetVar, %1 Value; used 12× (!lib.input.chose.ware.onsale); calls: `SE_ArraySize`, `SE_ArrayAlloc`, `C700.DataTypeToString`, `SE_QSortByName`
+  - **Does** (medium): Returns a new array with the elements sorted alphabetically by their displayed text.
+    Returns: array (21), new array; null if the input is not an array.
+    Edge: Sort key is DataTypeToString (names of wares, sectors, numbers as text), so numbers sort as strings.
 - **1417** `$ret = sort array: data=<Value> sort values=<Value>`
   params: %0 RetVar, %1 Value, %2 Value; used 9× (!fight.board.launchmarines); calls: `SE_ArraySize`, `SE_ArrayAlloc`, `SE_QSortByInt`, `C700.DataTypeToString`, `SE_QSortByName`
+  - **Does** (medium): Sorts the data array by a parallel array of sort values and returns a new sorted array.
+    Returns: array (21) new sorted copy; null if either arg is not an array.
+    Params: Sort values must be same length; if every sort value is an int they are compared numerically (ascending), otherwise as displayed names.
+    Edge: Sort array shorter than data array reads beyond it (null/0 keys).
 - **1406** `$ret =|if find <Value> in array: <Value>`
   params: %0 RetVar/IF, %1 Value, %2 Value; condition; used 78× (!config.rrf); calls: `SE_ArraySize`
+  - **Does** (high): Tests whether an array contains the given value.
+    Returns: int 1 if found, else 0.
+    Params: Match requires equal type and value.
+    Edge: The search value 0 or null (value cell 0) is never searched: 'if (v2781)' returns 0 immediately, so looking up int 0 in an array always gives false.
+  - **Engine bug (S53, AP FL):** The searched value is tested for truth first: searching for 0 or null always answers 'not found'.
 - **1415** `$ret = create new array, arguments=<Value>, <Value>, <Value>, <Value>, <Value>`
   params: %0 RetVar, %1 Value, %2 Value, %3 Value, %4 Value, %5 Value; used 281× (!config.create.nearplanet); calls: `SE_ArraySize`, `SE_ArrayAlloc`, `SE_ArrayResize`
+  - **Does** (high): Creates an array from up to 5 argument values; trailing null arguments are dropped.
+    Returns: array (21) with the given values.
+    Params: Trailing null (type 0) arguments are removed, so size depends on the last non-null argument.
+    Effects: allocates an array
+    Edge: All null: empty array. A null in the middle is kept. A last argument with type 0 is dropped even if intended.
 - **1443** `$ret =|if reverse array <Value>`
   params: %0 RetVar/IF, %1 Value; condition; used 10× (!fight.board.launchmarines); calls: `SE_ArraySize`, `SE_ArrayAlloc`
+  - **Does** (medium): Returns a new array with the elements in reverse order.
+    Returns: array (21), new copy.
+    Edge: Non-array input: VM answers 0, result empty array.
 - **1501** `$ret =|if arrays <Value> and <Value> are equal`
   params: %0 RetVar/IF, %1 Value, %2 Value; condition; used 6× (!lib.comparearray); calls: `SE_ArraySize`
+  - **Does** (medium): Tests whether two arrays are equal: same size and identical type/value pairs.
+    Returns: int 1 if equal, else 0.
+    Params: Compares elements by (type,value), nested arrays by reference.
+    Edge: Same array reference is equal at once.
 
 ## General Commands / Strings
 
 - **1075** `$ret =|if get length of string <Var/String>`
   params: %0 RetVar/IF, %1 Var/String; condition; used 21× (!lib.math.roundnumber); calls: `SE_StringLen`
+  - **Does** (medium): Returns the length of a string.
+    Returns: int, length in characters (SE_StringLen).
+    Edge: Non-string/null: 0.
 - **1076** `$ret = find position of pattern <Var/String> in <Var/String>`
   params: %0 RetVar, %1 Var/String, %2 Var/String; used 6× (!ship.cmd.moveto.std); calls: `SE_StringStr`
+  - **Does** (medium): Finds the position of a substring in a string.
+    Returns: int, 0-based position of first match; negative if not found (case 1079 tests >= 0).
+    Params: First param is the pattern, second the string to search in.
+    Edge: Plain substring (SE_StringStr), not a regex.
 - **1077** `$ret = get substring of <Var/String> offset=<Var/Number> length=<Var/Number>`
   params: %0 RetVar, %1 Var/String, %2 Var/Number, %3 Var/Number; used 26× (!lib.moveto.convert); calls: `SE_StringSub`
+  - **Does** (medium): Returns a substring starting at offset, optionally with a length.
+    Returns: string (5); null if the substring operation fails.
+    Params: offset 0-based; length optional (omitted gives rest of string).
+    Edge: Bad offset gives null.
 - **1078** `$ret = string <Var/String> to integer`
   params: %0 RetVar, %1 Var/String; used 27× (!lib.moveto.convert); calls: `SE_StringToInt`
+  - **Does** (medium): Converts a string to an integer.
+    Returns: int
+    Edge: Non-numeric string: SE_StringToInt result (presumably 0).
 - **1079** `$ret = substitute in string <Var/String>: pattern <Var/String> with <Var/String>`
   params: %0 RetVar, %1 Var/String, %2 Var/String, %3 Var/String; used 1× (plugin.mini.game.lower.case); calls: `SE_StringStr`, `SE_StringSubst`
+  - **Does** (medium): Replaces the first occurrence of a pattern in a string with another string.
+    Returns: string (5); the original when pattern not found.
+    Params: Plain-text pattern, only the first occurrence is replaced.
+    Edge: Not found: input returned unchanged.
 - **1474** `$ret = convert number <Var/Number> to string`
   params: %0 RetVar, %1 Var/Number; used 205× (plugin.mini.game.cipher); calls: `GetNumberString`
+  - **Does** (medium): Converts a number to a string using the game's number formatting.
+    Returns: string (5), GetNumberString of the number (thousands separators per game language).
 - **1544** `$ret = format large number pair as string: billions <Var/Number>, units <Var/Number>, include separators <Var/Number>, use millions suffix for very large numbers <Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Number; calls: `GetLargeMoneyString`
+  - **Does** (low): Formats a large money value given as billions + units parts into text.
+    Returns: string (5) via GetLargeMoneyString.
+    Params: Parts are (high, low); odd high part moves 1e9 into the low part before the high is halved; the 3rd/4th flags control separators and millions suffix.
+    Edge: Never used in stock scripts.
 - **1477** `$ret = format time: <Var/Number>`
   params: %0 RetVar, %1 Var/Number; used 5× (!ship.signal.lasertower.setup); calls: `SE_SPrintf`, `GetTimeString`
+  - **Does** (medium): Formats a time in seconds as text.
+    Returns: string (5); 'N days hh:mm:ss' style, days prefix only when >= 86400 s.
+    Params: seconds
+    Edge: Uses GetTimeString for the remainder.
 - **1478** `$ret =|if match regular expession: <Var/String> to string <Var/String>`
   params: %0 RetVar/IF, %1 Var/String, %2 Var/String; condition; used 5× (plugin.st.ex.Nat.wares); calls: `SE_RegComp`, `SE_RegExec`, `SE_RegFree`
+  - **Does** (medium): Matches a regular expression against a string.
+    Returns: int 1 if it matches, else null/0.
+    Params: First param is the regex, second the string.
+    Edge: The compiled regex is freed after the call.
 - **1524** `$ret =|if get string font length: <Var/String>`
   params: %0 RetVar/IF, %1 Var/String; condition; used 2× (plugin.st.ex.Nat.wares); calls: `C700.DataTypeToString`, `B3D_TexTextWidth`
+  - **Does** (medium): Returns the width in pixels of a text in the HUD font.
+    Returns: int pixel width (B3D_TexTextWidth, HUD font, style 129).
+    Params: A non-string argument is converted to its display text first.
 
 ## General Commands / Math
 
 - **1050** `$ret = fixed sin <Var/Number>`
   params: %0 RetVar, %1 Var/Number; used 2× (plugin.bw.detector.fwd.project); calls: `SE_Sin`
+  - **Does** (low): Returns the sine in fixed point.
+    Returns: int, SE_Sin of the argument.
+    Params: Input and output are fixed-point integers (units per SE_Sin, not read).
 - **1051** `$ret = fixed cos <Var/Number>`
   params: %0 RetVar, %1 Var/Number; used 2× (plugin.bw.detector.fwd.project); calls: `SE_Cos`
+  - **Does** (low): Returns the cosine in fixed point.
+    Returns: int, SE_Cos of the argument.
+    Params: Fixed-point integers (see SE_Cos, not read).
 - **1093** `$ret = square root of <Var/Number>`
   params: %0 RetVar, %1 Var/Number; used 1× (!lib.ai.ammo.supply); calls: `SE_Sqrt`
+  - **Does** (low): Returns the integer square root of the number.
+    Returns: int, SE_Sqrt of the argument.
+    Edge: Negative input: native behaviour (not read).
 
 ## General Commands / Commands/Signals
 
 - **113** `<RefObj> ->connect ship command/signal <Object Command/Signal> to script <Script Name> with prio <Var/Number>`
   params: %0 RefObj, %1 Object Command/Signal, %2 Script Name, %3 Var/Number; used 15× (!job.fight.defencebase); calls: `C700.FindScript`, `.SetCommandScript`
+  - **Does** (medium): Binds a ship command/signal of the ship to a script with the given priority.
+    Params: command/signal id; prio number.
+    Effects: ship.SetCommandScript(command, script, prio) for this ship only.
+    Edge: Unknown script: nothing happens.
 - **114** `<RefObj> ->set ship command/signal <Object Command/Signal> to global default behaviour`
   params: %0 RefObj, %1 Object Command/Signal; used 4× (!plugin.fightcommand.attack); calls: `.SetCommandScript`, `.IgnoreCommandScript`
+  - **Does** (medium): Resets the ship's command/signal binding to the global default behaviour.
+    Effects: SetCommandScript(cmd, 0, 0) on the ship.
+    Edge: Shares the body of 115.
 - **115** `<RefObj> ->ignore ship command/signal <Object Command/Signal>`
   params: %0 RefObj, %1 Object Command/Signal; used 2× (!plugin.fightcommand.attack); calls: `.SetCommandScript`, `.IgnoreCommandScript`
+  - **Does** (medium): Makes the ship ignore the given command/signal (no script runs for it).
+    Effects: IgnoreCommandScript(cmd) on the ship.
 - **1339** `<RefObj> ->add secondary signal: signal=<Object Signal>, script=<Script Name>, prio=<Var/Number>, name=<Var/String>`
   params: %0 RefObj, %1 Object Signal, %2 Script Name, %3 Var/Number, %4 Var/String; used 33× (!config.faction.atreus); calls: `C700.FindScript`, `SE_ObjectExists`, `.AddSecondarySignal`, `C702.AddSecondarySignal`
+  - **Does** (medium): Adds a secondary signal handler (script, priority, name) to an object, or in its absence to the global list.
+    Params: signal id, script, prio number, name string used to remove it later (1340).
+    Effects: Object.AddSecondarySignal(script, signal, name, prio); else global ScriptObject.AddSecondarySignal.
+    Edge: Unknown script: nothing. Missing object: uses global list branch.
 - **1340** `<RefObj> ->remove secondary signal: signal=<Object Signal>, name=<Var/String>`
   params: %0 RefObj, %1 Object Signal, %2 Var/String; used 6× (!patch.1.1); calls: `SE_ObjectExists`, `.RemoveSecondarySignal`, `C702.RemoveSecondarySignal`
+  - **Does** (medium): Removes a named secondary signal handler from the object, or from the global list if the object does not exist.
+    Params: signal and name string.
+    Effects: RemoveSecondarySignal(signal, name).
 - **1407** `global secondary signal map: add signal=<Object Signal> race=<Var/Race> class=<Var/Class> script=<Script Name> prio=<Var/Number> name=<Var/String>`
   params: %0 Object Signal, %1 Var/Race, %2 Var/Class, %3 Script Name, %4 Var/Number, %5 Var/String; used 3× (!init.ship.globalscriptmap.std); calls: `C700.FindScript`, `C702.AddGlobalSecondarySignal`
+  - **Does** (medium): Adds a global secondary signal handler for a race and class.
+    Params: signal, race, class, script, prio, name.
+    Effects: ScriptObject.AddGlobalSecondarySignal(script, race, class, name, signal, prio).
+    Edge: Unknown script: nothing.
 - **1408** `global secondary signal map: remove signal=<Object Signal> race=<Var/Race> class=<Var/Class> name=<Var/String>`
   params: %0 Object Signal, %1 Var/Race, %2 Var/Class, %3 Var/String; calls: `C702.AddGlobalSecondarySignal`
+  - **Does** (medium): Removes a global secondary signal handler by race, class and name.
+    Effects: Calls AddGlobalSecondarySignal with a null script and zero prio, which acts as removal.
+    Edge: Never used in stock scripts.
 - **118** `global script map: set: key=<Object Command/Signal>, class=<Var/Class>, race=<Var/Race>, script=<Script Name>, prio=<Var/Number>`
   params: %0 Object Command/Signal, %1 Script Name, %2 Var/Number, %3 Var/Class, %4 Var/Race; used 178× (!init.ship.globalscriptmap.khaak); calls: `C703.SetGlobalCommandScript`, `C700.FindScript`
+  - **Does** (medium): Sets the global command-script mapping for a command key, class and race.
+    Params: Race omitted: -1 means all races. prio number; class selects ship class.
+    Effects: CommandScriptRegistry.SetGlobalCommandScript(key, script, prio, class, race).
+    Edge: Unknown script gives a null script (clears).
 - **119** `global script map: remove: key=<Object Command/Signal>, class=<Var/Class>, race=<Var/Race>`
   params: %0 Object Command/Signal, %1 Var/Class, %2 Var/Race; calls: `C703.SetGlobalCommandScript`
+  - **Does** (medium): Removes the global command-script mapping for a command key, class and race.
+    Params: Race omitted: all races (-1).
+    Effects: SetGlobalCommandScript(key, 0, 0, class, race).
+    Edge: Never used in stock scripts.
 - **127** `global script map: ignore: key=<Object Command/Signal>, class=<Var/Class>, race=<Var/Race>`
   params: %0 Object Command/Signal, %1 Var/Class, %2 Var/Race; used 74× (!init.ship.globalscriptmap.pl); calls: `C703.IgnoreGlobalCommandScript`
+  - **Does** (medium): Marks the command key as ignored globally for a class and race.
+    Params: Race omitted: all races (-1).
+    Effects: CommandScriptRegistry.IgnoreGlobalCommandScript(key, class, race).
 - **144** `set script command upgrade: command=<Object Command/Signal>  upgrade=<Var/Ware>`
   params: %0 Object Command/Signal, %1 Var/Ware; used 88× (!init.ship.commandupgrade); calls: `C703.SetCommandUpgrade`
+  - **Does** (medium): Sets which ware upgrade is required to use a ship command.
+    Params: Ware value; an int (type 4) non-zero value is stored as -1 meaning no ware needed/any.
+    Effects: CommandScriptRegistry.SetCommandUpgrade(command, ware).
 - **145** `$ret = get script command upgrade: command=<Object Command/Signal>`
   params: %0 RetVar, %1 Object Command/Signal; used 3× (!lib.check.jumperror); calls: `C703.GetCommandUpgrade`
+  - **Does** (medium): Gets the upgrade ware required by a ship command.
+    Returns: ware (9) if the upgrade is a ware; int 1 if stored value is negative (-1); else null.
+    Edge: 0 upgrade: null.
 - **154** `set script command upgrade: command=<Object Command/Signal>  upgrade=<Var/Ware>  script=<Script Name>`
   params: %0 Object Command/Signal, %1 Var/Ware, %2 Script Name; used 7× (!init.ship.commandupgrade); calls: `C700.FindScript`, `C703.SetCommandUpgrade2`
+  - **Does** (medium): Sets the required ware upgrade for a ship command together with the script to run.
+    Params: Int non-zero upgrade is stored as -1.
+    Effects: SetCommandUpgrade2(command, ware, script).
+    Edge: Unknown script gives null script.
 - **1466** `set ship command preload script: command=<Object Command/Signal> script=<Script Name>`
   params: %0 Object Command/Signal, %1 Script Name; used 31× (!init.ship.commandpreload); calls: `C703.SetCommandPreload`, `C700.FindScript`
+  - **Does** (medium): Sets the script used to preload (prepare) a ship command.
+    Effects: SetCommandPreload(command, script, 0) (flag 0 = ship).
 - **1382** `global script map for wings: key=<Var/Wing Command> race=<Var/Race> script=<Script Name> prio=<Var/Number>`
   params: %0 Var/Wing Command, %1 Var/Race, %2 Script Name, %3 Var/Number; used 27× (!init.wing.globalscriptmap.pl); calls: `C703.SetGlobalCommandScript`, `C700.FindScript`
+  - **Does** (medium): Sets the global command script for a wing command and race.
+    Params: prio number; wing command key; race.
+    Effects: SetGlobalCommandScript(race, script, prio, 9001, key): class slot fixed to 9001 for wings.
 - **1380** `set script command upgrade: wing command=<Var/Wing Command> upgrade=<Var/Ware>`
   params: %0 Var/Wing Command, %1 Var/Ware; used 20× (!init.wing.commandupgrade); calls: `C703.SetCommandUpgradeWing`
+  - **Does** (medium): Sets which ware upgrade is required for a wing command.
+    Params: Int non-zero value stored as -1.
+    Effects: SetCommandUpgradeWing(cmd, ware).
 - **1381** `set script command upgrade: wing command=<Var/Wing Command> upgrade=<Var/Ware> script=<Script Name>`
   params: %0 Var/Wing Command, %1 Var/Ware, %2 Script Name; calls: `C700.FindScript`, `C703.SetCommandUpgradeWing2`
+  - **Does** (medium): Sets the required ware upgrade and script for a wing command.
+    Params: Int non-zero value stored as -1.
+    Effects: SetCommandUpgradeWing2(cmd, ware, script).
+    Edge: Never used in stock scripts.
 - **1467** `set wing command preload script: wing command=<Var/Wing Command> script=<Script Name>`
   params: %0 Var/Wing Command, %1 Script Name; used 10× (!init.wing.commandpreload); calls: `C703.SetCommandPreload`, `C700.FindScript`
+  - **Does** (medium): Sets the preload script of a wing command.
+    Effects: SetCommandPreload(command, script, 1) (flag 1 = wing).
 - **1463** `add ship custom command: id=<Var/Number>`
   params: %0 Var/Number; calls: `C700.AddCustomCommand`
+  - **Does** (medium): Registers a custom command id (mod entry in the ship command menu).
+    Params: id number
+    Effects: ScriptDatabase.AddCustomCommand(id).
+    Edge: Never used in stock scripts.
 - **1464** `remove ship custom command: id=<Var/Number>`
   params: %0 Var/Number; calls: `C700.RemoveCustomCommand`
+  - **Does** (medium): Removes a registered custom ship command id.
+    Effects: ScriptDatabase.RemoveCustomCommand(id).
 - **1465** `$ret = ship custom command exists: id=<Var/Number>`
   params: %0 RetVar, %1 Var/Number; calls: `C700.CustomCommandExists`
+  - **Does** (medium): Tests whether a custom ship command id is registered.
+    Returns: int 1 or 0.
 - **120** `set script command: <Object Command/Signal>`
   params: %0 Object Command/Signal; used 6× (!ship.job.patrol)
+  - **Does** (high): Stores the script command (the command this script is executing) in the task state.
+    Effects: scriptInstance[9] = command.
+    Edge: Read back with 121.
 - **121** `$ret =|if get script command`
   params: %0 RetVar/IF; condition; used 1× (!plugin.acp.fight.attack.object)
+  - **Does** (high): Gets the script command stored by 120.
+    Returns: script command (18); 0 when unset.
 - **122** `set script command target: <Value>`
   params: %0 Value; used 24× (!fight.attack.object.bomber)
+  - **Does** (high): Stores the script command target (any value) in the task state.
+    Params: Type and value both stored.
+    Effects: scriptInstance[10], [11] = type, value.
 - **123** `$ret =|if get script command target`
   params: %0 RetVar/IF; condition
+  - **Does** (high): Gets the script command target stored by 122.
+    Returns: Stored target with its original type.
+    Edge: Never used in stock scripts.
 - **1186** `<RefObj> ->connect wing command/signal <Object Command/Signal> to script <Script Name> with prio <Var/Number>`
   params: %0 RefObj, %1 Object Command/Signal, %2 Script Name, %3 Var/Number; used 3× (!job.patrol.long); calls: `C700.FindScript`, `.SetCommandScript`, `.GetFormationShips`, `SE_ArraySize`, `SetCommandScript`
+  - **Does** (medium): Binds a ship command/signal to a script for the ship and for all ships of its formation (wing).
+    Params: command/signal, prio.
+    Effects: SetCommandScript on the ship and on each GetFormationShips() member.
+    Edge: Unknown script: nothing. No formation: only the ship itself.
 
 ## General Commands
 
 - **104** `$ret =|if <expression>`
   params: %0 RetVar/IF, %1 Expression; condition; used 9123× (!config.add.wares.few.one)
+  - **Does** (low): Evaluates an expression and stores or tests its result; handled by the expression evaluator rather than a case.
+    Returns: expression result (type per expression).
 - **142** `inc $ret =`
   params: %0 RetVar; used 309× (!fight.attack.enemiesrange.land)
+  - **Does** (high): Increments the variable by 1.
+    Returns: int, previous value +1 stored in the variable.
+    Effects: variable = variable + 1, type forced to int.
+    Edge: Non-int variable is reinterpreted as an int value (no check).
 - **143** `dec $ret =`
   params: %0 RetVar; used 480× (!config.add.wares.few.one)
+  - **Does** (high): Decrements the variable by 1.
+    Returns: int, previous value -1 stored in the variable.
+    Effects: variable = variable - 1.
 - **105** `$ret =|if wait <Var/Number> ms`
   params: %0 RetVar/IF, %1 Var/Number; `@` interruptible, condition; used 271× (!fight.attack.boarded); calls: `TI_WaitForInterrupt`
+  - **Does** (medium): Waits the given number of milliseconds; can be cut short by an interrupt.
+    Returns: int result of TI_WaitForInterrupt (0 normal, nonzero if interrupted).
+    Params: milliseconds (TI_ natives).
+    Effects: suspends the task until time passes or an interrupt arrives.
 - **107** `$ret =|if wait randomly from <Var/Number> to <Var/Number> ms`
   params: %0 RetVar/IF, %1 Var/Number, %2 Var/Number; `@` interruptible, condition; used 378× (!fight.attack.enemiesrange.land); calls: `TI_WaitRandomForInterrupt`
+  - **Does** (medium): Waits a random time between min and max milliseconds; interruptible.
+    Returns: int result of TI_WaitRandomForInterrupt.
+    Params: ms; the random span is max-min, forced to at least 1.
+    Effects: suspends until the time passes or an interrupt.
+    Edge: max <= min waits min plus 0 (span 1).
 - **106** `$ret =|if random value from 0 to <Var/Number> - 1`
   params: %0 RetVar/IF, %1 Var/Number; condition; used 114× (!config.add.wares.few.one); calls: `SE_Random`
+  - **Does** (high): Returns a random integer from 0 to N-1.
+    Returns: int; 0 when N <= 0.
 - **110** `$ret = random value from <Var/Number> to <Var/Number> - 1`
   params: %0 RetVar, %1 Var/Number, %2 Var/Number; used 250× (!config.create.nearplanet); calls: `SE_Random`
+  - **Does** (high): Returns a random integer from min to max-1.
+    Returns: int; min if max <= min.
 - **1** `* <Comment>`
   params: %0 Comment
+  - **Does** (low): Comment line; ignored by the interpreter.
 - **152** `$ret = script engine version`
   params: %0 RetVar; used 1× (!lib.ai.ammo.supply)
+  - **Does** (high): Returns the script engine version constant, 54.
+    Returns: int 54
 - **1031** `$ret = get script version`
   params: %0 RetVar; used 2× (!lib.ai.ammo.supply)
+  - **Does** (high): Returns the version number of the running script.
+    Returns: int, script[3] of the current script.
 - **1201** `$ret =|if is a new script version available`
   params: %0 RetVar/IF; condition; used 15× (!fight.war.protectsector); calls: `C700.FindScript`
+  - **Does** (medium): Tests whether a newer version of the running script is installed than the one running.
+    Returns: int 1 if the stored script's version is higher than this task's script, else null.
+    Edge: Script not found by name: null.
 - **1032** `$ret = get script name`
   params: %0 RetVar
+  - **Does** (high): Returns the name of the running script.
+    Returns: string (5)
 - **108** `$ret = get script priority`
   params: %0 RetVar; used 4× (!fight.attack.object.owp)
+  - **Does** (high): Returns the priority of the current task.
+    Returns: int
 - **109** `set script priority to <Var/Number>`
   params: %0 Var/Number; used 21× (!move.emergencyjump)
+  - **Does** (medium): Sets the priority of the current task and of the current frame.
+    Effects: scriptInstance[1] and current frame slot 7 = prio.
+    Edge: Interrupts with a priority not above this are ignored.
 - **153** `infinite loop detection enabled=<Var/Number>`
   params: %0 Var/Number; used 18× (!move.deploy.satellites)
+  - **Does** (medium): Enables or disables infinite-loop detection (watchdog counter, 10000 steps) for this task.
+    Params: Nonzero enables (sets limit 10000 if unset), zero disables.
+    Effects: sets the watchdog counter.
 - **146** `$ret =|if is script with prio <Var/Number> on stack`
   params: %0 RetVar/IF, %1 Var/Number; condition; used 13× (!fight.attack.object.std)
+  - **Does** (high): Tests whether a frame with the given priority is on the call stack.
+    Returns: int 1 if found, else null.
+    Edge: Scans frames from the current down to 0.
 - **147** `$ret =|if get task ID`
   params: %0 RetVar/IF; condition; used 11× (!fight.fleetcmdr.defend)
+  - **Does** (high): Returns the task id of the running script.
+    Returns: int
 - **148** `$ret =|if get PID`
   params: %0 RetVar/IF; condition; used 1× (!lib.war.watch)
+  - **Does** (high): Returns the process id (PID) of the running script task.
+    Returns: int
 - **116** `enable signal/interrupt handling: <Var/Number>`
   params: %0 Var/Number; used 3× (!plugin.acp.fight.attack.tactics)
+  - **Does** (high): Enables or disables signal/interrupt handling for this task.
+    Params: 0 (or null) disables, nonzero enables.
+    Effects: scriptInstance[6] = disabled flag.
 - **117** `$ret =|if is signal/interrupt handling on`
   params: %0 RetVar/IF; condition
+  - **Does** (high): Tests whether signal/interrupt handling is on for this task.
+    Returns: int 1 if on, else null.
+    Edge: Returns null (not 0) when off.
 - **155** `<RefObj> ->set local variable: name=<Var/String> value=<Value>`
   params: %0 RefObj, %1 Var/String, %2 Value; used 173× (!config.faction.atreus); calls: `.SetScriptVariable`
+  - **Does** (medium): Sets a named local variable on the target object's script.
+    Params: name string; value stored as (type,value).
+    Effects: RefObj.SetScriptVariable(name, pair).
+    Edge: Null object: ignored.
 - **156** `$ret =|if <RefObj> -> get local variable: name=<Var/String>`
   params: %0 RefObj, %1 Var/String, %2 RetVar/IF; condition; used 130× (!fight.board.launchmarines); calls: `.GetScriptVariable`
+  - **Does** (medium): Reads a named local variable from the object.
+    Returns: stored value with original type; null if the variable does not exist.
+    Edge: Null object: null.
 - **157** `set global variable: name=<Var/String> value=<Value>`
   params: %0 Var/String, %1 Value; used 209× (!config.faction.atreus); calls: `C702.SetScriptVariable`
+  - **Does** (medium): Sets a named global variable.
+    Params: name string; value stored as (type,value).
+    Effects: ScriptObject.SetScriptVariable(name, pair) (global, saved in the savegame).
 - **158** `$ret =|if get global variable: name=<Var/String>`
   params: %0 Var/String, %1 RetVar/IF; condition; used 304× (!config.faction.atreus); calls: `C702.GetScriptVariable`
+  - **Does** (medium): Reads a named global variable.
+    Returns: stored value with its type; null if not set.
 - **124** `$ret = datatype[ <Value> ]`
   params: %0 RetVar, %1 Value
+  - **Does** (high): Wraps a value's type as a datatype value.
+    Returns: datatype (20) holding the type code of the argument.
+    Edge: Never used in stock scripts.
 - **125** `$ret =|if is datatype[ <Value> ] == <Var/Script Data Type>`
   params: %0 RetVar/IF, %1 Value, %2 Var/Script Data Type; condition; used 174× (!fight.global.call.defencebase)
+  - **Does** (high): Tests whether the type of a value equals the given datatype.
+    Returns: int 1 if type matches, else null.
+    Params: Compares type code of the value with the datatype value.
 - **126** `$ret = read text: page=<Var/Number> id=<Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Number; used 939× (!lib.ds); calls: `SE_ConvertFormatString`, `SE_ReadText`
+  - **Does** (medium): Reads a text from the game text pages by page and id.
+    Returns: string (5) after format conversion; null if text missing.
+    Params: page and id numbers.
+    Edge: Missing text: null.
 - **1337** `$ret =|if read text: page id=<Var/Number>, from <Var/Number> to <Var/Number> to array, include empty=<Var/Number>`
   params: %0 RetVar/IF, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Number; condition; used 3× (plugin.mini.game.cipher); calls: `SE_ExistsText`, `SE_ArrayAlloc`, `SE_ConvertFormatString`, `SE_ReadText`
+  - **Does** (medium): Reads all texts of a text page for ids from..to and returns them as an array of strings.
+    Returns: Array (21) of {5,string} pairs, one per text; null if the range has no texts.
+    Params: Page id, from-id, to-id inclusive, include-empty flag: when 0 only ids that exist (SE_ExistsText) are loaded, when nonzero every id in range is read. Texts pass through SE_ConvertFormatString.
+    Edge: Not available for page 2003 (per handler comment). Count is computed first; if count < 1 returns null. Large ranges allocate 2*(to-from+1) cells.
 - **1338** `$ret =|if read text: page id=<Var/Number>, id=<Var/Number> exists`
   params: %0 RetVar/IF, %1 Var/Number, %2 Var/Number; condition; used 9× (!lib.get.enemytarget); calls: `SE_ExistsText`
+  - **Does** (high): Tests whether a text with the given page id and text id exists.
+    Returns: Int 1 if the text exists, else null (false).
+    Params: page id, text id.
+    Edge: Returns null rather than 0 when missing; page 2003 not readable via this command.
 - **149** `$ret = sprintf: fmt=<Var/String>, <Value>, <Value>, <Value>, <Value>, <Value>`
   params: %0 RetVar, %1 Var/String, %2 Value, %3 Value, %4 Value, %5 Value, %6 Value; used 325× (!config.rrf); calls: `SE_SPrintf`, `C700.DataTypeToString`
+  - **Does** (medium): Formats a string like sprintf using the given format string and up to five values.
+    Returns: String (5): the formatted text.
+    Params: fmt is the format string; each of the 5 values is first converted to a string by DataTypeToString, so use %s for all (numeric formatting like %d is not applied to the original value).
+    Edge: Unused value slots are null and render as their DataTypeToString of null.
 - **150** `$ret = sprintf: pageid=<Var/Number> textid=<Var/Number>, <Value>, <Value>, <Value>, <Value>, <Value>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Number, %3 Value, %4 Value, %5 Value, %6 Value, %7 Value; used 222× (!lib.get.enemytarget); calls: `SE_SPrintf`, `SE_ReadText`, `C700.DataTypeToString`
+  - **Does** (medium): Formats a string like sprintf, taking the format string from text page/id, with up to five values.
+    Returns: String (5): the formatted text.
+    Params: pageid, textid select the format text via SE_ReadText; values are converted to strings by DataTypeToString first.
+    Edge: Missing text gives whatever SE_ReadText returns for it (empty/default).
 - **151** `load text: id=<Var/Number>`
   params: %0 Var/Number; calls: `C201.LoadText`
+  - **Does** (medium): Loads text page <id> (UiTextFonts.LoadText) so its texts become readable.
+    Params: Only ids 1..9999 are accepted; others are ignored.
+    Effects: Loads a text page into memory.
+    Edge: Out-of-range id silently ignored.
 - **138** `$ret =|if state of news article: page=<Var/Number> id=<Var/Number>`
   params: %0 RetVar/IF, %1 Var/Number, %2 Var/Number; condition; calls: `C4194.GetArticleState`
+  - **Does** (high): Returns the state of a news (BBS) article identified by text page and line id.
+    Returns: Int: article state (0 when the article is missing or off).
+    Params: page, id (text line).
+    Edge: Unknown article -> 0.
 - **139** `set state of news article page=<Var/Number> id=<Var/Number> to <Var/Number>`
   params: %0 Var/Number, %1 Var/Number, %2 Var/Number; calls: `C4194.SetArticleState`
+  - **Does** (high): Sets the state of a news (BBS) article identified by page and id.
+    Params: State > 0 means active; the valid-article counter is kept in step.
+    Effects: Changes article state and BbsNews valid-article count.
+    Edge: Unknown article is ignored.
 - **140** `$ret =|if system date is month=<Var/Number>, day=<Var/Number>`
   params: %0 RetVar/IF, %1 Var/Number, %2 Var/Number; condition; calls: `SE_SPrintf`, `SE_TimeString`, `SE_Time`
+  - **Does** (high): True if the real (system) date has the given month and day.
+    Returns: Int 1 if today's system month/day equal the arguments, else null.
+    Params: month, day as numbers; compared as strings 'MM/DD' against SE_TimeString('%m/%d', SE_Time()), i.e. real-world clock, not game time.
+    Edge: Year not checked.
 - **141** `$ret = playing time`
   params: %0 RetVar; used 81× (!fight.attack.object.owp); calls: `.GetAge`
+  - **Does** (high): Returns the in-game time counter of the player (gPlayerRace.GetAge), in seconds.
+    Returns: Int (4): game age in seconds.
+    Edge: This is game time (age counter m8, used e.g. with '-3600' for one hour), not real play time (GetPlayingTime, m11, is written to savegame info as realtime).
 - **1034** `$ret =|if is plot <Var/Number> state flag <Var/Number>`
   params: %0 RetVar/IF, %1 Var/Number, %2 Var/Number; condition; calls: `C3001.IsPlotFlag`
+  - **Does** (high): True if a given plot state flag (0..255) of a plot is set.
+    Returns: Int 1 if set, else null.
+    Params: plot number, flag 0..255; each plot owns 8 words of 32 flags.
+    Edge: flag >= 256 returns false.
 - **1100** `$ret = register hotkey <Var/String> to call script <Script Name>`
   params: %0 RetVar, %1 Var/String, %2 Script Name; used 1× (al.plugin.bw.detector.event); calls: `C700.FindScript`, `C500.RegisterCustomHotkey`
+  - **Does** (medium): Registers a custom hotkey (key name string) that calls the given script when pressed.
+    Returns: Int hotkey id from InputMapper.RegisterCustomHotkey; null if the script does not exist.
+    Params: Hotkey is a string; script name must exist (ScriptDatabase.FindScript). Second argument to the registrar is fixed 0.
+    Effects: Adds a custom hotkey binding in InputMapper.
+    Edge: Missing script -> null, no hotkey.
 - **1511** `$ret = register hotkey <Var/String> to call script name <Var/String>`
   params: %0 RetVar, %1 Var/String, %2 Var/String; calls: `C700.FindScript`, `C500.RegisterCustomHotkey`
+  - **Does** (medium): Registers a custom hotkey calling a script given by name string (variable form of 1100).
+    Returns: Int hotkey id; null if the script is not found.
+    Params: Script name as a string value.
+    Effects: Adds a custom hotkey binding.
+    Edge: Missing script -> null.
 - **1601** `$ret = register hotkey: page=<Var/Number> id=<Var/Number>, to call script <Script Name>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Number, %3 Script Name; calls: `C700.FindScript`, `C500.RegisterCustomHotkeyTextID`
+  - **Does** (medium): Registers a custom hotkey whose label is a text page/id, calling the given script.
+    Returns: Int hotkey id from RegisterCustomHotkeyTextID; null if the script does not exist.
+    Params: page and text id give the displayed name in the controls menu.
+    Effects: Adds a custom hotkey binding with text-id label.
+    Edge: Missing script -> null.
 - **1603** `$ret = register hotkey: page=<Var/Number> id=<Var/Number>, to call script name <Var/String>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Number, %3 Var/String; calls: `C700.FindScript`, `C500.RegisterCustomHotkeyTextID`
+  - **Does** (medium): Same as 1601 but the script is given as a name string.
+    Returns: Int hotkey id; null if the script is not found.
+    Params: page, text id for the label; script name string.
+    Effects: Adds a custom hotkey binding with text-id label.
+    Edge: Missing script -> null.
 - **1101** `unregister hotkey <Var/Number>`
   params: %0 Var/Number; used 1× (setup.plugin.mini.game); calls: `C500.UnregisterCustomHotkey`
+  - **Does** (medium): Removes a custom hotkey registered earlier.
+    Params: Hotkey id returned by the register commands; 0 is ignored.
+    Effects: Removes binding in InputMapper.
+    Edge: Id 0 ignored.
 - **1602** `$ret =|if get hotkey index, script: <Script Name>`
   params: %0 RetVar/IF, %1 Script Name; condition; calls: `C500.FindCustomHotkeyID`
+  - **Does** (medium): Looks up the id of a custom hotkey by its script.
+    Returns: Int hotkey id from InputMapper.FindCustomHotkeyID (0 if none); always returns an int.
+    Params: Script name.
+    Edge: Not found -> 0 (so as a condition it is false).
 - **1604** `$ret =|if get hotkey index, script name: <Var/String>`
   params: %0 RetVar/IF, %1 Var/String; condition; calls: `C500.FindCustomHotkeyID`
+  - **Does** (medium): Looks up the id of a custom hotkey by script name string (variable form of 1602).
+    Returns: Int hotkey id (0 if none).
+    Params: Script name string.
+    Edge: Not found -> 0.
 - **1220** `$ret = last load time`
   params: %0 RetVar; calls: `.GetLastLoadTime`
+  - **Does** (high): Returns the game-time of the last savegame load.
+    Returns: Int: gPlayerRace.GetLastLoadTime (game-age seconds at last load).
+    Edge: Value set from GetAge at load.
 - **1414** `$ret =|if <RefObj> -> get all local variable keys, starting with=<Var/String>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/String; condition; used 6× (!patch.1.1); calls: `C702.GetScriptVariablesByPrefix`, `SE_ArraySize`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns names of an object's script-local variables that start with a prefix.
+    Returns: Array of strings (5); null if there are none.
+    Params: RefObj is the script/object whose variables are read; prefix string.
+    Edge: Empty result gives null.
 - **1436** `$ret =|if get all global variable keys, starting with=<Var/String>`
   params: %0 RetVar/IF, %1 Var/String; condition; calls: `C702.GetScriptVariablesByPrefix`, `SE_ArraySize`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns names of global script variables (class 702) starting with a prefix.
+    Returns: Array of strings; null if none.
+    Params: prefix string.
+    Edge: Empty -> null.
 - **1450** `$ret =|if <RefObj> -> get local variables: regular expression=<Var/String>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/String; condition; used 1× (plugin.rrf.sig.captured); calls: `C702.GetScriptVariablesByRegEx`, `SE_ArraySize`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns names of an object's local script variables matching a regular expression.
+    Returns: Array of strings; null if none.
+    Params: RefObj script/object, regex string.
+    Edge: Empty -> null.
 - **1451** `$ret =|if get global variables: regular expression=<Var/String>`
   params: %0 RetVar/IF, %1 Var/String; condition; calls: `C702.GetScriptVariablesByRegEx`, `SE_ArraySize`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns names of global script variables matching a regular expression.
+    Returns: Array of strings; null if none.
+    Params: regex string.
+    Edge: Empty -> null.
 - **1457** `$ret = get maximum, <Var/Number>, <Var/Number>, <Var/Number>, <Var/Number>, <Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Number; used 32× (!lib.ai.ammo.supply); calls: `SE_ArrayAlloc`, `SE_ArrayResize`
+  - **Does** (high): Returns the maximum of two to five numbers.
+    Returns: Int (4).
+    Params: First two values always used; values 3-5 only counted if integer-typed (type 4), other types are ignored; shares code with 1597.
+    Edge: Non-integer values 1 and 2 are taken without type check.
 - **1597** `$ret = get minimum, <Var/Number>, <Var/Number>, <Var/Number>, <Var/Number>, <Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Number; used 14× (!lib.get.resupply.needed); calls: `SE_ArrayAlloc`, `SE_ArrayResize`
+  - **Does** (high): Returns the minimum of two to five numbers.
+    Returns: Int (4).
+    Params: Same operand rules as 1457: values 3-5 only if integer-typed.
+    Edge: cmdId selects min vs max.
 - **1600** `$ret =|if does script exist: <Script Name>`
   params: %0 RetVar/IF, %1 Script Name; condition; calls: `C700.DoesScriptExist`
+  - **Does** (medium): True if a script with the given name exists.
+    Returns: Int 1 if ScriptDatabase.DoesScriptExist, else null.
+    Params: Script name literal.
 - **1605** `$ret =|if does script name exist: <Var/String>`
   params: %0 RetVar/IF, %1 Var/String; condition; used 1× (!lib.get.input.menu); calls: `C700.DoesScriptExist`
+  - **Does** (medium): True if a script whose name is held in a string exists.
+    Returns: Int 1 if found, else null.
+    Params: String value.
+    Edge: The handler comment says return slot untouched; actually result is null when missing.
 - **1607** `$ret = get colour code: red=<Var/Number> green=<Var/Number> blue=<Var/Number> transparency=<Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Number; used 44× (!lib.graph.getkeycolours)
+  - **Does** (high): Builds a colour code from red, green, blue and transparency.
+    Returns: Int ARGB: ((255-transparency)<<24)|(r<<16)|(g<<8)|b, each component masked to 0..255.
+    Params: transparency 0 = opaque, 255 = invisible (alpha stored inverted); values wrap with &255.
+    Edge: Result is a signed 32-bit int for alpha >= 128 opaque.
 - **1614** `$ret = get global parameter value: parameter=<Var/Global Parameter> default=<Var/Number>`
   params: %0 RetVar, %1 Var/Global Parameter, %2 Var/Number; used 2× (!lib.get.best.missile.fortarget); calls: `SA_GetGlobalParameterNames`, `SE_TableExists`, `SA_GetGlobalParameter`
+  - **Does** (medium): Reads a global game parameter by index, returning a default when the parameter value is unset.
+    Returns: Int from SA_GetGlobalParameter(name, default); null if the index is not in the parameter name table.
+    Params: parameter = index into SA_GetGlobalParameterNames; default is passed to the native.
+    Edge: Unknown index -> null.
 - **1652** `display game tip: text=<Var/String> delay=<Var/Number>`
   params: %0 Var/String, %1 Var/Number; calls: `C631.DisplayText`
+  - **Does** (medium): Shows a game tip text on screen for a delay.
+    Params: text string, delay (unit as in GameTips.DisplayText; not verified).
+    Effects: Displays text via GameTips.
+    Edge: Ignored when the text is 0/null.
 
 ## Audio Commands
 
 - **200** `play sample <Var/Number>`
   params: %0 Var/Number; used 21× (!galaxyeditor.create.gates); calls: `C620.IsPlaying`, `C200.PlaySample`
+  - **Does** (medium): Plays a sound sample by id.
+    Params: sample id.
+    Effects: Plays audio.
+    Edge: Silently skipped while a cutscene movie is playing.
 - **201** `play sample: incoming transmission <Var/Number>, from object <Value>`
   params: %0 Var/Number, %1 Value; used 5× (!lib.msg.found.enemies); calls: `C620.IsPlaying`, `C200.PlaySampleIncomingTransmission`
+  - **Does** (medium): Plays an incoming-transmission sample with the given object as the sender.
+    Params: sample id, sender object.
+    Effects: Plays audio / transmission effect.
+    Edge: Skipped during cutscene movies.
 - **202** `<RefObj> ->send audio message <Var/Number> to player`
   params: %0 RefObj, %1 Var/Number; used 4× (!move.scanpatrol); calls: `C150.GetClientState`, `C620.IsPlaying`, `.SendMessage`
+  - **Does** (medium): Makes the object send an audio message to the player.
+    Params: message id.
+    Effects: Object.SendMessage(id).
+    Edge: Blocked when client state bit 32 is set or a cutscene movie plays.
 - **203** `send incoming message <Var/String> to player: display it=<Var/Number>`
   params: %0 Var/String, %1 Var/Number; used 9× (!lib.msg.found.enemies); calls: `C150.IncomingMessage`
+  - **Does** (medium): Sends an incoming text message to the player.
+    Params: text string; display flag: nonzero shows it, 0 only logs (per handler comment).
+    Effects: Client.IncomingMessage(text, 0, flag).
 - **1215** `<RefObj> ->send incoming message: text=<Var/String> temporary=<Var/Boolean>`
   params: %0 RefObj, %1 Var/String, %2 Var/Boolean; calls: `C150.IncomingMessage`
+  - **Does** (medium): Sends an incoming message from an object with the given text.
+    Params: temporary flag: nonzero uses message flags 16, 0 uses 8.
+    Effects: Client.IncomingMessage(text, sender, flags).
 - **212** `send incoming question <Var/String> to player: callback=<Script Name>`
   params: %0 Var/String, %1 Script Name; used 1× (plugin.mini.game.decrypt); calls: `C700.FindScript`, `C3001.IncomingQuestion`
+  - **Does** (medium): Sends an incoming question to the player; the answer calls the callback script.
+    Params: question text; callback script must exist. Title text id 4289 is fixed.
+    Effects: QuestManager.IncomingQuestion(4289, text, 0, script).
+    Edge: Missing callback script -> nothing happens.
 - **213** `send incoming question <Var/String> to player: callback=<Script Name> flags=<Var/Number>`
   params: %0 Var/String, %1 Script Name, %2 Var/Number; calls: `C700.FindScript`, `C3001.IncomingQuestion`
+  - **Does** (medium): Same as 212 with an extra flags/argument value.
+    Params: flags passed as third argument to IncomingQuestion; meaning not verified.
+    Effects: QuestManager.IncomingQuestion(4289, text, flags, script).
+    Edge: Missing script -> nothing.
 - **1066** `$ret = <RefObj> -> serialise object`
   params: %0 RefObj, %1 RetVar
+  - **Does** (medium): Serialises an object reference to the string '$#<id>$'.
+    Returns: String (5).
+    Edge: No null/existence check; null object gives '$#0$' style string.
 - **1042** `$ret =|if/START speak text: page=<Var/Number> id=<Var/Number> priority=<Var/Number>`
   params: %0 RetVar/IF/START, %1 Var/Number, %2 Var/Number, %3 Var/Number; condition; used 18× (!lib.input.enemytarget); calls: `C150.GetKilled`, `C200.SpeakWithPriority`
+  - **Does** (medium): Speaks a voice text (page/id) with a priority and returns the speak result.
+    Returns: Int result of XAudio.SpeakWithPriority; nothing when the player is dead.
+    Params: priority capped to 99. With the START form (return var -2147483646) the speech runs in a forked task and the script does not block.
+    Effects: Plays a speech line; blocks until it is spoken (non-START form).
+    Edge: Nothing spoken when Client.GetKilled().
 - **1418** `display subtitle text: text=<Var/String> duration=<Var/Number> ms`
   params: %0 Var/String, %1 Var/Number; used 10× (Graph.pl.credits.over.time.data); calls: `GetTextDisplayDuration`, `C605.ShowSubTitleText`
+  - **Does** (medium): Shows subtitle text for a duration in ms.
+    Params: duration in ms; if the duration is null or 0 it is computed as GetTextDisplayDuration(text,100)+500.
+    Effects: MonitorControl.ShowSubTitleText(text, ms, 1, 99).
 - **1496** `$ret =|if <RefObj> -> get object name array`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_ObjectExists`, `SE_IsClass`, `GetSectorNameID`, `.GetX`, `.GetY`, `.GetTextID`, `SE_ObjectFunctionExists`, `.GetNameArray`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns the name of an object as a text array.
+    Returns: Array: {7,sectorNameID} for sectors, {13,textID} for class 9001 objects, else the object's GetNameArray(); null if none.
+    Edge: Nonexistent object -> null.
 - **1497** `$ret =|if get text id: ware=<Var/Ware>`
   params: %0 RetVar/IF, %1 Var/Ware; condition; used 1× (Graph.pl.station.data); calls: `GetWareNameID`
+  - **Does** (medium): Returns the name text id of a ware.
+    Returns: Int text id, null if ware is 0.
+    Params: Ware value = (type<<16)|id.
+    Edge: Ware 0 -> null.
 - **1510** `$ret =|if/START speak array: <Value> prio=<Var/Number>`
   params: %0 RetVar/IF/START, %1 Value, %2 Var/Number; condition; used 1× (!ship.cmd.resupply.group.pl); calls: `C150.GetKilled`, `SE_ArraySize`, `SE_ArrayAlloc`, `C200.SpeakArrayWithPriority`
+  - **Does** (medium): Speaks an array of text lines with a priority.
+    Returns: Int result of SpeakArrayWithPriority; nothing when the player is dead or the array is empty.
+    Params: Input is a script array of {type,value} pairs; only the values (odd indices) are spoken. Priority capped to 99. START form (return var -2147483646) forks.
+    Effects: Plays speech; blocks until spoken unless START.
+    Edge: Nothing when Client.GetKilled().
 
 ## Logbook Commands
 
 - **400** `write to player logbook <Value>`
   params: %0 Value; used 9× (!galaxyeditor.obj.addware); calls: `C700.DataTypeToString`, `.LogString`
+  - **Does** (medium): Writes a value, converted to string, to the player's logbook.
+    Params: Any value type.
+    Effects: gPlayerRace.LogString(text).
+    Edge: Empty text is not logged.
 - **402** `write to player logbook: printf: fmt=<Var/String>, <Value>, <Value>, <Value>, <Value>, <Value>`
   params: %0 Var/String, %1 Value, %2 Value, %3 Value, %4 Value, %5 Value; used 18× (plugin.autotrade.getroute.long); calls: `SE_SPrintf`, `C700.DataTypeToString`, `.LogString`
+  - **Does** (medium): Writes a printf-formatted line to the player's logbook.
+    Params: fmt string with up to five values pre-converted to strings.
+    Effects: LogString of the formatted text.
 - **403** `write to player logbook: printf: pageid=<Var/Number> textid=<Var/Number>, <Value>, <Value>, <Value>, <Value>, <Value>`
   params: %0 Var/Number, %1 Var/Number, %2 Value, %3 Value, %4 Value, %5 Value, %6 Value; used 4× (!lib.mtc.buysell); calls: `SE_SPrintf`, `SE_ReadText`, `C700.DataTypeToString`, `.LogString`
+  - **Does** (medium): Writes a printf-formatted line to the player's logbook, format taken from text page/id.
+    Params: pageid, textid, up to five values.
+    Effects: LogString of the formatted text.
 - **401** `<RefObj> ->write to logbook <Value>`
   params: %0 RefObj, %1 Value
+  - **Does** (high): Write to the logbook of an object: does nothing (empty handler).
+    Edge: Parameters are fetched but never used.
 - **404** `write to log file #<Var/Number>  append=<Var/Number>  value=<Value>`
   params: %0 Var/Number, %1 Var/Number, %2 Value; used 20× (lib.ship.signal.killed.trader); calls: `SE_GetExprType`, `SE_FOpen`, `SE_SPrintf`, `SE_FPrintf`, `C700.DataTypeToString`, `SE_FClose`
+  - **Does** (medium): Writes a value as a line to the text file log<NNNNN>.txt.
+    Params: File number must be a literal integer 0..99999 (not a variable); append=nonzero opens 'a', 0 truncates ('w'). File is log%05d.txt in the game's working directory.
+    Effects: Creates/overwrites or appends a file; appends a newline.
+    Edge: A variable or out-of-range file number silently writes nothing.
 - **405** `write to log file #<Var/Number>  append=<Var/Number>  printf: fmt=<Var/String>, <Value>, <Value>, <Value>, <Value>, <Value>`
   params: %0 Var/Number, %1 Var/Number, %2 Var/String, %3 Value, %4 Value, %5 Value, %6 Value, %7 Value; used 8× (lib.ship.sh.attack.trader.flee); calls: `SE_GetExprType`, `SE_FOpen`, `SE_SPrintf`, `SE_FPrintf`, `C700.DataTypeToString`, `SE_FClose`
+  - **Does** (medium): Writes a printf-formatted line to log<NNNNN>.txt.
+    Params: Same file rules as 404; fmt string, up to five values converted to strings first.
+    Effects: File write.
+    Edge: Literal file number only.
 - **406** `write to log file #<Var/Number>  append=<Var/Number>  printf: pageid=<Var/Number> textid=<Var/Number>, <Value>, <Value>, <Value>, <Value>, <Value>`
   params: %0 Var/Number, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Value, %5 Value, %6 Value, %7 Value, %8 Value; used 2× (plugin.autotrade.fuel); calls: `SE_GetExprType`, `SE_FOpen`, `SE_SPrintf`, `SE_FPrintf`, `SE_ReadText`, `C700.DataTypeToString`, `SE_FClose`
+  - **Does** (medium): Writes a printf-formatted line to log<NNNNN>.txt with the format read from text page/id.
+    Params: Same file rules as 404.
+    Effects: File write.
+    Edge: Literal file number only.
 
 ## Fly Commands / Wings
 
 - **1348** `$ret =|if create a new flight wing: name=<Var/String> race=<Var/Race>`
   params: %0 RetVar/IF, %1 Var/String, %2 Var/Race; condition; calls: `C9000.AddWing`
+  - **Does** (medium): Creates a new flight wing with a name for the player (or a race object) and returns it.
+    Returns: Wing (65559); null if AddWing fails.
+    Params: name string; race: when null the wing is owned by the player, else by gRaces[race].
+    Effects: WingManager.AddWing registers a new wing.
+    Edge: Not used in stock scripts.
 - **1355** `$ret =|if find flight wing: name=<Var/String> race=<Var/Race>`
   params: %0 RetVar/IF, %1 Var/String, %2 Var/Race; condition; calls: `C9000.FindWingByName`
+  - **Does** (medium): Finds a flight wing by name.
+    Returns: Wing (65559); null if not found.
+    Params: name must be a string (type 5) and non-empty; race null = player.
+    Edge: Non-string name -> null.
 - **1354** `disband flight wing: wing=<Var/Wing>`
   params: %0 Var/Wing; calls: `C9000.Disband`
+  - **Does** (medium): Disbands a player flight wing.
+    Params: wing as passed in the operand (number or wing object).
+    Effects: WingManager.Disband(player, wing).
+    Edge: Unlike the other wing commands the operand type is not checked or resolved via FindWing; behaviour with number vs wing object depends on Disband.
 - **1358** `remove ship from flight wing: wing=<Var/Wing> ship=<Var/Ship>`
   params: %0 Var/Wing, %1 Var/Ship; calls: `SE_ObjectExists`, `C9000.FindWing`, `.CanShipBeAdded`, `.RemoveShip`
+  - **Does** (high): Removes a ship from a flight wing.
+    Params: wing may be a wing object (65559) or a wing number (looked up in the player's wings); ship must exist.
+    Effects: Wing.RemoveShip(ship).
+    Edge: Guarded by CanShipBeAdded, which only checks the ship's class (class 2134 and not 2061), not membership.
 - **1359** `add ship to flight wing: wing=<Var/Wing> ship=<Var/Ship>`
   params: %0 Var/Wing, %1 Var/Ship; calls: `SE_ObjectExists`, `C9000.FindWing`, `.CanShipBeAdded`, `.AddShip`
+  - **Does** (high): Adds a ship to a flight wing.
+    Params: wing object or wing number; ship must exist and pass the class check.
+    Effects: Adds the ship to the wing.
+    Edge: With a wing number the ship is not added (see bug).
   - **Engine bug (S12, AP FL):** With a wing given by number (not a wing object) the check runs on the found wing but AddShip on the number: the ship is not added. Pass a wing object.
 - **1356** `$ret =|if get flight wing ship array: wing=<Var/Wing>`
   params: %0 RetVar/IF, %1 Var/Wing; condition; used 44× (!lib.get.allships.ingroup); calls: `C9000.FindWing`, `.GetAllExceptTempShips`, `C700.ConvertArrayToScriptArray`
+  - **Does** (high): Returns the ships of a wing without temporarily detached ships.
+    Returns: Array (21) of ships (65542); null if wing missing or no ships.
+    Params: wing object or wing number.
+    Edge: Uses GetAllExceptTempShips.
 - **1360** `$ret =|if get flight wing array`
   params: %0 RetVar/IF; condition; calls: `SE_TableData`, `C9000.GetWings`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns all flight wings of the player as an array.
+    Returns: Array (21) of wings (65559); null if none.
 - **1351** `<RefObj> ->add to flight wing: wing=<Var/Wing>`
   params: %0 RefObj, %1 Var/Wing; calls: `SE_ObjectExists`, `C9000.FindWing`, `.CanShipBeAdded`, `.AddShip`
+  - **Does** (high): Adds the object (ship) to the given flight wing.
+    Params: wing object or number.
+    Effects: Wing.AddShip(object).
+    Edge: Wing number is resolved correctly here (this variant is correct).
 - **1357** `<RefObj> ->remove from flight wing`
   params: %0 RefObj; calls: `SE_ObjectExists`, `.GetWing`, `.CanShipBeAdded`, `.RemoveShip`
+  - **Does** (high): Removes the ship from the wing it belongs to.
+    Effects: Wing.RemoveShip.
+    Edge: Does nothing if the ship is in no wing or fails the class check.
 - **1396** `$ret = get wing command upgrade: command=<Var/Wing Command>`
   params: %0 RetVar, %1 Var/Wing Command; calls: `C703.GetCommandUpgradeWing`
+  - **Does** (medium): Returns the ware needed as a wing command upgrade for a wing command.
+    Returns: Ware (9) if the registry value is > 0; Int 1 if it is < 0; null if 0 (no upgrade).
+    Params: wing command id.
 - **1383** `<RefObj> ->set wing command: <Var/Wing Command>`
   params: %0 RefObj, %1 Var/Wing Command; used 12× (!wing.cmd.attack.std); calls: `.SetCommand`
+  - **Does** (medium): Sets the wing command of a wing.
+    Params: RefObj is the wing; wing command id.
+    Effects: Wing.SetCommand(cmd).
+    Edge: No existence check on the wing.
 - **1384** `<RefObj> ->set wing command: <Var/Wing Command>  target=<Value> target2=<Value>`
   params: %0 RefObj, %1 Var/Wing Command, %2 Value, %3 Value, %4 Value, %5 Value; not in the text: %4, %5 (written as null); used 15× (!wing.cmd.attack.std); calls: `.SetCommandFromScript`
+  - **Does** (medium): Sets the wing command of a wing with up to two target values.
+    Params: command, target, target2 (typed values).
+    Effects: Wing.SetCommandFromScript(...).
+    Edge: No existence check.
 - **1386** `$ret =|if <RefObj> -> get wing natural formation`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_ObjectExists`, `.GetFormationType`
+  - **Does** (high): Returns the natural formation type of a wing.
+    Returns: Int formation type; null if wing missing.
 - **1389** `<RefObj> ->set wing natural formation: formation=<Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `SE_ObjectExists`, `.SetFormationType`
+  - **Does** (medium): Sets the natural formation type of a wing.
+    Params: formation number.
+    Effects: Wing.SetFormationType.
+    Edge: Missing wing ignored.
 - **1390** `$ret =|if <RefObj> -> is temporarily removed from wing`
   params: %0 RefObj, %1 RetVar/IF; condition; used 6× (!wing.cmd.collectflyingwares.std); calls: `SE_ObjectExists`, `.GetWing`, `HasShipTempLeft`
+  - **Does** (high): True if the ship is temporarily removed from its wing.
+    Returns: Int 1/0 from HasShipTempLeft; 0 if the ship is in no wing.
 - **1391** `<RefObj> ->temporarily remove from wing`
   params: %0 RefObj; used 3× (!wing.cmd.equiplike.std); calls: `SE_ObjectExists`, `.GetWing`, `TempRemoveShip`
+  - **Does** (high): Temporarily detaches the ship from its wing (it stays a member).
+    Effects: Marks ship in tempRemovedShips and signals Signal_WingRemove to it.
+    Edge: No wing: ignored.
 - **1392** `<RefObj> ->return to wing`
   params: %0 RefObj; calls: `SE_ObjectExists`, `.GetWing`, `ReturnTempShip`
+  - **Does** (high): Returns a temporarily detached ship to its wing.
+    Effects: Wing.ReturnTempShip clears the detached mark.
+    Edge: No wing or not detached: ignored.
 - **1361** `$ret =|if get predefined wing: wing=<Var/Number>`
   params: %0 RetVar/IF, %1 Var/Number; condition; used 16× (Graph.get.data); calls: `C9000.FindWing`
+  - **Does** (high): Returns a predefined wing (1-8) of the player.
+    Returns: Wing (65559); null if missing.
+    Params: wing number.
+    Edge: Predefined wings 1-8 are created in WingManager.Init.
 - **1393** `<RefObj> ->add wing additional ship command: id=<Var/String> script=<Script Name> pageid=<Var/Number> textid=<Var/Number>`
   params: %0 RefObj, %1 Var/String, %2 Script Name, %3 Var/Number, %4 Var/Number; calls: `SE_ObjectExists`, `C700.FindScript`, `.AddShipCommand`
+  - **Does** (medium): Adds an additional ship command to a wing: id, script and text for the menu.
+    Params: RefObj wing; id string; script name must exist; pageid/textid give the menu label.
+    Effects: Wing.AddShipCommand(id, script, page, text, 0).
+    Edge: Ignored if wing missing or script not found.
 - **1398** `<RefObj> ->add wing additional ship command: id=<Var/String> script=<Script Name> pageid=<Var/Number> textid=<Var/Number> checkscript=<Script Name>`
   params: %0 RefObj, %1 Var/String, %2 Script Name, %3 Var/Number, %4 Var/Number, %5 Script Name; calls: `SE_ObjectExists`, `C700.FindScript`, `.AddShipCommand`
+  - **Does** (medium): As 1393 plus a check script that decides whether the command is offered.
+    Params: checkscript must also exist.
+    Effects: Wing.AddShipCommand with check script.
+    Edge: Ignored unless both scripts exist.
 - **1394** `<RefObj> ->remove wing additional ship command: id=<Var/String>`
   params: %0 RefObj, %1 Var/String; calls: `SE_ObjectExists`, `.RemoveShipCommand`
+  - **Does** (medium): Removes an additional ship command of a wing by id.
+    Params: id string.
+    Effects: Wing.RemoveShipCommand.
+    Edge: Missing wing ignored.
 - **1395** `$ret =|if <RefObj> -> does wing additional ship command exists: id=<Var/String>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/String; condition; calls: `SE_ObjectExists`, `.ShipCommandExists`
+  - **Does** (medium): True if a wing has an additional ship command with the given id.
+    Returns: Int from ShipCommandExists; null if wing missing.
+    Params: id string.
 - **1399** `$ret =|if <RefObj> -> get ship array for wing command upgrade: command=<Var/Wing Command>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Wing Command; condition; used 2× (!wing.cmd.reprov.std); calls: `SE_ObjectExists`, `.GetShipArrayForCommandUpgrade`, `SE_ArraySize`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns the ships of the wing that can take a given wing command upgrade.
+    Returns: Array (21) of ships (65542); null if none.
+    Params: wing command.
+    Edge: Takes element 0 of the method's result.
 - **1397** `$ret =|if <RefObj> -> ship has wing command upgrade: command=<Var/Wing Command>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Wing Command; condition; calls: `SE_ObjectExists`, `C703.GetCommandUpgradeWing`, `.GetWareTypeCountWithPredefined`
+  - **Does** (medium): True if the ship has the ware needed for a wing command upgrade.
+    Returns: Int 1 or 0.
+    Params: wing command.
+    Edge: Missing ship gives null result type unset... returns null; ware from registry decoded as (type=>>16 &255, id=&65535).
 - **1401** `add wing custom command: id=<Var/Number>`
   params: %0 Var/Number; calls: `C9000.AddCustomCommand`
+  - **Does** (medium): Registers a custom wing command id.
+    Params: id (custom ids are 1000 and up).
+    Effects: WingManager.AddCustomCommand.
 - **1402** `remove wing custom command: id=<Var/Number>`
   params: %0 Var/Number; calls: `C9000.RemoveCustomCommand`
+  - **Does** (medium): Removes a custom wing command id.
+    Params: id.
+    Effects: WingManager.RemoveCustomCommand.
 - **1403** `$ret = wing custom command exists: id=<Var/Number>`
   params: %0 RetVar, %1 Var/Number; calls: `C9000.CustomCommandExists`
+  - **Does** (high): True if a custom wing command id is registered.
+    Returns: Int 1 or 0.
+    Params: id.
 - **1404** `START <RefObj> -> wing command <Var/Wing Command> : arg1=<Value>, arg2=<Value>, arg3=<Value>, arg4=<Value>`
   params: %0 RefObj, %1 Var/Wing Command, %2 Value, %3 Value, %4 Value, %5 Value; used 3× (!wing.cmd.equiplike.std); calls: `.StartExecuteCommandFromScript`
+  - **Does** (medium): Starts a wing command on a wing with up to four arguments, running in a forked task.
+    Params: command, arg1..arg4 as typed values (type,value pairs).
+    Effects: Forks a task that calls Wing.StartExecuteCommandFromScript.
+    Edge: Script continues immediately; no check for missing wing.
 - **1405** `$ret =|if <RefObj> -> is in same wing as <Var/Ship>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship; condition; used 5× (!move.wing.dockcarrier); calls: `SE_ObjectExists`, `.GetWing`
+  - **Does** (low): True if the object is in the same wing as the given wing/ship operand.
+    Returns: Int 1 if true, else null.
+    Params: The operand is compared as a wing (type 65559) against the object's wing.
+    Edge: Both objects must exist. Decompile of the else branch is garbled; the ship-vs-ship comparison could not be confirmed.
 - **1409** `$ret =|if <RefObj> -> get wing formation leaders`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_ObjectExists`, `.GetFormationLeaders`
+  - **Does** (medium): Returns the formation leaders of a wing.
+    Returns: Array (21); null if empty or wing missing.
 - **1435** `$ret =|if <RefObj> -> get temporarily removed ship array from wing`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `C700.ConvertArrayToScriptArray`, `SE_TableKeys`, `.GetAllTempShips`
+  - **Does** (medium): Returns the ships temporarily removed from a wing.
+    Returns: Array (21) of ships (65542).
+    Edge: No existence check on the wing; empty wing gives an empty array result path depends on ConvertArrayToScriptArray.
 - **1517** `$ret =|if <RefObj> -> get number of wing formation leaders`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_ObjectExists`, `.GetNumLeadFormations`
+  - **Does** (high): Returns the number of lead formations of a wing.
+    Returns: Int.
+    Edge: Missing wing -> null.
 - **1518** `$ret =|if <RefObj> -> get max number of ships per wing formation`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_ObjectExists`, `.GetMaxFollowers`
+  - **Does** (high): Returns the maximum number of ships per wing formation.
+    Returns: Int (maxFollowers).
+    Edge: Missing wing -> null.
 
 ## Fly Commands / Fleet Commands
 
 - **1568** `$ret =|if <RefObj> -> get fleet ships: only currently with fleet: <Var/Boolean>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Boolean; condition; used 9× (!fight.fleetcmdr.defend); calls: `.IsInFleet`, `.GetFleetShips`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`
+  - **Does** (high): Returns the ships in the fleet of the given ship.
+    Returns: Array (21) of ships (65542); null if the ship is not in a fleet.
+    Params: Boolean: nonzero = only ships marked with-fleet plus the leader.
+    Edge: Fleets are computed from the player's owned ships only.
 - **1569** `<RefObj> -> set fleet leader: <Var/Ship>`
   params: %0 RefObj, %1 Var/Ship; calls: `.SetFleetLeader`
+  - **Does** (high): Makes the ship a member of the fleet led by the given ship.
+    Params: leader ship; if it does not exist the ship leaves its fleet.
+    Effects: Sets fleetLeader; promotes the leader to a fleet leader first if needed; a former leader hands over leadership.
+    Edge: Leader == this makes it the fleet's own leader.
 - **1570** `<RefObj> -> remove from fleet`
   params: %0 RefObj; calls: `.RemoveFromFleet`
+  - **Does** (medium): Removes the ship from its fleet.
+    Effects: Ship.RemoveFromFleet.
 - **1571** `<RefObj> -> switch fleet leader to: <Var/Ship>`
   params: %0 RefObj, %1 Var/Ship; calls: `.SwitchFleetLeader`
+  - **Does** (high): Switches fleet leadership from this ship to a new ship.
+    Params: new leader.
+    Effects: All other members are re-linked to the new leader.
+    Edge: Does nothing if this ship is not a fleet leader.
 - **1572** `$ret =|if <RefObj> -> is in fleet`
   params: %0 RefObj, %1 RetVar/IF; condition; used 1× (Graph.get.data); calls: `.IsInFleet`
+  - **Does** (medium): True if the ship is in a fleet.
+    Returns: Int 1/0.
 - **1573** `$ret =|if <RefObj> -> get fleet leader`
   params: %0 RefObj, %1 RetVar/IF; condition; used 7× (!lib.fleet.getship.role); calls: `SE_ObjectExists`, `.GetFleetLeader`
+  - **Does** (medium): Returns the fleet leader of the ship.
+    Returns: Ship (65542); null if the leader does not exist.
 - **1574** `$ret =|if <RefObj> -> is fleet leader`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (!move.fleet.getwares); calls: `.IsFleetLeader`
+  - **Does** (high): True if the ship is its own fleet's leader.
+    Returns: Int 1/0.
 - **1575** `$ret =|if <RefObj> -> is currently with fleet`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (!lib.fleet.getship.role); calls: `.IsWithFleet`
+  - **Does** (high): True if the ship is currently with its fleet (behaviour flag 1048576).
+    Returns: Int: the flag bit value (1048576) or 0, not 1.
+    Edge: Returns the raw masked flag, so comparing to 1 fails.
 - **1576** `<RefObj> -> set with fleet: <Var/Boolean>`
   params: %0 RefObj, %1 Var/Boolean; used 14× (!fight.fleet.attackall); calls: `.SetWithFleet`
+  - **Does** (high): Marks the ship as currently with its fleet or not.
+    Params: Boolean.
+    Effects: Sets or clears behaviour flag 1048576.
 
 ## Fly Commands
 
 - **500** `$ret =|if <RefObj> -> fly to home base`
   params: %0 RefObj, %1 RetVar/IF; `@` interruptible, condition; calls: `.__MoveToStation`, `.GetOwnerObject`, `.ClearAction`
+  - **Does** (medium): Orders the ship to fly to its owner station (home base) and waits until it arrives or is interrupted.
+    Returns: Int action result code (type 19).
+    Effects: Ship flight/docking; ClearAction afterwards.
+    Edge: Home base is GetOwnerObject.
 - **501** `$ret =|if <RefObj> -> fly to station <Var/Station>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Station; `@` interruptible, condition; used 4× (!move.follow.template.notship); calls: `.__MoveToStation`, `.ClearAction`
+  - **Does** (medium): Orders the ship to fly to the given station and waits until arrival or interrupt.
+    Returns: Int action result code (19).
+    Params: station.
+    Effects: Flight; ClearAction at end.
 - **502** `$ret =|if <RefObj> -> fly to sector <Var/Sector>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Sector; `@` interruptible, condition; used 20× (!fight.attack.object.bomber); calls: `.__MoveToSector`, `.ClearAction`
+  - **Does** (medium): Orders the ship to fly to the given sector and waits until arrival or interrupt.
+    Returns: Int action result code (19).
+    Params: sector.
+    Effects: Flight (via gates); ClearAction at end.
 - **503** `$ret =|if <RefObj> -> find nearest enemy ship: max.dist=<Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number; condition; used 10× (!job.fight.defencebase); calls: `.FindNearestEnemyShip`
+  - **Does** (high): Finds the nearest enemy ship in the object's sector within a maximum distance.
+    Returns: Ship (65542); null if none.
+    Params: max.dist is multiplied by 500 (metres to engine units); null/0 means unlimited.
+    Edge: Object not in a sector -> null.
 - **504** `$ret =|if <RefObj> -> find nearest enemy station: max.dist=<Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number; condition; calls: `.FindNearestEnemyStation`
+  - **Does** (high): Finds the nearest enemy station in the sector within a maximum distance.
+    Returns: Station (65543); null if none.
+    Params: max.dist times 500; 0 = unlimited.
+    Edge: Skips objects flagged NoFind.
 - **505** `$ret =|if <RefObj> -> fire lasers on target <Value> using turret <Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value, %3 Var/Number; condition; used 24× (!fight.attack.object.bomber); calls: `.GetEnvironment`, `SE_IsClass`, `.FireLasersOnTarget`
+  - **Does** (medium): Fires the ship's lasers on a target with a given turret.
+    Returns: Int 1 if the fire call succeeded, else null.
+    Params: target object, turret number.
+    Effects: Fires weapons.
+    Edge: Only runs when both objects are in the same sector.
 - **539** `$ret =|if <RefObj> -> turn turret <Var/Number> to target <Var/Ship/Station> : timeout=<Var/Number> ms`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship/Station, %3 Var/Number, %4 Var/Number; `@` interruptible, condition; used 4× (!plugin.gz.missile.def.mk3); calls: `.GetEnvironment`, `SE_IsClass`, `.TurretTurnToObject`
+  - **Does** (medium): Turns a turret toward a target, waiting until aimed, timeout or interrupt.
+    Returns: Int action result (19).
+    Params: target ship/station, turret number, timeout in ms.
+    Effects: Turret rotation.
+    Edge: Skipped (null) unless both are in the same sector.
 - **506** `$ret =|if <RefObj> -> attack run on target <Value> : timeout=<Var/Number> ms`
   params: %0 RefObj, %1 RetVar/IF, %2 Value, %3 Var/Number; `@` interruptible, condition; used 9× (!fight.attack.object.bomber); calls: `.__AttackRunOnTarget`
+  - **Does** (medium): Performs an attack run on the target until timeout, interrupt or completion.
+    Returns: Int action result (19).
+    Params: target, timeout in ms.
+    Effects: Flight combat; no ClearAction here.
 - **565** `$ret =|if <RefObj> -> defensive move: type=<Var/Number>, intensity=<Var/Number>, timeout=<Var/Number>ms, avoid object=<Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Value; `@` interruptible, condition; used 32× (!fight.attack.object.bomber); calls: `.GetEnvironment`, `SE_IsClass`, `.__DefensiveMove`
+  - **Does** (medium): Performs a defensive evasive move for a time, optionally avoiding an object.
+    Returns: Int action result (19); null if not in a sector.
+    Params: type, intensity, timeout in ms, avoid object.
+    Effects: Flight manoeuvre.
+    Edge: Only works when the ship is in a sector.
 - **540** `$ret =|if <RefObj> -> move to ware object <Value> for collecting: timeout=<Var/Number> ms`
   params: %0 RefObj, %1 RetVar/IF, %2 Value, %3 Var/Number; `@` interruptible, condition; used 4× (!move.collectrocks); calls: `.__CaptureObject`
+  - **Does** (medium): Flies to a loose ware object to collect it, until reached, timeout or interrupt.
+    Returns: Int action result (19).
+    Params: ware object, timeout in ms.
+    Effects: Flight (__CaptureObject).
 - **541** `$ret =|if <RefObj> -> catch ware object <Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value; condition; used 4× (!move.collectrocks); calls: `.CatchWareObject`
+  - **Does** (medium): Catches a ware object (instant pickup).
+    Returns: Int from CatchWareObject.
+    Params: ware object.
+    Effects: Picks the object into the cargo.
 - **507** `$ret =|if <RefObj> -> move around <Var/Number> ms`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number; `@` interruptible, condition; used 118× (!fight.attack.enemiesrange.land); calls: `.__Idle`, `.ClearAction`
+  - **Does** (high): Idles the ship for a number of ms (drifting if the player watches), waiting until time is up or interrupted.
+    Returns: Int action result (19): 4 when time passed, 7 when aborted by attack flag.
+    Params: time in ms.
+    Effects: Ship idle; ClearAction at end.
+    Edge: Outside a station it drifts randomly when the player watches the sector.
 - **508** `$ret =|if <RefObj> -> escort ship <Var/Ship>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship; `@` interruptible, condition; used 1× (!ship.cmd.follow.spacefly); calls: `.__EscortObject`, `.ClearAction`
+  - **Does** (medium): Escorts the given ship with no timeout until interrupted.
+    Returns: Int action result (19).
+    Params: ship.
+    Effects: Flight; ClearAction at end.
 - **562** `$ret =|if <RefObj> -> escort ship <Var/Ship>: timeout=<Var/Number> ms`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship, %3 Var/Number; `@` interruptible, condition; used 7× (!move.boardship.pods); calls: `.__EscortObject`, `.ClearAction`
+  - **Does** (medium): Escorts the given ship with a timeout in ms.
+    Returns: Int action result (19).
+    Params: timeout ms; null/0 means no timeout (0).
+    Effects: Flight; ClearAction at end.
 - **509** `<RefObj> ->set formation <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 3× (!move.setformation.delta); calls: `.SetFormationType`
+  - **Does** (high): Sets the object's formation type.
+    Params: Formation type number (value cell 4 only; type cell ignored).
+    Effects: Writes formationType of the ship.
 - **510** `<RefObj> ->add to formation with leader <Var/Ship>`
   params: %0 RefObj, %1 Var/Ship; used 10× (!job.wing.attacknearest); calls: `.AddToFormation`
+  - **Does** (medium): Adds the ship to the formation of the given leader ship.
+    Params: Leader ship.
+    Effects: Ship joins the leader's formation.
+    Edge: Leader is not checked here.
 - **511** `<RefObj> ->remove from any formation`
   params: %0 RefObj; used 9× (!lib.ship.regroup); calls: `.RemoveFromFormation`
+  - **Does** (medium): Removes the ship from any formation it is in.
+    Effects: Leaves leader/follower relations.
 - **512** `$ret =|if <RefObj> -> get formation leader`
   params: %0 RefObj, %1 RetVar/IF; condition; used 13× (!fight.attack.object.bomber); calls: `.GetFormationLeader`
+  - **Does** (medium): Returns the formation leader of the ship.
+    Returns: Ship (65542) or null when it has no leader.
 - **559** `$ret = <RefObj> -> get formation follower ships`
   params: %0 RefObj, %1 RetVar; used 15× (!fight.defend.sector); calls: `.GetFormationShips`, `SE_ArraySize`, `SE_ArrayAlloc`
+  - **Does** (medium): Returns an array of the ships following this ship in formation.
+    Returns: Array (21) of (65542, ship) pairs, or null when there are none.
+    Edge: Empty list gives null, not an empty array.
 - **1065** `$ret = <RefObj> -> get formation`
   params: %0 RefObj, %1 RetVar; calls: `.GetFormationType`
+  - **Does** (high): Intended to return the ship's formation type, but the result is broken.
+    Returns: Intended: int formation. Actual: type cell holds the number, value cell is 0.
   - **Engine bug (S2, AP FL):** Same bug as 1064: the formation number lands in the type slot, the value is 0.
 - **530** `$ret = <RefObj> -> select new formation leader by: ship class=<Var/Number> strength=<Var/Number> min.speed=<Var/Number>`
   params: %0 RefObj, %1 RetVar, %2 Var/Number, %3 Var/Number, %4 Var/Number; used 6× (!ship.signal.captured); calls: `.SelectNewFormationLeader`
+  - **Does** (medium): Picks a new formation leader among the followers by class, strength and minimum speed criteria.
+    Returns: Ship (65542) or null.
+    Params: Each criterion is used only if non-null/non-zero; builds mask 1=class, 2=strength, 4=min speed.
 - **531** `$ret =|if <RefObj> -> has formation ships`
   params: %0 RefObj, %1 RetVar/IF; condition; used 7× (!move.movetonextsector); calls: `.GetFormationShips`
+  - **Does** (medium): Tests whether the ship has formation followers.
+    Returns: 1 if it has any formation ships, else null.
 - **532** `<RefObj> ->give formation leadership to <Var/Ship>`
   params: %0 RefObj, %1 Var/Ship; used 5× (!ship.signal.captured); calls: `.GiveFormationLeadershipTo`
+  - **Does** (medium): Hands formation leadership to another ship of the formation.
+    Params: New leader ship.
+    Effects: Changes formation leader.
 - **1026** `<RefObj> ->set as player wingman: <Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `.SetPlayerWingMen`
+  - **Does** (medium): Marks or unmarks the ship as a player wingman.
+    Params: Enable flag (value cell).
+    Effects: Sets player-wingman state on the ship.
 - **1027** `$ret =|if <RefObj> -> is player wingman`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.IsPlayerWingMen`
+  - **Does** (medium): Tests whether the ship is a player wingman.
+    Returns: 1 if wingman, else null.
 - **514** `START <RefObj> -> command <Object Command> : arg1=<Value>, arg2=<Value>, arg3=<Value>, arg4=<Value>`
   params: %0 RefObj, %1 Object Command, %2 Value, %3 Value, %4 Value, %5 Value; used 66× (!fight.fleet.attackall); calls: `.StartExecuteCommandFromScript`
+  - **Does** (medium): Starts a ship command with up to 4 arguments in a forked task, so the script does not block.
+    Params: Command id (Object Command) then four values; each arg passes as a (type,value) pair.
+    Effects: Starts the command on the ship (StartExecuteCommandFromScript).
+    Edge: Fork starts immediately, no delay.
 - **1185** `START <RefObj> -> delayed command <Object Command> : arg1=<Value>, arg2=<Value>, arg3=<Value>, arg4=<Value>`
   params: %0 RefObj, %1 Object Command, %2 Value, %3 Value, %4 Value, %5 Value; used 23× (!fight.war.attackplayer); calls: `TI_Delay`, `.StartExecuteCommandFromScript`
+  - **Does** (medium): Like START command, but the forked task waits 200 ms first, then starts the command.
+    Params: Command id plus four values (pairs).
+    Effects: Starts the command on the ship 200 ms later.
 - **515** `<RefObj> ->send signal <Object Signal> : arg1=<Value>, arg2=<Value>, arg3=<Value>, arg4=<Value>`
   params: %0 RefObj, %1 Object Signal, %2 Value, %3 Value, %4 Value, %5 Value; used 5× (!plugin.acp.fight.attack.object); calls: `TI_Delay`, `.SendSignalFromScript`
+  - **Does** (medium): Sends a signal with up to 4 arguments to the object, in a forked task delayed 1 ms.
+    Params: Signal id plus four value pairs.
+    Effects: Calls SendSignalFromScript on the object.
 - **516** `$ret =|if <RefObj> -> follow object <Var/Ship> with precision <Var/Number> m`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship, %3 Var/Number; `@` interruptible, condition; used 11× (!lib.nav.switch); calls: `.__EscortObject`, `.ClearAction`
+  - **Does** (high): Orders the ship to escort/follow the target with given precision and waits until the action ends or is interrupted.
+    Returns: Command result (type 19).
+    Params: Precision in m (x500 to engine units); null precision means 0. Target taken from value cell. No timeout.
+    Effects: Ship flies in formation-like follow mode; ClearAction afterwards.
 - **563** `$ret =|if <RefObj> -> follow <Var/Ship> with precision <Var/Number> m : timeout=<Var/Number> ms`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship, %3 Var/Number, %4 Var/Number; `@` interruptible, condition; used 27× (!fight.attack.object.bomber); calls: `.__EscortObject`, `.ClearAction`
+  - **Does** (high): Same as 516 with timeout: follows the target until finished, interrupted or timeout.
+    Returns: Command result (type 19).
+    Params: Precision in m (x500); timeout in ms passed unchanged (>0 only; 0/null = none).
+    Effects: Ship follows target; ClearAction afterwards.
 - **517** `<RefObj> ->set follow mode <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 8× (!ship.signal.attacked.bigship); calls: `.SetFollowMode`
+  - **Does** (medium): Turns follow mode on or off.
+    Params: 0/null = off, anything else on.
+    Effects: Sets follow-mode flag.
 - **518** `$ret =|if <RefObj> -> get follow mode`
   params: %0 RefObj, %1 RetVar/IF; condition; used 4× (!ship.signal.attacked.bigship); calls: `.IsInFollowMode`
+  - **Does** (medium): Tests whether the ship is in follow mode.
+    Returns: 1 if in follow mode, else null.
 - **566** `$ret =|if <RefObj> -> use jump drive: target=<Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value; condition; used 8× (!move.emergencyjump); calls: `.JumpToSector`
+  - **Does** (medium): Jumps the ship to the given sector with the jump drive.
+    Returns: Command result (type 19).
+    Params: Target sector object.
+    Effects: Performs jump (JumpToSector with 0 extra args); consumes jump energy.
 - **567** `$ret =|if <RefObj> -> needed jump drive energy for jump to sector <Var/Sector>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Sector; condition; used 23× (!fight.defend.sector); calls: `C5006.NeededEnergyForJump`, `.GetX`, `.GetY`
+  - **Does** (medium): Returns the jump drive energy needed for the ship to jump to the sector.
+    Returns: Int energy; null when sector is null.
+    Params: Sector object; uses its X and Y.
+    Edge: Null sector: result null. Null ship: depends on JumpDriveMenu.
 - **519** `<RefObj> ->set destination to <Value>`
   params: %0 RefObj, %1 Value; used 120× (!fight.defend.sector); calls: `.SetDestination`
+  - **Does** (medium): Sets the ship's destination object/position.
+    Params: Value (any typed ref).
+    Effects: Writes destination.
 - **520** `$ret =|if <RefObj> -> get destination`
   params: %0 RefObj, %1 RetVar/IF; condition; used 8× (!move.follow.template); calls: `.GetDestination`, `SE_IsClass`
+  - **Does** (medium): Returns the ship's destination.
+    Returns: Object with type by class, or null.
+    Edge: Result type is derived from the object class: wing 65559, 1700 -> 65562, ship 65542, station 65543, sector 65544, else 65553.
 - **521** `<RefObj> ->set attack target to <Value>`
   params: %0 RefObj, %1 Value; used 38× (!fight.attack.object.bomber); calls: `.SetAttackTarget`
+  - **Does** (medium): Sets the ship's attack target.
+    Params: Value (object).
+    Effects: Writes attack target.
 - **522** `$ret =|if <RefObj> -> get attack target`
   params: %0 RefObj, %1 RetVar/IF; condition; used 29× (!job.fight.defencebase); calls: `.GetAttackTarget`, `SE_IsClass`
+  - **Does** (medium): Returns the ship's attack target.
+    Returns: Object with type by class, or null.
+    Edge: Result type is derived from the object class: wing 65559, 1700 -> 65562, ship 65542, station 65543, sector 65544, else 65553.
 - **523** `$ret =|if <RefObj> -> move to position: x=<Var/Number> y=<Var/Number> z=<Var/Number> with precision <Var/Number> m`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Number; `@` interruptible, condition; used 10× (!fight.attack.enemiesrange.land); calls: `.__MovePos`, `.ClearAction`
+  - **Does** (high): Flies the ship to the position x,y,z within the precision and waits until arrival, failure or interrupt.
+    Returns: Command result (type 19).
+    Params: x, y, z and precision in metres, multiplied by 500 to engine units; position is in the ship's sector.
+    Effects: Ship flies; ClearAction afterwards.
 - **524** `<RefObj> ->set command: <Object Command>`
   params: %0 RefObj, %1 Object Command; used 83× (!fight.defend.sector); calls: `.SetCommand`
+  - **Does** (medium): Sets the ship's current command (without targets).
+    Params: Object Command id.
+    Effects: Sets command via SetCommand.
 - **525** `$ret =|if <RefObj> -> get command`
   params: %0 RefObj, %1 RetVar/IF; condition; used 48× (!fight.fleet.attackall); calls: `SE_ObjectExists`, `.GetCommand`
+  - **Does** (medium): Returns the ship's current command.
+    Returns: Int command (type 18), or type 25 when the object is a wing (65559).
+    Edge: Non-existing object: result null. Wing gives type 25.
 - **526** `<RefObj> ->set command target: <Value>`
   params: %0 RefObj, %1 Value; used 32× (!fight.defend.sector); calls: `.SetCommandTarget`
+  - **Does** (medium): Sets the command target (type and value) of the ship.
+    Params: Passes both type and value cells of the target.
+    Effects: Writes command target.
 - **527** `$ret =|if <RefObj> -> get command target`
   params: %0 RefObj, %1 RetVar/IF; condition; used 8× (!fight.fleet.intercept); calls: `.GetCommandTargetScriptDataType`, `.GetCommandTarget`
+  - **Does** (medium): Returns the command target.
+    Returns: Value typed from GetCommandTargetScriptDataType.
 - **528** `<RefObj> ->set command target2: <Value>`
   params: %0 RefObj, %1 Value; used 8× (!move.rearm.group); calls: `.SetCommandTarget2`
+  - **Does** (medium): Sets the second command target.
+    Params: Both type and value passed.
+    Effects: Writes command target 2.
 - **529** `$ret =|if <RefObj> -> get command target2`
   params: %0 RefObj, %1 RetVar/IF; condition; used 14× (!wing.cmd.attacknearest.std); calls: `.GetCommandTarget2ScriptDataType`, `.GetCommandTarget2`
+  - **Does** (medium): Returns the second command target.
+    Returns: Value typed from GetCommandTarget2ScriptDataType.
 - **535** `$ret =|if get player tracking aim`
   params: %0 RetVar/IF; condition; used 24× (!lib.get.enemytarget); calls: `C605.GetMainMonitor`, `GetTracking`, `SA_GetEventObject`, `SE_IsClass`
+  - **Does** (medium): Returns the object the player is tracking (aim), by the main monitor.
+    Returns: Object with type by class, or null.
+    Edge: No tracking: null.
 - **1046** `set player tracking aim to <RefObj> ->`
   params: %0 RefObj; calls: `C605.GetActiveMonitorControlObject`, `C605.TrackingAllowed`, `SE_IsClass`, `.GetNameID`, `.GetObjectID`, `SA_GetEnvironment`, `C605.GetMainMonitor`, `SetTracking`
+  - **Does** (medium): Sets the player's tracking aim to the object, if allowed.
+    Params: Object must be valid, not class 2070, and in the same environment as the player.
+    Effects: Sets main monitor tracking.
+    Edge: Silently does nothing if no monitor control, tracking disallowed, or object in another environment.
 - **536** `$ret =|if <RefObj> -> is <Var/Ship/Station> in firing range of turret <Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship/Station, %3 Var/Number; condition; used 17× (!plugin.acp.fight.attack.object); calls: `.IsTargetInFiringRangeOfTurret`
+  - **Does** (medium): Tests whether the target is in firing range of the given turret.
+    Returns: 1/0 result (type 4), null if 0.
+    Params: Target ship or station; turret number.
 - **537** `$ret = <RefObj> -> find enemy in firing range of turret <Var/Number>`
   params: %0 RefObj, %1 RetVar, %2 Var/Number; used 4× (!plugin.acp.fight.attack.object); calls: `.FindEnemyInFiringRangeOfTurret`, `SE_IsClass`
+  - **Does** (medium): Finds an enemy in the firing range of the turret.
+    Returns: Object with type by class, or null.
+    Params: Turret number.
+    Edge: Result type is derived from the object class: wing 65559, 1700 -> 65562, ship 65542, station 65543, sector 65544, else 65553.
 - **538** `<RefObj> ->set command: <Object Command>  target=<Value> target2=<Value> par1=<Value> par2=<Value>`
   params: %0 RefObj, %1 Object Command, %2 Value, %3 Value, %4 Value, %5 Value; used 125× (!fight.patrol.attack.object); calls: `.SetCommandFromScript`
+  - **Does** (medium): Sets the ship command with target, target2 and two parameters in one call.
+    Params: Command id plus four values (pairs).
+    Effects: Sets command via SetCommandFromScript.
 - **542** `$ret =|if <RefObj> -> fire missile <Var/Ware> on <Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value, %3 Var/Ware; condition; used 19× (!fight.attack.object.bomber); calls: `.ShootMissile`
+  - **Does** (medium): Fires the missile type at the target.
+    Returns: 1 if fired, else null.
+    Params: Ware: missile subtype = low 16 bits. Target in value cell.
+    Effects: Launches a missile.
 - **1327** `$ret =|if <RefObj> -> fire missile <Var/Ware> from turret <Var/Number> on <Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Value, %4 Var/Ware; condition; used 4× (!plugin.gz.missile.def.mk3); calls: `.GetObjectID`, `.GetSector`, `.CanFireMissile`, `.ShootMissileSECOBID`, `.ShootMissile`
+  - **Does** (medium): Fires the missile from a given turret at the target; checks CanFireMissile first when objects exist.
+    Returns: 1 on success; result 1 also set in fallback path.
+    Params: Turret number; missile ware (low 16 bits).
+    Effects: Launches a missile (ShootMissileSECOBID).
+    Edge: Falls back to plain path if object ids or player sector are missing.
 - **544** `$ret =|if <RefObj> -> find best missile for target <Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value; condition; used 6× (!fight.attack.object.bomber); calls: `.FindMissileForTarget`
+  - **Does** (medium): Finds the best missile for the target from the ship's stock.
+    Returns: Ware (9) 655360|subtype, or null if none.
+    Params: Target value.
 - **545** `$ret = best missile type for target <Value>`
   params: %0 RetVar, %1 Value; calls: `.GetBestMissileToFireOnThis`
+  - **Does** (medium): Returns the best missile type to fire on this target (no firing ship).
+    Returns: Ware 655360|subtype, or null.
+    Params: Target object.
+    Edge: Null target gives 0 or null.
 - **543** `$ret =|if <RefObj> -> get current missile`
   params: %0 RefObj, %1 RetVar/IF; condition; used 1× (!ship.cmd.missile.attack.pre); calls: `.GetCurrentMissileType`
+  - **Does** (medium): Returns the missile currently selected on the ship.
+    Returns: Ware 655360|subtype, or null if none.
 - **547** `$ret =|if <RefObj> -> is missile <Var/Ware> ready to fire`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 6× (!fight.attack.object.std); calls: `.IsMissileReady`
+  - **Does** (medium): Tests whether the missile is ready to fire.
+    Returns: 1/true (type 4) or null.
+    Params: Ware; low 16 bits used.
 - **548** `$ret =|if <RefObj> -> should a missile be fired`
   params: %0 RefObj, %1 RetVar/IF; condition; used 8× (!fight.attack.object.std); calls: `.ShouldFireMissile`
+  - **Does** (medium): Tests whether the AI decides a missile should be fired now.
+    Returns: int result, null if 0.
 - **549** `$ret = <RefObj> -> get fire missile probability`
   params: %0 RefObj, %1 RetVar; calls: `.GetFireMissileProb`
+  - **Does** (high): Returns the fire-missile probability of the ship.
+    Returns: Int (type 4).
+    Edge: Returns type 4 with value 0.
 - **550** `$ret = <RefObj> -> get fire missile time difference in seconds`
   params: %0 RefObj, %1 RetVar; used 6× (!fight.attack.object.bomber); calls: `.GetFireMissileTimeDiff`
+  - **Does** (high): Returns the fire-missile time difference (cooldown) in seconds.
+    Returns: Int (type 4), seconds.
 - **551** `<RefObj> ->set fire missile probability to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 11× (!plugin.acp.fight.attack.tactics); calls: `.SetFireMissileProb`
+  - **Does** (high): Sets the fire-missile probability.
+    Params: Number.
+    Effects: Writes fireMissileProb.
 - **552** `<RefObj> ->set fire missile time difference to <Var/Number> ms`
   params: %0 RefObj, %1 Var/Number; used 26× (!fight.attack.object.bomber); calls: `.SetFireMissileTimeDiff`
+  - **Does** (medium): Sets the fire-missile time difference (cooldown) between shots.
+    Params: Editor text says ms, but it is the same field as 550 (seconds per its comment); no conversion.
+    Effects: Writes missileCooldown.
+  - Suspected (not verified): Editor label says ms, but 550 says seconds and no scaling is done; unit mismatch in label.
 - **568** `$ret =|if <RefObj> -> check, select and fire missile on <Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value; condition; used 1× (!fight.attack.object.bomber); calls: `.SelectAndFireMissileOn`
+  - **Does** (medium): Checks, selects and fires a missile at the target.
+    Returns: Int (type 4).
+    Params: Target value.
+    Effects: May fire a missile.
 - **546** `$ret =|if <RefObj> -> launch <Var/Number> fight drones: protect me or attack target=<Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Value; condition; used 2× (!ship.signal.attacked.ts); calls: `.LaunchFightDrones`
+  - **Does** (medium): Launches fight drones that protect the ship or attack the target.
+    Returns: Number launched (type 4) if > 0, else null.
+    Params: Number of drones; target value.
+    Effects: Launches drones.
 - **558** `$ret = <RefObj> -> find nearest missile aiming to me`
   params: %0 RefObj, %1 RetVar; used 15× (!fight.attack.object.bomber); calls: `.FindNearestMissileAimingAtMe`
+  - **Does** (medium): Finds the nearest missile aiming at this ship.
+    Returns: Object (65553) or null.
 - **1095** `$ret = <RefObj> -> get array of missiles aiming to me`
   params: %0 RefObj, %1 RetVar; used 14× (!fight.attack.object.bomber); calls: `.GetMissileArrayAimingAtMe`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns the missiles aiming at this ship as an array.
+    Returns: Array (21) of objects (65553), or null.
 - **560** `$ret =|if <RefObj> -> decouple ships`
   params: %0 RefObj, %1 RetVar/IF; condition; used 4× (!fight.attack.object.std); calls: `.DecoupleShips`
+  - **Does** (medium): Decouples coupled ships.
+    Returns: 1 if done, else null.
+    Effects: Decouples the ships.
 - **561** `$ret =|if <RefObj> -> is decoupled ships leader`
   params: %0 RefObj, %1 RetVar/IF; condition; used 1× (!ship.signal.killed.khaak); calls: `.IsDecoupledShipsLeader`
+  - **Does** (medium): Tests whether the ship is the leader of decoupled ships.
+    Returns: 1 or null.
 - **564** `$ret =|if <RefObj> -> get current galaxy flight timestep in ms`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (!fight.attack.object.owp); calls: `.GetCurrentGalaxyFlightTimeStep`
+  - **Does** (medium): Returns the current galaxy flight timestep in ms.
+    Returns: Int ms.
 - **904** `$ret =|if <RefObj> -> is landing`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.IsLanding`
+  - **Does** (medium): Tests whether the object is landing.
+    Returns: Int from IsLanding.
 - **905** `$ret =|if <RefObj> -> is starting`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.IsStarting`
+  - **Does** (medium): Tests whether the object is taking off (starting).
+    Returns: Int from IsStarting.
 - **570** `$ret =|if <RefObj> -> move to position continue: x=<Var/Number> y=<Var/Number> z=<Var/Number> with precision <Var/Number> m`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Number; `@` interruptible, condition; used 9× (!move.deploy.fighters); calls: `.__MovePosContinue`, `.ClearAction`
+  - **Does** (medium): Continues a move to position x,y,z (without re-planning) and waits until arrival or interrupt.
+    Returns: Command result (type 19).
+    Params: x, y, z, precision in m (x500).
+    Effects: Ship flies; ClearAction afterwards.
 - **1216** `$ret =|if <RefObj> -> move to debris/asteroid <Value> and turn turret <Var/Number> to target: timeout=<Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value, %3 Var/Number, %4 Var/Number; condition; used 1× (!move.mine.minemineral); calls: `.__MoveToBreakDebris`
+  - **Does** (medium): Moves to a debris/asteroid and turns the turret to the target; waits for arrival or timeout.
+    Returns: Command result (type 19).
+    Params: Target value; turret number; timeout (not scaled).
+    Effects: Ship flies to the object.
 - **1018** `$ret =|if <RefObj> -> add big ship <Var/Ship>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship; condition; calls: `SE_IsClass`, `.IsDockingPossibleOf`, `.HasFreeDockPort`, `.ReleaseFromSlot`, `.MoveTo`
+  - **Does** (medium): Moves the given ship into the dock of this ship/station if a free dock port exists.
+    Returns: 1 on success, else null.
+    Params: Big ship to add.
+    Effects: Releases the ship from its slot and moves it into the host.
+    Edge: Only for class 2004/2016 hosts with IsDockingPossibleOf and a free port.
 - **1019** `$ret =|if <RefObj> -> has a free ship dock port: ship subtype = <Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value; condition; used 15× (!job.fight.defencebase); calls: `SE_IsClass`, `.GetSubType`, `.HasFreeDockPortSubType`
+  - **Does** (medium): Tests whether the host has a free dock port for the given ship subtype.
+    Returns: Int.
+    Params: Subtype from a ship (65542: GetSubType) or low 16 bits of ware.
+    Edge: Hosts other than ships/stations: result null.
 - **1020** `$ret =|if <RefObj> -> can be controlled by race logic`
   params: %0 RefObj, %1 RetVar/IF; condition; used 5× (!fight.attack.object.std); calls: `.AllowRaceLogicControl`
+  - **Does** (medium): Tests whether the object may be controlled by race logic.
+    Returns: 1 or null.
 - **1021** `<RefObj> ->set race logic control enabled to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 19× (!job.trade.planetsupply); calls: `.SetRaceLogicControl`
+  - **Does** (medium): Enables or disables race logic control.
+    Params: Number flag.
+    Effects: Writes the race-logic-control flag.
 - **1022** `$ret =|if <RefObj> -> can execute StartAction`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.IsStartActionEnabled`
+  - **Does** (medium): Tests whether StartAction can be executed.
+    Returns: 1 or null.
 - **1023** `<RefObj> ->set StartAction enabled to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `.SetStartActionEnabled`
+  - **Does** (medium): Enables or disables StartAction.
+    Params: Number flag.
+    Effects: Writes the StartAction flag.
 - **1094** `$ret =|if <RefObj> -> get current action`
   params: %0 RefObj, %1 RetVar/IF; condition; used 6× (!move.follow.template); calls: `.GetAction`
+  - **Does** (medium): Returns the ship's current action id.
+    Returns: Int (type 4).
 - **1098** `<RefObj> ->set pirate cover state to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 6× (!job.patrol.pirat.long); calls: `.SetCoverRace`
+  - **Does** (medium): Sets the pirate cover race state of the ship.
+    Params: Number.
+    Effects: SetCoverRace.
 - **1099** `$ret =|if <RefObj> -> scan potential pirate <Var/Ship> for illegal wares`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship; condition; used 1× (!move.scanpatrol); calls: `.Scan`, `.HasIllegalGoods`
+  - **Does** (medium): Scans a potential pirate ship and reports whether illegal goods were found.
+    Returns: Int from HasIllegalGoods when scan succeeded, else null.
+    Params: Ship to scan.
+    Effects: Scans the target.
 - **1130** `$ret =|if <RefObj> -> attack run on target <Value> : timeout=<Var/Number>ms speedlimit=<Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value, %3 Var/Number, %4 Var/Number; `@` interruptible, condition; used 5× (!fight.attack.object.bomber); calls: `.__AttackRunOnTarget`
+  - **Does** (medium): Performs an attack run on the target with timeout and speed limit; waits until it ends or is interrupted.
+    Returns: Command result (type 19).
+    Params: Timeout in ms, passed as is (only if type is number and >= 0, else no timeout -1); speed limit scaled x500, same check applies to the argument cell.
+    Effects: Ship flies attack runs.
 - **1149** `$ret = <RefObj> -> get scanner range`
   params: %0 RefObj, %1 RetVar; used 31× (!fight.attack.enemiesrange.land); calls: `.GetScannerRange`
+  - **Does** (high): Returns the scanner range of the ship.
+    Returns: Int (type 4), engine units / 500.
 - **1150** `<RefObj> ->select and switch lasers for target <Var/Ship/Station> in turret <Var/Number>: scan for friends <Var/Number>`
   params: %0 RefObj, %1 Var/Ship/Station, %2 Var/Number, %3 Var/Number; used 5× (!plugin.gz.missile.def.mk3); calls: `.SelectAndSwitchLaserForTarget`
+  - **Does** (medium): Selects and switches lasers in the turret for the target.
+    Params: Target; turret; scan-for-friends flag.
+    Effects: Changes laser selection.
 - **1330** `$ret = <RefObj> -> select best lasers for target <Var/Ship/Station> in turret <Var/Number>: scan for friends <Var/Number>`
   params: %0 RefObj, %1 RetVar, %2 Var/Ship/Station, %3 Var/Number, %4 Var/Number; calls: `.SelectLaserForTarget`
+  - **Does** (medium): Selects the best laser for the target in the turret.
+    Returns: Ware (9) with flag 0x80000|laser, or null if -1.
+    Params: Target; turret; scan-for-friends.
 - **1184** `<RefObj> ->start job`
   params: %0 RefObj; used 4× (!lib.ds); calls: `TI_Delay`, `.StartJob`
+  - **Does** (medium): Starts the ship's job after a one-tick delay in a forked task.
+    Effects: Starts the job.
 - **1202** `$ret =|if <RefObj> -> get job id`
   params: %0 RefObj, %1 RetVar/IF; condition; used 8× (!fight.defend.sector); calls: `.GetJobID`
+  - **Does** (medium): Returns the job id of the object.
+    Returns: Int, only when object non-null.
+    Edge: Null: result null.
 - **1180** `$ret =|if <RefObj> -> get job leader`
   params: %0 RefObj, %1 RetVar/IF; condition; used 14× (!job.fight.attackallenemies); calls: `.GetJobLeader`, `SE_IsClass`
+  - **Does** (medium): Returns the job leader of the ship.
+    Returns: Ship (65542) or station (65543)... generic if other, null if none.
 - **1181** `$ret = <RefObj> -> get job idle rate`
   params: %0 RefObj, %1 RetVar; used 2× (!job.special.spacefly.hunter); calls: `.GetJobIdleRate`
+  - **Does** (medium): Returns the job idle rate.
+    Returns: Int (type 4).
 - **1183** `$ret = <RefObj> -> get job jump range`
   params: %0 RefObj, %1 RetVar; used 17× (!job.fight.defencebase); calls: `.GetJobJumpRange`
+  - **Does** (medium): Returns the job jump range.
+    Returns: Int (type 4).
 - **1188** `$ret =|if <RefObj> -> wait idle rate minimum:<Var/Number> ms`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number; condition; used 8× (!job.local.stationtostation); calls: `.GetJobID`, `.GetAge`, `.GetLaunchTime`, `.GetJobIdleRate`, `TI_WaitForInterrupt`
+  - **Does** (medium): Waits for the job idle time: age since launch times idle rate times 10, at least the given minimum.
+    Returns: Result of TI_WaitForInterrupt (type 4).
+    Params: Minimum in ms.
+    Effects: Delays the script; can be interrupted.
+    Edge: Object with job id 0: does not wait, result null.
 - **1182** `$ret = <RefObj> -> get flight time`
   params: %0 RefObj, %1 RetVar; used 2× (!job.special.spacefly.hunter); calls: `.GetAge`, `.GetLaunchTime`
+  - **Does** (medium): Returns time since the ship was launched (player race age minus launch time).
+    Returns: Int, time units of GetAge.
 - **1191** `<RefObj> ->reset flight time`
   params: %0 RefObj; used 11× (!job.local.stationtostation); calls: `.SetLaunchTime`, `.GetAge`
+  - **Does** (medium): Sets the ship's launch time to the current time.
+    Effects: Resets flight time.
 - **1192** `<RefObj> ->auto sync patrol sector with environment: <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 4× (!job.fight.rthr.attackallenemies); calls: `.SetAutoPatrolSectorToEnv`
+  - **Does** (medium): Sets whether the patrol sector follows the environment automatically.
+    Params: Number; !=0 means on.
+    Effects: Sets auto patrol sector flag.
+    Edge: Null object: nothing.
 - **1193** `<RefObj> ->add to patrol group for sector: <Var/Sector>`
   params: %0 RefObj, %1 Var/Sector; calls: `.GetOwner`, `.AddPatrolShip`
+  - **Does** (medium): Adds the ship to the owner's patrol group of the sector.
+    Params: Sector object.
+    Effects: Owner.AddPatrolShip.
+    Edge: Needs both sector and owner non-null.
 - **1194** `<RefObj> ->remove from patrol group for sector: <Var/Sector>`
   params: %0 RefObj, %1 Var/Sector; calls: `.GetOwner`, `.RemovePatrolShip`
+  - **Does** (medium): Removes the ship from the owner's patrol group of the sector.
+    Params: Sector object.
+    Effects: Owner.RemovePatrolShip.
+    Edge: Needs both sector and owner non-null.
 - **1195** `<RefObj> ->remove all patrol group references`
   params: %0 RefObj; calls: `.GetOwner`, `.RemovePatrolShipReference`
+  - **Does** (medium): Removes all patrol-group references of the ship from its owner.
+    Effects: Owner.RemovePatrolShipReference.
+    Edge: No owner: nothing.
 - **1328** `$ret = <RefObj> -> find nearest enemy ship in range: class=<Var/Class>`
   params: %0 RefObj, %1 RetVar, %2 Var/Class; used 10× (!fight.defend.sector); calls: `.GetSector`, `FindShip`, `.GetScannerRange`
+  - **Does** (medium): Finds the nearest enemy ship in scanner range of the given class.
+    Returns: Ship (65542) or null.
+    Params: Class from the value cell.
+    Edge: No sector: result null (FindShip on 0).
 - **1342** `$ret = get freight scanner range`
   params: %0 RetVar; calls: `SA_GetGlobalParameter`
+  - **Does** (high): Returns the freight scanner range (global parameter 11 / 500).
+    Returns: Int.
 - **1343** `$ret = get transporter range`
   params: %0 RetVar; calls: `SA_GetGlobalParameter`
+  - **Does** (high): Returns the transporter range (global parameter 97, default 5000).
+    Returns: Int.
+    Params: Value is param 97 as is (500*x/500).
 - **1344** `$ret = get mineral scanner range`
   params: %0 RetVar; used 3× (!move.scan.asteroid); calls: `SA_GetGlobalParameter`
+  - **Does** (high): Returns the mineral scanner range (global parameter 4 / 500).
+    Returns: Int.
 - **1345** `$ret =|if <RefObj> -> is in freight scanning range: ship=<Var/Ship>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship; condition; calls: `SE_ObjectExists`, `.GetDistance`, `SA_GetGlobalParameter`
+  - **Does** (high): Tests whether the ship is within freight scanning range.
+    Returns: 1 or 0.
+    Params: Ship.
+    Edge: Null or non-existing ship: 0.
 - **1346** `$ret =|if <RefObj> -> is in transporter range: ship=<Var/Ship>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship; condition; calls: `SE_ObjectExists`, `.GetDistance`, `SA_GetGlobalParameter`
+  - **Does** (high): Tests whether the ship is within transporter range.
+    Returns: 1 or 0.
+    Params: Ship.
+    Edge: Null or non-existing ship: 0.
 - **1347** `$ret =|if <RefObj> -> is in mineral scanner range: asteroid=<Var/Asteroid>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Asteroid; condition; used 2× (!move.scan.asteroid); calls: `SE_ObjectExists`, `.GetDistance`, `SA_GetGlobalParameter`
+  - **Does** (high): Tests whether the asteroid is within mineral scanner range.
+    Returns: 1 or 0.
+    Params: Asteroid.
+    Edge: Null or non-existing asteroid: 0.
 - **1362** `$ret =|if <RefObj> -> is autojump activated`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (!move.movetonextsector); calls: `.IsAutojumpActive`
+  - **Does** (medium): Tests whether autojump is active.
+    Returns: Int (type 4).
 - **1363** `<RefObj> ->set autojump active: <Var/Boolean>`
   params: %0 RefObj, %1 Var/Boolean; used 2× (!fight.defend.sector); calls: `.SetAutojumpActivated`
+  - **Does** (medium): Activates or deactivates autojump.
+    Params: Boolean; truthy value only.
+    Effects: SetAutojumpActivated.
 - **1364** `$ret =|if <RefObj> -> get autojump minimum jumps`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (!move.movetonextsector); calls: `.GetAutojumpMinRange`
+  - **Does** (medium): Returns the minimum jumps for autojump.
+    Returns: Int.
 - **1365** `<RefObj> ->autojump minimum jumps= <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 2× (!fight.defend.sector); calls: `.SetAutojumpMinRange`
+  - **Does** (medium): Sets the minimum jumps for autojump.
+    Params: Number.
+    Effects: SetAutojumpMinRange.
 - **1366** `$ret =|if <RefObj> -> is emergency jump activated`
   params: %0 RefObj, %1 RetVar/IF; condition; used 1× (!lib.check.use.emergencyjump); calls: `.IsEmergencyJumpActive`, `.GetWareTypeCountWithPredefined`
+  - **Does** (medium): Tests whether the emergency jump is active and a required ware is on board.
+    Returns: Int: the ware count (not clamped to 1) when active, else 0.
 - **1367** `<RefObj> ->set emergency jump active: <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 1× (!fight.attack.object); calls: `.SetEmergencyJumpActive`
+  - **Does** (medium): Activates or deactivates the emergency jump.
+    Params: Number; truthy -> 1.
+    Effects: SetEmergencyJumpActive.
 - **1368** `$ret =|if <RefObj> -> get emergency jump minimum shield threshold`
   params: %0 RefObj, %1 RetVar/IF; condition; used 1× (!lib.check.use.emergencyjump); calls: `.GetEmergencyJumpMinShields`
+  - **Does** (medium): Returns the emergency jump minimum shield threshold.
+    Returns: Int.
 - **1369** `<RefObj> ->autojump emergency jump shield threshold= <Var/Number>%`
   params: %0 RefObj, %1 Var/Number; used 1× (!fight.attack.object); calls: `.SetEmergencyJumpMinShields`
+  - **Does** (medium): Sets the emergency jump minimum shield threshold in percent.
+    Params: Percent.
+    Effects: SetEmergencyJumpMinShields.
 - **1373** `$ret =|if <RefObj> -> get missile resupply: missile=<Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 12× (!job.fight.defencebase); calls: `SE_ObjectExists`, `SE_IsClass`, `.GetMissileResupply`
+  - **Does** (medium): Returns the missile resupply quota for the missile ware.
+    Returns: Int, only for ships and missile wares.
+    Params: Ware must be type 9 with main type 10.
+    Edge: Other objects/wares: null.
 - **1374** `<RefObj> ->set missile resupply: missile=<Var/Ware> amount=<Var/Number>`
   params: %0 RefObj, %1 Var/Ware, %2 Var/Number; used 1× (!lib.resupply.set.quota); calls: `SE_ObjectExists`, `SE_IsClass`, `.SetMissileResupply`
+  - **Does** (medium): Sets the missile resupply quota.
+    Params: Amount above 10 is rounded up to a multiple of 5.
+    Effects: Ship.SetMissileResupply.
+    Edge: Non-ship or non-missile ware: nothing.
 - **1377** `$ret =|if <RefObj> -> get ammo resupply: ammo=<Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 7× (!lib.ai.ammo.supply); calls: `SE_ObjectExists`, `SE_IsClass`, `.GetAmmoResupply`
+  - **Does** (medium): Returns the ammo resupply quota for the ammo ware.
+    Returns: Int, ships only.
+    Params: Ware flag 2048 required.
+    Edge: Non-ammo ware or non-ship: null.
 - **1379** `<RefObj> ->set ammo resupply: ammo=<Var/Ware> amount=<Var/Number>`
   params: %0 RefObj, %1 Var/Ware, %2 Var/Number; used 1× (!lib.resupply.set.quota); calls: `SE_ObjectExists`, `SE_IsClass`, `.SetAmmoResupply`
+  - **Does** (medium): Sets the ammo resupply quota.
+    Params: Amount above 10 is rounded up to a multiple of 5.
+    Effects: Ship.SetAmmoResupply.
+    Edge: Non-ship or non-ammo ware: nothing. Ware type cell not checked (unlike 1374).
 - **1376** `$ret =|if <RefObj> -> get jumpdrive fuel resupply`
   params: %0 RefObj, %1 RetVar/IF; condition; used 6× (!job.fight.defencebase); calls: `.GetFuelResupply`
+  - **Does** (medium): Returns the jump drive fuel resupply quota.
+    Returns: Int (type 4).
 - **1378** `<RefObj> ->set jumpdrive fuel resupply: amount=<Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 1× (!job.fight.defencebase); calls: `.SetFuelResupply`
+  - **Does** (medium): Sets the jump drive fuel resupply quota.
+    Params: Number.
+    Effects: SetFuelResupply.
 - **1430** `$ret =|if <RefObj> -> send marines to board ship: <Var/Ship> marines=<Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship, %3 Value; condition; used 2× (!fight.board.launchmarines); calls: `SE_IsClass`, `SE_ArrayAlloc`, `SE_ArraySize`, `.MoveToBoard`, `.CheckValidBoardingTarget`, `.SendMarinesToBoardShip`
+  - **Does** (medium): Sends marines to board a ship.
+    Returns: 1 on success, else null.
+    Params: Marines value is an array of pairs; odd entries are taken.
+    Effects: Marines board target.
+    Edge: Branch by class (2064 carrier vs wing 65562).
 - **1481** `$ret =|if <RefObj> -> launch boarding pod at target: victim=<Var/Ship> marines=<Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship, %3 Value; condition; used 1× (!fight.board.launchmarines); calls: `.CountMarines`, `.CanBeBoarded`, `.LoadMarines`, `.ShootMissile`
+  - **Does** (medium): Launches a boarding pod: if the ship has marines aboard and the victim can be boarded, loads the marines and fires a type-35 missile at the victim.
+    Returns: int: result of ShootMissile when nonzero, otherwise null
+    Params: %0 the launching ship; victim ship; marines = array of marine objects (LoadMarines iterates SE_ArraySize); only marines actually in passengers are queued
+    Effects: Queues marines in pendingPodMarines, fires missile 35 at the victim
+    Edge: Null result when ship has no marines (CountMarines returns null/0) or victim.CanBeBoarded() is false (base stub returns 0, overridden in some classes); null objects return 0 so nothing happens
 - **1500** `$ret =|if <RefObj> -> get resupply fuel required`
   params: %0 RefObj, %1 RetVar/IF; condition; used 5× (!lib.check.weneed.fuel); calls: `SE_ObjectExists`, `SE_IsClass`, `.GetFuelResupply`, `.GetSector`, `C5006.NeededEnergyForJump`, `.GetX`, `.GetY`, `.GetWareTypeCount`
+  - **Does** (medium): Returns the number of energy cells (ware 11) still missing to refuel the jump drive: fuel resupply times energy-per-jump for the ship's sector minus energy cells in cargo, min 0.
+    Returns: int count of energy cells (0 if nothing missing or no fuel resupply set); null if object missing or not a ship
+    Params: %0 ship (class 2004)
+    Edge: Non-ship or missing object gives null; GetFuelResupply<=0 gives 0; uses the ship's current sector coordinates (JumpDriveMenu.NeededEnergyForJump)
 - **1502** `$ret =|if <RefObj> -> get all formation followers`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (!lib.get.allships.ingroup); calls: `SE_ObjectExists`, `SE_IsClass`, `.AddAllFollowersToTable`, `SE_TableSize`, `C700.ConvertArrayToScriptArray`, `SE_TableKeys`
+  - **Does** (medium): Returns all ships in the ship's formation below it (whole follower tree) as an array of ships.
+    Returns: array of ships (type 21); null if the ship has no followers or is not a ship
+    Params: %0 ship (class 2004)
+    Edge: Missing object or non-ship gives null; empty follower table gives null
 - **1503** `$ret =|if <RefObj> -> get highest formation leader`
   params: %0 RefObj, %1 RetVar/IF; condition; used 3× (!lib.get.group.leader); calls: `SE_ObjectExists`, `SE_IsClass`, `.GetFormationLeader`
+  - **Does** (medium): Returns the top of the formation chain: follows GetFormationLeader up to the root, or the ship itself if it has no leader.
+    Returns: ship (65542): root leader or the ship itself
+    Params: %0 ship (class 2004)
+    Edge: Always sets resultType 65542 with the input value as default, so a non-ship or null input echoes back as ship type; loop stops at a destroyed leader (the last existing one is returned)
 - **1519** `$ret =|if is player warping`
   params: %0 RetVar/IF; condition; calls: `C150.IsWarping`
+  - **Does** (high): Tells whether the player is currently warping (in a gate/jump transition effect).
+    Returns: int: Client.IsWarping()
+    Edge: Player only, no object
 - **1525** `$ret =|if <RefObj> -> get desired speed`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_ObjectExists`, `.GetObjectID`, `SA_GetDesiredSpeed`
+  - **Does** (medium): Returns the desired (target) speed of a ship in m/s, engine value divided by 500.
+    Returns: int m/s (SA_GetDesiredSpeed / 500); null if object missing or not type 65542
+    Params: %0 must carry type 65542 (ship) and have a live object id
+    Edge: Ship in a sector only (GetObjectID nonzero); docked or destroyed gives null
 - **1526** `<RefObj> ->set desired speed: <Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `SE_ObjectExists`, `.GetObjectID`, `SA_SetDesiredSpeed`
+  - **Does** (medium): Sets the desired speed of a ship to the given m/s (value times 500 engine units).
+    Params: speed must be an integer (type 4); m/s, engine unit 500 per m; no clamping in the handler
+    Effects: SA_SetDesiredSpeed on the ship object
+    Edge: Does nothing unless refobj type is 65542, object exists with a live object id, and the number has type 4
 - **1583** `$ret =|if <RefObj> -> fire all turrets on target: <Value>, next target filter=<Var/Class>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value, %3 Var/Class; condition; used 3× (!fight.attack.object.owp); calls: `.GetEnvironment`, `SE_IsClass`, `.FireAllTurretsOnTarget`
+  - **Does** (medium): Makes all turrets of the ship fire at the given target, with a class filter for the next target; only when both objects are in the same sector.
+    Returns: int result of FireAllTurretsOnTarget when nonzero, else null
+    Params: %2 target object; %3 class filter for choosing the next target
+    Effects: Turrets of the ship are ordered to fire on the target
+    Edge: Null result when the ship's environment is not a sector (docked) or differs from the target's
 - **1581** `<RefObj> -> set job override name: <Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `.SetJobNameID`
+  - **Does** (medium): Sets the job override name (text id) of the object.
+    Params: text id number; no type or null checks on the number
+    Effects: SetJobNameID on the object
+    Edge: Unchecked cell types; called on null returns 0
 
 ## Trade Commands / for Ships
 
 - **601** `$ret =|if <RefObj> -> buy <Var/Number> units of <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Var/Ware; condition; used 10× (!job.trade.docktrader); calls: `.GetEnvironment`, `SE_IsClass`, `.BuyWare`, `.SellWare`
+  - **Does** (medium): Ship docked at a station buys the given amount of the ware, no price limit.
+    Returns: int result of BuyWare (amount bought); null if ship's environment is not a station
+    Params: amount, ware (type<<16|subtype); price limit forced to 0 = unlimited
+    Effects: Transfers ware and credits between ship and station
+    Edge: Ship environment must be class 2016 (docked at a station); otherwise returns null and does nothing
 - **602** `$ret =|if <RefObj> -> buy <Var/Number> units of <Var/Ware> to a max. price of <Var/Number> Cr`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Var/Ware, %4 Var/Number; condition; used 10× (!job.trade.freetrader.docksonly); calls: `.GetEnvironment`, `SE_IsClass`, `.BuyWare`, `.SellWare`
+  - **Does** (medium): Like 601 but with a maximum unit price in credits.
+    Returns: int result of BuyWare; null if not docked at a station
+    Params: amount, ware, max price in Cr; a null price argument means no limit (0)
+    Effects: Transfers ware and credits between ship and station
+    Edge: Ship environment must be class 2016
 - **603** `$ret =|if <RefObj> -> sell <Var/Number> units of <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Var/Ware; condition; used 12× (!job.special.spacefly.hunter); calls: `.GetEnvironment`, `SE_IsClass`, `.BuyWare`, `.SellWare`
+  - **Does** (medium): Ship docked at a station sells the given amount of the ware to the station.
+    Returns: int result of SellWare (amount sold); null if environment is not a station
+    Params: amount, ware (type<<16|subtype)
+    Effects: Transfers ware and credits between ship and station
+    Edge: Ship environment must be class 2016
 - **639** `$ret =|if <RefObj> -> load <Var/Number> units of <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Var/Ware; condition; used 12× (!lib.resupply.rearm.fromdockedat); calls: `.GetEnvironment`, `SE_IsClass`, `.LoadWare`, `.UnLoadWare`
+  - **Does** (medium): Loads the amount of the ware from the station or carrier the ship is docked at into the ship's cargo, free of charge.
+    Returns: int result of LoadWare (amount loaded); null if not docked
+    Params: amount, ware
+    Effects: Moves ware from the host into the ship
+    Edge: Ship environment must be a station (2016) or carrier (2033)
 - **640** `$ret =|if <RefObj> -> unload <Var/Number> units of <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Var/Ware; condition; used 6× (!job.trade.militarysupply); calls: `.GetEnvironment`, `SE_IsClass`, `.LoadWare`, `.UnLoadWare`
+  - **Does** (medium): Unloads the amount of the ware from the ship into the station or carrier it is docked at, free of charge.
+    Returns: int result of UnLoadWare (amount unloaded); null if not docked
+    Params: amount, ware
+    Effects: Moves ware from the ship to the host
+    Edge: Environment must be class 2016 or 2033
 - **610** `$ret = <RefObj> -> get max. ware transport class`
   params: %0 RefObj, %1 RetVar; used 2× (!ship.cmd.mtc.bestbuy.std); calls: `.GetWareTransportClass`
+  - **Does** (medium): Returns the maximum ware transport class (cargo size class) of the ship.
+    Returns: class number (type 13)
+    Edge: Null object gives 0 of type 13
 - **611** `$ret =|if <RefObj> -> get cargo bay size`
   params: %0 RefObj, %1 RetVar/IF; condition; used 4× (!job.pirate.plunderships); calls: `.GetTradeContainerSize`
+  - **Does** (medium): Returns the cargo bay size of the object.
+    Returns: int, GetTradeContainerSize
+    Edge: Null object gives 0
 - **612** `$ret =|if <RefObj> -> get free volume of cargo bay`
   params: %0 RefObj, %1 RetVar/IF; condition; used 16× (!job.trade.freetrader.docksonly); calls: `.GetTradeContainerFree`
+  - **Does** (medium): Returns the free volume of the cargo bay.
+    Returns: int, GetTradeContainerFree
+    Edge: Null object gives 0
 - **613** `$ret =|if <RefObj> -> get volume of ware <Var/Ware> in cargo bay`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; calls: `.GetWareTypeCountVolume`
+  - **Does** (medium): Returns the volume occupied by the ware in the cargo bay.
+    Returns: int, GetWareTypeCountVolume
+    Params: ware (type<<16|subtype)
+    Edge: Null object gives 0
 - **614** `$ret =|if <RefObj> -> get true volume of ware <Var/Ware> in cargo bay`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; calls: `.GetTrueWareTypeCount`, `WareTypeVolume`
+  - **Does** (medium): Returns the true volume of the ware in the cargo bay: true ware count times the ware's unit volume.
+    Returns: int
+    Params: ware (type<<16|subtype)
+    Edge: True count excludes predefined hardware counted by 613/618
 - **615** `$ret =|if <RefObj> -> get free volume of ware <Var/Ware> in cargo bay`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; calls: `.GetWareTypeFree`, `WareTypeVolume`
+  - **Does** (medium): Returns the free volume for the ware: free amount of this ware times its unit volume.
+    Returns: int
+    Params: ware
+    Edge: Null object gives 0
 - **616** `$ret =|if <RefObj> -> get total volume in cargo bay`
   params: %0 RefObj, %1 RetVar/IF; condition; used 4× (!job.pirate.plunderships); calls: `.GetTotalVolume`
+  - **Does** (medium): Returns the total volume currently used in the cargo bay.
+    Returns: int, GetTotalVolume
+    Edge: Null object gives 0
 - **617** `$ret =|if <RefObj> -> can transport ware <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 34× (!job.trade.docktrader); calls: `.CanTransportWareType`
+  - **Does** (medium): Tests whether the ship can transport the ware.
+    Returns: int 1 if it can, otherwise null
+    Params: ware (type<<16|subtype)
+    Edge: False gives null, so as a condition it fails
 - **645** `<RefObj> ->add default items to ship`
   params: %0 RefObj; used 7× (!fight.war.protectsector); calls: `.AddDefaultItems`
+  - **Does** (medium): Adds the default (type-defined) items to the ship, mode 1.
+    Effects: AddDefaultItems(1) on the ship: adds its default equipment/wares
+    Edge: Null object does nothing
 - **1196** `<RefObj> ->add lasers per value:<Var/Number> flags:<Var/Number>`
   params: %0 RefObj, %1 Var/Number, %2 Var/Number; calls: `.AddLasersPerValue`
+  - **Does** (medium): Adds lasers to the ship up to a value budget (value times 10, clamped to 1000), with flags.
+    Params: value >0 (multiplied by 10, max 1000); flags passed to AddLasersPerValue unchecked
+    Effects: AddLasersPerValue on the ship
+    Edge: Does nothing if object null or value <=0
 - **1197** `<RefObj> ->add shields per value:<Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `.AddShieldsPerValue`
+  - **Does** (medium): Adds shields to the ship up to a value budget (value times 10, clamped to 1000).
+    Params: value >0 (times 10, max 1000)
+    Effects: AddShieldsPerValue on the ship
+    Edge: Does nothing if object null or value <=0
 - **648** `<RefObj> ->switch laser in turret <Var/Number> gun <Var/Number> to <Var/Ware>`
   params: %0 RefObj, %1 Var/Ware, %2 Var/Number, %3 Var/Number; used 2× (!ship.signal.lasertower.setup); calls: `.SwitchLaserOfTurret`
+  - **Does** (high): Switches the laser in the given turret and gun slot to the given laser ware, or removes it if the ware is not a laser.
+    Params: %2 turret id, %3 gun index (0-based within the turret); ware must be type 9 with main type 8 (laser), otherwise the slot is emptied (laserType -1)
+    Effects: SwitchLaserOfTurret: installs laser only if the ship carries one (hardware count >0), otherwise nothing; -1 removes laser
+    Edge: Gun index out of range for the turret does nothing; laser not in stock leaves the slot unchanged
 - **649** `<RefObj> ->set wanted ware count to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 24× (!move.fleet.buyandreturn); calls: `.SetWantedCount`
+  - **Does** (medium): Sets the wanted ware count on the ship (trade order amount).
+    Params: count; a null number sets 0
+    Effects: SetWantedCount
+    Edge: Null cell becomes 0
 - **650** `<RefObj> ->set wanted ware to <Var/Ware>`
   params: %0 RefObj, %1 Var/Ware; used 25× (!move.fleet.buyandreturn); calls: `.SetWantedFreight`
+  - **Does** (medium): Sets the wanted ware of the ship (trade order ware); a non-ware or null value clears it.
+    Params: ware (type<<16|subtype)
+    Effects: SetWantedFreight(ware) or -1 when type is not 9 or value <=0
+    Edge: Wrong type clears wanted ware
 - **651** `$ret = <RefObj> -> get wanted ware count`
   params: %0 RefObj, %1 RetVar; used 4× (!station.cmd.reportinbound.pl); calls: `.GetWantedCount`
+  - **Does** (medium): Returns the wanted ware count of the ship.
+    Returns: int, GetWantedCount
+    Edge: Null object gives 0
 - **652** `$ret = <RefObj> -> get wanted ware`
   params: %0 RefObj, %1 RetVar; used 3× (!station.cmd.reportinbound.pl); calls: `.GetWantedFreight`
+  - **Does** (medium): Returns the wanted ware of the ship.
+    Returns: ware (type 9) if set (>0), otherwise null
+    Edge: Unset gives null
 - **654** `$ret =|if <RefObj> -> has illegal ware onboard: race=<Var/Race>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Race; condition; used 5× (!job.pirate.plunderships); calls: `.HasIllegalGoods`, `CheckWareTableForIllegalWares`, `.GetWares`
+  - **Does** (medium): Tests whether the object carries illegal wares; with a null race uses the generic flag, with a race checks the cargo against that race's illegal list.
+    Returns: int, true if illegal wares present; else null
+    Params: race: null means any (HasIllegalGoods), otherwise a race number
+    Edge: Null object gives 0 so null
 - **1071** `$ret =|if <RefObj> -> get tradeable ware array from ship`
   params: %0 RefObj, %1 RetVar/IF; condition; used 14× (!job.trade.docktrader); calls: `.GetWares`, `SE_TableSize`, `SE_ArrayAlloc`, `SE_TableNext`, `.GetTrueWareTypeCount`, `SE_ArrayResize`
+  - **Does** (medium): Returns array of all wares in the ship's cargo that are tradeable (ware flag 1 clear) and actually carried (true count >0).
+    Returns: array (21) of pairs {9, ware}
+    Edge: Skips wares with flag bit 1 in the ware flags table or only predefined hardware
 - **1152** `$ret = get warearray for <Var/Ship>`
   params: %0 RetVar, %1 Var/Ship; used 15× (!config.add.wares.few.one); calls: `.GetShoppingList`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns the ship's shopping list as ware array.
+    Returns: array (21) of wares; empty array if no list
+    Edge: Always returns an array
 - **1166** `$ret = <RefObj> -> get upgrade price: cargo-speed-rot <Var/Ware> units:<Var/Number>`
   params: %0 RefObj, %1 RetVar, %2 Var/Ware, %3 Var/Number; calls: `.GetTotalPriceForUpgrades`
+  - **Does** (medium): Returns the total price of upgrading the ship's cargo/speed/rotation with the given upgrade ware and number of units.
+    Returns: int credits; null if the ware lacks flag 8
+    Params: ware must have ware flag 8 (upgrade wares); units number
+    Edge: Ware without flag 8 gives null
 - **1173** `$ret =|if <RefObj> -> get defined amount of ware <Var/Ware> as ship hardware`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; calls: `.GetDefaultEquipmentCount`
+  - **Does** (medium): Returns the amount of the ware defined as default hardware of the ship.
+    Returns: int, GetDefaultEquipmentCount
+    Params: ware
+    Edge: No type checks
 - **1174** `<Var/Ware><RefObj> -> set defined amount of ware <Var/Number> as ship hardware`
   params: %0 RefObj, %1 Var/Ware, %2 Var/Number; calls: `.SetDefaultEquipmentCount`
+  - **Does** (high): Intended to set the default hardware amount of a ware on the ship; because of the shifted cells it actually uses the number's type code as ware and an unrelated cell as amount.
+    Params: ware, number (but cells read wrongly)
+    Effects: SetDefaultEquipmentCount with wrong ware and amount
+    Edge: Command does not do what its text says
   - **Engine bug (S47, AP FL):** The handler reads its cells shifted by one (as if it had a result): the ware gets the type code of the number and the amount 0. The command does not do what its text says.
 - **1175** `$ret = <RefObj> -> get ship hardware as array`
   params: %0 RefObj, %1 RetVar; calls: `SE_TableKeys`, `.GetDefaultEquipment`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns the ship's default hardware as an array of wares (keys of the default-equipment table).
+    Returns: array (21) of wares; null if empty
+    Edge: Empty table gives null
 - **1454** `$ret =|if <RefObj> -> can buy ware <Var/Ware> at station <Var/Station>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware, %3 Var/Station; condition; calls: `CanRaceBuyWareTypeFromRace`, `.GetOwner`, `.TradesWithWareType`
+  - **Does** (medium): Tests whether the ship's owner race may buy the ware from the station's owner race and the station trades the ware.
+    Returns: int 1/0
+    Params: ware; station
+    Edge: Uses owners of ship and station; station must trade the ware
 - **1455** `$ret =|if <RefObj> -> can buy ware <Var/Ware> from race <Var/Race>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware, %3 Var/Race; condition; calls: `CanRaceBuyWareTypeFromRace`, `.GetOwner`
+  - **Does** (medium): Tests whether the ship's owner race may buy the ware from the given race.
+    Returns: int, CanRaceBuyWareTypeFromRace result
+    Params: race number used as direct index into the race table gRaces
+    Edge: Race value indexes gRaces without check; invalid race gives 0/null owner
 
 ## Trade Commands / for Stations
 
 - **622** `$ret =|if <RefObj> -> get best store amount of ware <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; calls: `.GetWareTypeBestStore`
+  - **Does** (medium): Returns the best (target) store amount of the ware at the station.
+    Returns: int, GetWareTypeBestStore
+    Params: ware
+    Edge: Null object gives 0
 - **623** `$ret =|if <RefObj> -> get max. store amount of ware <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 1× (lib.station.adjust.stock); calls: `.GetWareTypeMaxStore`
+  - **Does** (medium): Returns the maximum store amount of the ware at the station.
+    Returns: int, GetWareTypeMaxStore
+    Params: ware
+    Edge: Null object gives 0
 - **624** `$ret =|if <RefObj> -> can buy ware <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 5× (!job.trade.docktrader); calls: `.CanBuyWareType`
+  - **Does** (medium): Tests whether the station buys the ware.
+    Returns: int 1 if yes, otherwise null
+    Params: ware
+    Edge: False gives null
 - **1208** `$ret =|if <RefObj> -> get intermediates buyable`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_IsClass`, `.CanBuyIntermediates`
+  - **Does** (medium): Returns whether the station buys intermediate wares.
+    Returns: int, CanBuyIntermediates for class 2044 stations; 0 otherwise
+    Edge: Other classes and null give 0
 - **1209** `<RefObj> ->set intermediates buyable to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `SE_IsClass`, `.CanBuyIntermediates`, `.SetBuyIntermediates`, `.UpdateGalaxyWareStation`
+  - **Does** (medium): Sets whether the station buys intermediate wares; refreshes the galaxy ware station only when the flag actually changes.
+    Params: number, nonzero = on
+    Effects: SetBuyIntermediates and UpdateGalaxyWareStation
+    Edge: Only class 2044 stations; no change if same value
 - **625** `$ret =|if <RefObj> -> can sell ware <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 11× (!job.trade.docktrader); calls: `.CanSellWareType`
+  - **Does** (medium): Tests whether the station sells the ware.
+    Returns: int 1 if yes, otherwise null
+    Params: ware
+    Edge: False gives null
 - **1210** `$ret =|if <RefObj> -> get intermediates sellable`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_IsClass`, `.CanSellIntermediates`
+  - **Does** (medium): Returns whether the station sells intermediate wares.
+    Returns: int, CanSellIntermediates for class 2044; 0 otherwise
+    Edge: Other classes and null give 0
 - **1211** `<RefObj> ->set intermediates sellable to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `SE_IsClass`, `.CanSellIntermediates`, `.SetSellIntermediates`, `.UpdateGalaxyWareStation`
+  - **Does** (medium): Sets whether the station sells intermediate wares; updates the galaxy ware station only on change.
+    Params: number, nonzero = on
+    Effects: SetSellIntermediates and UpdateGalaxyWareStation
+    Edge: Only class 2044 stations
 - **627** `$ret =|if <RefObj> -> get price of ware <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 36× (!job.trade.docktrader); calls: `.GetWareTypePrice`
+  - **Does** (medium): Returns the station's current price of the ware.
+    Returns: int credits, GetWareTypePrice
+    Params: ware
+    Edge: Null object gives 0
 - **628** `$ret =|if <RefObj> -> get average price of ware <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; calls: `.GetWareTypeNormalPrice`
+  - **Does** (medium): Returns the average (normal) price of the ware at the station.
+    Returns: int credits, GetWareTypeNormalPrice
+    Params: ware
+    Edge: Null object gives 0
 - **634** `<RefObj> ->set price of ware <Var/Ware> to <Var/Number> Cr`
   params: %0 RefObj, %1 Var/Ware, %2 Var/Number; calls: `.SetWareTypePrice`
+  - **Does** (medium): Sets the station's price of the ware to the given credits.
+    Params: ware; price in Cr
+    Effects: SetWareTypePrice on the station
+    Edge: No range check in the handler
 - **635** `$ret =|if <RefObj> -> uses ware <Var/Ware> as primary resource`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 3× (!ship.cmd.sellware.pl); calls: `SE_IsClass`, `SE_TableExists`, `.GetResources`
+  - **Does** (medium): Tests whether the factory uses the ware as a primary resource.
+    Returns: int 1 if yes, otherwise null
+    Params: ware
+    Edge: Only class 2006 (factory); others give null
 - **636** `$ret =|if <RefObj> -> uses ware <Var/Ware> as secondary resource`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; calls: `SE_IsClass`, `SE_TableExists`, `.GetSResources`
+  - **Does** (medium): Tests whether the factory uses the ware as a secondary resource.
+    Returns: int 1 if yes, otherwise null
+    Params: ware
+    Edge: Only class 2006
 - **637** `$ret =|if <RefObj> -> trades with ware <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 12× (!job.trade.docktrader); calls: `.TradesWithWareType`
+  - **Does** (medium): Tests whether the station trades the ware.
+    Returns: int 1 if yes, otherwise null
+    Params: ware
+    Edge: False gives null
 - **638** `$ret =|if <RefObj> -> get product ware`
   params: %0 RefObj, %1 RetVar/IF; condition; used 3× (!station.cmd.reportinbound.pl); calls: `SE_IsClass`, `SE_TableNext`, `.GetProducts`
+  - **Does** (medium): Returns the first product ware of a factory.
+    Returns: ware (type 9); null if none
+    Edge: Only class 2006 and not 2037 (race object); others null
 - **641** `$ret =|if <RefObj> -> get number of resources`
   params: %0 RefObj, %1 RetVar/IF; condition; used 1× (!trade.loop.getwarebest); calls: `SE_IsClass`, `SE_TableSize`, `.GetTradeables`, `.GetResources`, `.GetSResources`
+  - **Does** (medium): Returns the number of resources of the station: tradeables for docks, primary plus secondary resources for factories.
+    Returns: int count; null if neither class
+    Edge: Class 2007 returns tradeable count; otherwise sum of resources and secondary resources
 - **642** `$ret =|if <RefObj> -> get number of primary resources`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_IsClass`, `SE_TableSize`, `.GetTradeables`, `.GetResources`
+  - **Does** (medium): Returns the number of primary resources (tradeables for class 2007).
+    Returns: int
+    Edge: Class 2007 returns tradeable count, else resource count
 - **643** `$ret =|if <RefObj> -> get number of secondary resources`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_IsClass`, `SE_TableSize`, `.GetSResources`
+  - **Does** (medium): Returns the number of secondary resources of the factory.
+    Returns: int; null if not a factory
+    Edge: Only class 2006 and not 2037
 - **644** `$ret =|if <RefObj> -> get max trade jumps`
   params: %0 RefObj, %1 RetVar/IF; condition; used 3× (!move.movetostationinradius); calls: `.GetMaxTradeJumps`
+  - **Does** (medium): Returns the max number of jumps the station's traders may travel.
+    Returns: int, GetMaxTradeJumps
+    Edge: Null object gives 0
 - **1387** `<RefObj> ->set max trade jumps: <Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `.SetMaxTradeJumps`
+  - **Does** (medium): Sets the max trade jumps of the station.
+    Params: jumps number, unchecked
+    Effects: SetMaxTradeJumps
+    Edge: No type check
 - **665** `$ret =|if <RefObj> -> only player own ships can trade with`
   params: %0 RefObj, %1 RetVar/IF; condition; used 3× (plugin.autotrade.getroute.long); calls: `.IsDockingNotAllowedForNPCs`
+  - **Does** (medium): Tests whether only player-owned ships may trade with (dock at) the station.
+    Returns: int 1 if docking not allowed for NPCs, otherwise null
+    Edge: False gives null
 - **1041** `$ret = <RefObj> -> get tradeable ware array from station`
   params: %0 RefObj, %1 RetVar; used 9× (!job.trade.docktrader); calls: `SE_IsClass`, `.GetProducts`, `.GetResources`, `.GetSResources`, `.GetTradeables`, `SE_ArraySize`, `SE_ArrayRemove`, `SE_TableNext`, `SE_ArrayAlloc`, `SE_TableSize`
+  - **Does** (medium): Returns array of tradeable wares of a station: for a factory products plus resources plus secondary resources, otherwise its tradeables; duplicates removed.
+    Returns: array (21) of pairs {9, ware}
+    Edge: Class 2006 uses the three tables, any other uses GetTradeables
 - **1164** `$ret =|if <RefObj> -> get products`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (!job.trade.docktrader); calls: `.GetProducts`, `C700.ConvertArrayToScriptArray`, `SE_TableKeys`
+  - **Does** (medium): Returns the products of the station as ware array.
+    Returns: array of wares (9); null if no product table
+    Edge: Null table gives null
 - **1165** `$ret =|if <RefObj> -> uses ware <Var/Ware> as product`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 2× (!station.cmd.reportinbound.pl); calls: `.GetProducts`
+  - **Does** (medium): Tests whether the station produces the ware.
+    Returns: int, value of the products table entry (nonzero if product), type 4
+    Params: ware key as table key
+    Edge: Not a product gives 0
 - **1052** `$ret = <RefObj> -> get production cycle time: account for secondary resources=<Var/Number>`
   params: %0 RefObj, %1 RetVar, %2 Var/Number; calls: `.GetCurrentProductionTime`, `.GetProductionTime`
+  - **Does** (medium): Returns the production cycle time of the factory, current time (with secondary resources) or base time.
+    Returns: int time
+    Params: flag nonzero = current production time with secondary resources, zero = base time
+    Edge: Unit not shown in handler (taken from station fields)
 - **1053** `$ret = <RefObj> -> get remaining production cycle time`
   params: %0 RefObj, %1 RetVar; calls: `.GetRemainingCycleTime`
+  - **Does** (medium): Returns the remaining time of the factory's current production cycle.
+    Returns: int, GetRemainingCycleTime
+    Edge: Null object gives 0
 - **1054** `$ret = <RefObj> -> get number of products per cycle`
   params: %0 RefObj, %1 RetVar; calls: `.GetProductionCount`
+  - **Does** (medium): Returns the number of products produced per cycle.
+    Returns: int, GetProductionCount
+    Edge: Null object gives 0
 - **1055** `$ret = <RefObj> -> get number of resources per cycle for ware <Var/Ware>`
   params: %0 RefObj, %1 RetVar, %2 Var/Ware; calls: `SE_IsClass`, `.NeededResourcesPerCycle`, `.GetSResources`, `.GetProductionTime`, `SA_GetTypeRelValue`, `SE_Random`, `SE_MulFix`, `.GetScaleFactor`
+  - **Does** (medium): Returns the number of units of the given resource ware a factory consumes per cycle, derived from production time and relative ware values with probabilistic rounding when below 1.
+    Returns: int; null if not a factory or ware not needed
+    Params: ware; factory classes 2006 only (not 2037, not 2044)
+    Edge: Factor 6 for main types 8,9,10,16, else 12; fractional result rounds randomly; result scaled by SE_MulFix with the station scale factor
 - **1056** `$ret = <RefObj> -> get production status: as percentage=<Var/Number>`
   params: %0 RefObj, %1 RetVar, %2 Var/Number; calls: `SA_GetTypeRelValue`, `.GetProductMainType`, `.GetProductSubType`, `.GetProductionCount`, `.EnoughResourcesForProduction`
+  - **Does** (medium): Returns production status as the sufficiency of resources for producing, relative to product value times count.
+    Returns: int, EnoughResourcesForProduction; null if product value is 0
+    Params: number: percentage flag
+    Edge: Zero product value gives null
 - **750** `<RefObj> ->add product to factory or dock: <Var/Ware>`
   params: %0 RefObj, %1 Var/Ware; used 6× (!galaxyeditor.station.addproduct); calls: `SE_IsClass`, `.AddProduct`, `.AddTradeable`
+  - **Does** (medium): Adds a product to a factory, or a tradeable to a dock.
+    Params: ware
+    Effects: AddProduct for class 2006, otherwise AddTradeable
+    Edge: No class check for the dock branch
 - **751** `<RefObj> ->add primary resource to factory: <Var/Ware>`
   params: %0 RefObj, %1 Var/Ware; used 1× (!galaxyeditor.fac.addresource); calls: `SE_IsClass`, `.AddResource`
+  - **Does** (medium): Adds a primary resource to a factory.
+    Params: ware
+    Effects: AddResource
+    Edge: Only class 2006
 - **752** `<RefObj> ->add second resource to factory: <Var/Ware>`
   params: %0 RefObj, %1 Var/Ware; used 1× (!galaxyeditor.fac.addsresource); calls: `SE_IsClass`, `.AddSResource`
+  - **Does** (medium): Adds a secondary resource to a factory.
+    Params: ware
+    Effects: AddSResource
+    Edge: Only class 2006
 - **781** `<RefObj> ->remove product from factory or dock: <Var/Ware>`
   params: %0 RefObj, %1 Var/Ware; used 1× (!galaxyeditor.station.rmproduct); calls: `SE_IsClass`, `.RemoveProduct`, `.RemoveTradeable`
+  - **Does** (medium): Removes a product from a factory, or a tradeable from a dock.
+    Params: ware
+    Effects: RemoveProduct for 2006, otherwise RemoveTradeable
 - **782** `<RefObj> ->remove primary resource from factory: <Var/Ware>`
   params: %0 RefObj, %1 Var/Ware; used 1× (!galaxyeditor.fac.rmresource); calls: `SE_IsClass`, `.RemoveResource`
+  - **Does** (medium): Removes a primary resource from a factory.
+    Params: ware
+    Effects: RemoveResource
+    Edge: Only class 2006
 - **783** `<RefObj> ->remove second resource from factory: <Var/Ware>`
   params: %0 RefObj, %1 Var/Ware; used 1× (!galaxyeditor.fac.rmsresource); calls: `SE_IsClass`, `.RemoveSResource`
+  - **Does** (medium): Removes a secondary resource from a factory.
+    Params: ware
+    Effects: RemoveSResource
+    Edge: Only class 2006
 - **1148** `<RefObj> ->factory production task: on=<Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `.StartProductionTask`, `.StopProductionTask`
+  - **Does** (medium): Starts (nonzero) or stops (zero) the factory's production task.
+    Params: on flag
+    Effects: StartProductionTask or StopProductionTask
+    Edge: No class check
 - **1250** `$ret =|if <RefObj> -> get repair cost of ship <Var/Ship>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship; condition; calls: `SE_IsClass`, `.GetFullRepairPrice`
+  - **Does** (medium): Returns the full repair price of the ship at the given race's rate.
+    Returns: int credits; type null/0 if the arguments are wrong
+    Params: %0 must be a race object (class 2037), param a ship (2004)
+    Edge: Wrong classes give null 0; despite the group name the receiver is a race, not a station
 - **1371** `<RefObj> ->add default wares to station/dock`
   params: %0 RefObj; calls: `SE_ObjectExists`, `SE_IsClass`, `.AddDefaultTradeables`, `.AddDefaultProductsAndResources`, `.AddDefaultShields`
+  - **Does** (medium): Adds default wares to a station or dock: default tradeables for docks, products and resources for factories, plus default shields.
+    Effects: AddDefaultTradeables or AddDefaultProductsAndResources, then AddDefaultShields
+    Edge: Only class 2016 existing objects
 - **1621** `$ret =|if <RefObj> ->get complex hangar`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (Graph.get.data); calls: `SE_IsClass`, `SE_ObjectExists`, `.GetComplexHangar`
+  - **Does** (medium): Returns the complex hangar station of a factory.
+    Returns: station (65543); null if none
+    Edge: Only class 2006 and not 2044
 
 ## Trade Commands / for Ships and Stations
 
 - **600** `$ret =|if <RefObj> -> get money`
   params: %0 RefObj, %1 RetVar/IF; condition; used 18× (!move.mine.trade); calls: `.GetMoney`
+  - **Does** (medium): Returns the money (credits) of the ship or station.
+    Returns: int credits
+    Edge: Null object gives 0
 - **661** `<RefObj> ->add money: <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 11× (!move.mine.trade); calls: `.AddMoney`, `SE_IsClass`, `.Signal_Transfer`
+  - **Does** (medium): Adds money to the object (negative values subtract); for stations sends a transfer signal.
+    Params: amount credits, unchecked
+    Effects: AddMoney; Signal_Transfer(amount, 1) for class 2016
+    Edge: No clamp of balance in handler
 - **618** `$ret =|if <RefObj> -> get amount of ware <Var/Ware> in cargo bay`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 203× (!fight.attack.object.bomber); calls: `.GetWareTypeCountWithPredefined`
+  - **Does** (medium): Returns the amount of the ware in the cargo bay including predefined hardware.
+    Returns: int, GetWareTypeCountWithPredefined
+    Params: ware
+    Edge: Differs from 619, which counts only real cargo
 - **619** `$ret =|if <RefObj> -> get true amount of ware <Var/Ware> in cargo bay`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 102× (!fight.board.launchmarines); calls: `.GetTrueWareTypeCount`
+  - **Does** (medium): Returns the true amount of the ware in the cargo bay.
+    Returns: int, GetTrueWareTypeCount
+    Params: ware
+    Edge: Null object gives 0
 - **620** `$ret =|if <RefObj> -> get free amount of ware <Var/Ware> in cargo bay`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 77× (!config.add.wares.few.one); calls: `.GetWareTypeFree`
+  - **Does** (medium): Returns the free amount of the ware that can still be stored.
+    Returns: int, GetWareTypeFree
+    Params: ware
+    Edge: Null object gives 0
 - **621** `$ret =|if <RefObj> -> get max amount of ware <Var/Ware> that can be stored in cargo bay`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 6× (!job.trade.docktrader); calls: `.GetWareTypeContainerSize`
+  - **Does** (medium): Returns the maximum amount of the ware that can be stored.
+    Returns: int, GetWareTypeContainerSize
+    Params: ware
+    Edge: Null object gives 0
 - **1352** `$ret =|if <RefObj> -> get ware storage percentage: ware=<Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 3× (!trade.getwarebest); calls: `SE_ObjectExists`, `SE_IsClass`, `.GetWareTypeMaxStore`, `.GetTradeContainerSize`, `.GetWareTypeFree`, `.GetTradeContainerFree`, `.GetWareTypeCountWithPredefined`, `WareTypeVolume`, `SE_MulDivFix`
+  - **Does** (medium): Returns how full the storage is for the ware in percent: stations use max store and free amount of the ware, ships use cargo volume.
+    Returns: int percent 0-100; 0 if capacity is 0 or empty; null if object missing
+    Params: ware
+    Edge: Dead assignment of the first free value for ships is overwritten by the volume-based one
 
 ## Trade Commands / Merchant
 
 - **1110** `add merchant <Var/String> base=<RefObj> -> wanted wares=<Var/Array> owned wares=<Var/Array> cash=<Var/Number> rank=<Var/Number>`
   params: %0 Var/String, %1 RefObj, %2 Var/Array, %3 Var/Array, %4 Var/Number, %5 Var/Number; calls: `SE_StringLen`, `SE_IsClass`, `SE_ArraySize`, `SE_TableAdd`, `C306.AddMerchant`
+  - **Does** (medium): Creates a merchant with given name at a station with wanted and owned ware tables, cash and rank.
+    Params: name non-empty; base station class 2016; wanted/owned arrays of nested {9,ware,4,amount}; cash >=0; rank >0
+    Effects: MerchantManager.AddMerchant
+    Edge: Invalid arguments do nothing silently
 - **1111** `$ret = <RefObj> ->get merchants`
   params: %0 RefObj, %1 RetVar; calls: `SE_IsClass`, `C306.GetMerchantNamesForStation`, `SE_ArraySize`, `SE_ArrayAlloc`
+  - **Does** (medium): Returns the names of the merchants at the station.
+    Returns: array (21) of {5, name} pairs; null if not a station
+    Edge: Only class 2016
 - **1112** `remove merchant <Var/String>`
   params: %0 Var/String; calls: `C306.KillMerchant`
+  - **Does** (medium): Removes the merchant with the given name.
+    Params: merchant name string
+    Effects: MerchantManager.KillMerchant
+    Edge: Unknown name unchecked
 - **1113** `merchant <Var/String> got ware <Var/Ware>: quantity=<Var/Number>`
   params: %0 Var/String, %1 Var/Ware, %2 Var/Number; calls: `C306.MerchantGotWares`
+  - **Does** (medium): Records that the merchant received the ware (quantity added).
+    Params: merchant name, ware, quantity
+    Effects: MerchantManager.MerchantGotWares
 - **1114** `merchant <Var/String> sold ware <Var/Ware>: quantity=<Var/Number>`
   params: %0 Var/String, %1 Var/Ware, %2 Var/Number; calls: `C306.MerchantSoldWares`
+  - **Does** (medium): Records that the merchant sold the ware (quantity removed).
+    Params: merchant name, ware, quantity
+    Effects: MerchantManager.MerchantSoldWares
 - **1115** `reset merchant <Var/String> expiry`
   params: %0 Var/String; calls: `C306.ResetMerchantExpire`
+  - **Does** (medium): Resets the merchant's expiry timer.
+    Params: merchant name
+    Effects: MerchantManager.ResetMerchantExpire
 - **1116** `$ret = get data for merchant <Var/String>: item number=<Var/Number>`
   params: %0 RetVar, %1 Var/String, %2 Var/Number; calls: `C306.GetMerchantByName`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`
+  - **Does** (medium): Returns a field of the named merchant selected by item number: 1,7 object (station), 2,3 ware tables as arrays, 4,5,6 numbers.
+    Returns: station (65543) for 1,7; array (21) of {9,ware,4,amount} for 2,3; int for 4,5,6; null for others
+    Params: item number 1-7
+    Edge: Unknown merchant name or item number gives null/0
 
 ## Trade Commands / Passengers
 
 - **1231** `$ret =|if <RefObj> -> create passenger in ship: name=<Var/String> race=<Var/Race> voice=<Var/Number> face=<Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/String, %3 Var/Race, %4 Var/Number, %5 Var/Number; condition; used 3× (!galaxyeditor.obj.addmarine); calls: `.CreateAddPassenger`
+  - **Does** (medium): Creates a passenger with name, race, voice and face and adds it to the ship.
+    Returns: passenger object (type 65562)
+    Params: name string, race, voice number, face number
+    Effects: CreateAddPassenger on the ship
+    Edge: Result type set even if creation fails
 - **1238** `$ret =|if <RefObj> -> add pilot of ship <Var/Ship> as passenger: disable ship=<Var/Boolean>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship, %3 Var/Boolean; condition; calls: `.AddPassengerFromPilotSpeaker`
+  - **Does** (medium): Takes the pilot of another ship and adds it as a passenger of this ship; optionally disables the other ship.
+    Returns: int result of AddPassengerFromPilotSpeaker
+    Params: %0 receiving ship; param ship = source; disable flag
+    Effects: Moves pilot speaker as passenger (mode 1)
 - **1234** `$ret =|if <RefObj> -> get passenger array`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (!job.special.tpliners); calls: `.GetPassengers`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`, `.IsMarine`, `SE_ArrayResize`
+  - **Does** (medium): Returns the passengers of the ship (marines excluded).
+    Returns: array (21) of passenger objects (65562); null if no passenger table
+    Edge: Skips marines
 - **1233** `$ret =|if <RefObj> -> move passenger to ship <Var/Ship>: set passenger as pilot=<Var/Boolean>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship, %3 Var/Boolean; condition; calls: `SE_ObjectExists`, `.GetContainer`, `.RemovePassenger`, `.ReleasePilotSpeaker`, `.SetPilotSpeaker`, `.AddPassenger`
+  - **Does** (high): Moves the passenger (%0) to the given ship, either as a passenger or as pilot speaker; removes it from the old container first.
+    Returns: int 1 on success, 0 if adding as passenger failed (restored), SetPilotSpeaker result in pilot mode
+    Params: %0 passenger; destination ship; flag: nonzero = set as pilot
+    Effects: RemovePassenger from old, ReleasePilotSpeaker and SetPilotSpeaker or AddPassenger
+    Edge: Both objects must exist
+  - Suspected (not verified): In pilot mode there is no restore: ReleasePilotSpeaker drops the current pilot and if SetPilotSpeaker fails the passenger stays removed from its old container (restore only in passenger mode)
 - **1236** `$ret =|if <RefObj> -> eject passenger`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_ObjectExists`, `.GetContainer`, `.EjectPassenger`
+  - **Does** (high): Ejects the passenger into space in a space suit from its container ship.
+    Returns: ship (65542) of the suit; null if none
+    Params: %0 passenger object
+    Effects: RemovePassenger then EjectSpaceSuitFrom
+    Edge: Needs an existing container
 - **1235** `$ret =|if <RefObj> -> enslave passenger`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_ObjectExists`, `.GetContainer`, `.EnslavePassenger`
+  - **Does** (high): Turns the passenger into one unit of ware 16,6 (slave) in the container ship's cargo.
+    Returns: int 1 on success, 0 otherwise
+    Params: %0 passenger
+    Effects: Removes passenger, adds ware 16/6 x1; notifies player if the ship is the player's
+    Edge: Invincible passengers cannot be enslaved; passenger is already released if AddWare fails
 - **1237** `$ret =|if <RefObj> -> destroy passenger`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (!job.special.tpliners); calls: `SE_ObjectExists`, `.GetContainer`, `.ReleasePassenger`
+  - **Does** (high): Destroys (releases) the passenger; invincible passengers are ejected instead.
+    Returns: int 1 on success, 0 otherwise
+    Params: %0 passenger
+    Effects: RemovePassenger and Destruct, or eject if invincible
+    Edge: Missing container gives 0
 - **1419** `<RefObj> ->train passenger to marine`
   params: %0 RefObj; used 1× (!galaxyeditor.obj.addmarine); calls: `SE_ObjectExists`, `.GetContainer`, `.TrainPassengerToMarine`
+  - **Does** (medium): Trains the passenger to a marine in its container ship.
+    Params: %0 passenger
+    Effects: TrainPassengerToMarine on the container
+    Edge: Needs existing object with container
 - **1420** `<RefObj> ->create marine from passenger: fighting=<Var/Number> hacking=<Var/Number> mechanical=<Var/Number> engineering=<Var/Number>`
   params: %0 RefObj, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Number; used 1× (!galaxyeditor.obj.addmarine); calls: `SE_ObjectExists`, `SE_IsClass`, `.GetContainer`, `.TrainPassengerToMarine`, `.SetToMarine`
+  - **Does** (medium): Turns the passenger into a marine and sets its four skills.
+    Params: fighting, hacking, mechanical, engineering skill values
+    Effects: TrainPassengerToMarine then SetToMarine
+    Edge: Only class 1700 persons with a container
 - **1421** `<RefObj> ->set marine skill: fighting=<Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 1× (plugin.rrf.stock.m8); calls: `SE_ObjectExists`, `SE_IsClass`, `.IsMarine`, `.SetMarineFighting`, `.SetMarineMech`, `.SetMarineHacking`, `.SetMarineEng`, `.ReassignMarineBuyPrice`
+  - **Does** (medium): Sets the fighting skill of a marine.
+    Params: skill value
+    Effects: SetMarineFighting, then ReassignMarineBuyPrice
+    Edge: Only class 1700 marines
 - **1423** `<RefObj> ->set marine skill: hacking=<Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 1× (plugin.rrf.stock.m8); calls: `SE_ObjectExists`, `SE_IsClass`, `.IsMarine`, `.SetMarineFighting`, `.SetMarineMech`, `.SetMarineHacking`, `.SetMarineEng`, `.ReassignMarineBuyPrice`
+  - **Does** (medium): Sets the hacking skill of a marine.
+    Params: skill value
+    Effects: SetMarineHacking, then ReassignMarineBuyPrice
+    Edge: Only class 1700 marines
 - **1422** `<RefObj> ->set marine skill: mechanical=<Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 1× (plugin.rrf.stock.m8); calls: `SE_ObjectExists`, `SE_IsClass`, `.IsMarine`, `.SetMarineFighting`, `.SetMarineMech`, `.SetMarineHacking`, `.SetMarineEng`, `.ReassignMarineBuyPrice`
+  - **Does** (medium): Sets the mechanical skill of a marine.
+    Params: skill value
+    Effects: SetMarineMech, then ReassignMarineBuyPrice
+    Edge: Only class 1700 marines
 - **1424** `<RefObj> ->set marine skill: engineering=<Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 1× (plugin.rrf.stock.m8); calls: `SE_ObjectExists`, `SE_IsClass`, `.IsMarine`, `.SetMarineFighting`, `.SetMarineMech`, `.SetMarineHacking`, `.SetMarineEng`, `.ReassignMarineBuyPrice`
+  - **Does** (medium): Sets the engineering skill of a marine.
+    Params: skill value
+    Effects: SetMarineEng, then ReassignMarineBuyPrice
+    Edge: Only class 1700 marines
 - **1428** `$ret =|if is marine: passenger/astronaut=<Var/Passenger>`
   params: %0 RetVar/IF, %1 Var/Passenger; condition; used 2× (!fight.board.launchmarines); calls: `SE_IsClass`, `.IsMarine`
+  - **Does** (medium): Tests whether the given passenger/astronaut object is a marine.
+    Returns: int 1/0; null if the object is not class 2064 or 1700
+    Params: Passenger must be an astronaut/passenger class (2064) or marine class (1700).
+    Edge: Other object classes leave the result null (false in conditions).
 - **1429** `$ret =|if <RefObj> -> can transport passenger: <Var/Passenger>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Passenger; condition; used 2× (!move.collectware); calls: `.IsMarine`, `.IsMarineCapable`, `.IsPassengerCapable`
+  - **Does** (medium): Tests whether the ship can carry the given passenger; only a marine passenger needs the ship to be marine-capable.
+    Returns: int 1/0 (always set)
+    Params: RefObj is the ship; passenger may be null.
+    Edge: Result is 1 for any non-marine passenger, even null; for a marine it is IsMarineCapable(1) of the ship.
 - **1431** `$ret =|if <RefObj> -> can launch marines`
   params: %0 RefObj, %1 RetVar/IF; condition; used 4× (!fight.board.launchmarines); calls: `.CanLaunchMarines`
+  - **Does** (medium): Tests whether the ship can launch marines.
+    Returns: int from CanLaunchMarines()
+    Edge: Missing object returns 0 (VM).
 - **1432** `$ret =|if <RefObj> -> is ship boardable`
   params: %0 RefObj, %1 RetVar/IF; condition; used 6× (!fight.board.launchmarines); calls: `.CanBeBoarded`
+  - **Does** (medium): Tests whether the ship can be boarded.
+    Returns: int from CanBeBoarded()
+    Edge: Missing object returns 0.
 - **1433** `$ret =|if <RefObj> -> get marines array`
   params: %0 RefObj, %1 RetVar/IF; condition; used 8× (!move.boardship.pods); calls: `.GetPassengers`, `.GetProductObjects`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`, `.IsMarine`, `SE_ArrayResize`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns the marines among the passengers of a ship, or among the product objects of a station, as an array.
+    Returns: Array (21) of marine objects (65562); null if none or object type is neither
+    Params: Type of RefObj decides the source: ship (65542) uses GetPassengers, otherwise GetProductObjects.
+    Edge: Empty result gives null, not an empty array.
 - **1434** `$ret =|if <RefObj> -> free space for marines`
   params: %0 RefObj, %1 RetVar/IF; condition; used 3× (!ship.cmd.marinehome.std); calls: `.GetFreeSpaceForMarines`
+  - **Does** (medium): Returns the number of free marine places on the ship.
+    Returns: int from GetFreeSpaceForMarines()
 - **1410** `<RefObj> ->set passenger transport, destination=<Var/Station>, payment=<Var/Number>`
   params: %0 RefObj, %1 Var/Station, %2 Var/Number; used 2× (!job.special.taxi); calls: `.SetPassengerTransport`
+  - **Does** (medium): Marks the ship as carrying a passenger transport order to the destination station for the given payment.
+    Params: Station is the destination; payment in credits (int, units as stored by the callee).
+    Effects: Calls SetPassengerTransport(destination, payment) on the object: stores the transport destination and payment.
+    Edge: Types of the Var parameters are ignored; only values are passed.
 - **1411** `$ret =|if <RefObj> -> is passenger to be transported`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.IsPassengerTransport`
+  - **Does** (medium): Tests whether the object is flagged as a passenger to be transported.
+    Returns: int from IsPassengerTransport()
 - **1412** `$ret =|if <RefObj> -> get passenger transport destiantion`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.GetPassengerDestination`, `SE_ObjectExists`
+  - **Does** (medium): Returns the destination station of a passenger transport.
+    Returns: Station (65543) if the destination exists, else null
+    Edge: Destroyed destination gives null.
 - **1413** `$ret =|if <RefObj> -> get passenger transport payment`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.GetPassengerPayment`
+  - **Does** (medium): Returns the payment of a passenger transport.
+    Returns: int payment; null when it is 0
+    Edge: A payment of 0 yields null, not 0.
 - **1449** `$ret =|if <RefObj> -> get marine buy price`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.IsMarine`, `.GetMarineBuyPrice`
+  - **Does** (medium): Returns the buy price of a marine object.
+    Returns: int price; null if the object is not a marine
 - **1440** `$ret =|if <RefObj> -> get number of marines can board`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.GetMarinesCanBoard`
+  - **Does** (medium): Returns how many marines can still board the ship.
+    Returns: int from GetMarinesCanBoard()
 - **1427** `$ret =|if <RefObj> -> get maximum number of marines`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_ObjectExists`, `.GetMaxMarines`
+  - **Does** (medium): Returns the maximum number of marines of an object.
+    Returns: int from GetMaxMarines(); null if the object does not exist
 - **1441** `$ret =|if <RefObj> -> get number of marines attacking`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.GetNumberAtkMarinesOnBoard`
+  - **Does** (medium): Returns the number of attacking marines currently on board the ship.
+    Returns: int from GetNumberAtkMarinesOnBoard()
 - **1442** `$ret =|if <RefObj> -> add marine <Var/Passenger> to attack group on ship`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Passenger; condition; calls: `SE_ObjectExists`, `.GetContainer`, `.RemoveMarine`, `.SetOwnerObject`, `.MarineBoardsShip`
+  - **Does** (high): Makes the marine board the ship: removes it from its current container and calls MarineBoardsShip(marine, 0), which starts the boarding process.
+    Returns: int 1 when boarding started; null/0 when refused (no room or same owner: a marine suit is spawned instead)
+    Params: Passenger must be a marine object.
+    Effects: Detaches the marine from its container (RemoveMarine, SetOwnerObject to the old container), sets status 14, forks a boarding process with 10 s delay, then RunBoardingProcess.
+    Edge: Marine without container skips detach. Refusal returns no value (null).
 - **1494** `$ret =|if <RefObj> -> get incoming marines`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_ObjectExists`, `.GetIncomingMarines`, `SE_TableSize`, `C700.ConvertArrayToScriptArray`, `SE_TableKeys`
+  - **Does** (medium): Returns the marines that are on their way to board the object.
+    Returns: Array (21) of marine objects (65562); null if none
+    Edge: Missing object or empty set gives null.
 - **1495** `<RefObj> ->stop incoming marines`
   params: %0 RefObj; calls: `SE_ObjectExists`, `.StopIncomingMarines`
+  - **Does** (medium): Stops marines that are on their way to the object.
+    Effects: StopIncomingMarines() on the object.
+    Edge: Ignored for a missing object.
 - **1512** `$ret =|if <RefObj> -> get marine fighting skill`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_ObjectExists`, `SE_IsClass`, `.IsMarine`, `.GetPilotSpeaker`, `.GetMarineFighting`, `.GetMarineMech`, `.GetMarineHacking`, `.GetMarineEng`, `.GetOverallMarineSkill`
+  - **Does** (medium): Returns the marine fighting skill of a marine object or of the ship's marine pilot.
+    Returns: int skill; null if not a marine
+    Params: RefObj: marine (class 1700) or ship whose pilot speaker is a marine.
+    Edge: Null if the object does not exist, or the target is not a marine / the pilot is not a marine.
 - **1513** `$ret =|if <RefObj> -> get marine mechanical skill`
   params: %0 RefObj, %1 RetVar/IF; condition; used 1× (!fight.board.launchmarines); calls: `SE_ObjectExists`, `SE_IsClass`, `.IsMarine`, `.GetPilotSpeaker`, `.GetMarineFighting`, `.GetMarineMech`, `.GetMarineHacking`, `.GetMarineEng`, `.GetOverallMarineSkill`
+  - **Does** (medium): Returns the marine mechanical skill of a marine object or of the ship's marine pilot.
+    Returns: int skill; null if not a marine
+    Params: RefObj: marine (class 1700) or ship whose pilot speaker is a marine.
+    Edge: Null if the object does not exist, or the target is not a marine / the pilot is not a marine.
 - **1514** `$ret =|if <RefObj> -> get marine hacking skill`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_ObjectExists`, `SE_IsClass`, `.IsMarine`, `.GetPilotSpeaker`, `.GetMarineFighting`, `.GetMarineMech`, `.GetMarineHacking`, `.GetMarineEng`, `.GetOverallMarineSkill`
+  - **Does** (medium): Returns the marine hacking skill of a marine object or of the ship's marine pilot.
+    Returns: int skill; null if not a marine
+    Params: RefObj: marine (class 1700) or ship whose pilot speaker is a marine.
+    Edge: Null if the object does not exist, or the target is not a marine / the pilot is not a marine.
 - **1515** `$ret =|if <RefObj> -> get marine engineering skill`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_ObjectExists`, `SE_IsClass`, `.IsMarine`, `.GetPilotSpeaker`, `.GetMarineFighting`, `.GetMarineMech`, `.GetMarineHacking`, `.GetMarineEng`, `.GetOverallMarineSkill`
+  - **Does** (medium): Returns the marine engineering skill of a marine object or of the ship's marine pilot.
+    Returns: int skill; null if not a marine
+    Params: RefObj: marine (class 1700) or ship whose pilot speaker is a marine.
+    Edge: Null if the object does not exist, or the target is not a marine / the pilot is not a marine.
 - **1516** `$ret =|if <RefObj> -> get marine overall skill`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (!fight.board.launchmarines); calls: `SE_ObjectExists`, `SE_IsClass`, `.IsMarine`, `.GetPilotSpeaker`, `.GetMarineFighting`, `.GetMarineMech`, `.GetMarineHacking`, `.GetMarineEng`, `.GetOverallMarineSkill`
+  - **Does** (medium): Returns the marine overall skill of a marine object or of the ship's marine pilot.
+    Returns: int skill; null if not a marine
+    Params: RefObj: marine (class 1700) or ship whose pilot speaker is a marine.
+    Edge: Null if the object does not exist, or the target is not a marine / the pilot is not a marine.
 - **1528** `$ret =|if <RefObj> -> move marine to board: <Value>, timeout=<Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value, %3 Var/Number; `@` interruptible, condition; used 1× (!move.boardship.astronaut); calls: `.__MarineRunOnTarget`
+  - **Does** (medium): Orders the marine to run to the target (for boarding) and waits until it arrives, the target is gone, the timeout elapses or it is interrupted.
+    Returns: Result code (type 19) of __MarineRunOnTarget: 7 interrupted by flag 128, 8 target gone/other environment, 9 reached (within size sum + 500000), 12 timeout
+    Params: Value = target object; timeout in ms (TI_AddTime), timeout <= 0 means none. Speed limit fixed at -1.
+    Effects: Marine flies/runs to the target (action id 22).
+    Edge: Interruptible command. The type cell of the Value parameter is ignored.
 
 ## Trade Commands / Stock Exchange Commands
 
 - **1557** `<RefObj> -> set stock exchange unlock state: <Var/Boolean>`
   params: %0 RefObj, %1 Var/Boolean; calls: `SE_IsClass`, `.UnlockStockExchange`, `.LockStockExchange`
+  - **Does** (medium): Unlocks (value true) or locks (false) the stock exchange for the player.
+    Params: RefObj must be a stock exchange class (2148).
+    Effects: gPlayerRace.UnlockStockExchange / LockStockExchange.
+    Edge: Other classes are ignored.
 - **1558** `$ret =|if <RefObj> -> get stock exchange unlock state`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.IsStockExchangeUnlocked`
+  - **Does** (medium): Tests whether the stock exchange is unlocked for the player.
+    Returns: int from gPlayerRace.IsStockExchangeUnlocked
+    Edge: No class check, unlike 1557.
 - **1559** `$ret =|if  get all unlocked stock exchanges`
   params: %0 RetVar/IF; condition; used 3× (Graph.SX.stn.select); calls: `.GetValidUnlockedStockExchanges`, `SE_ArraySize`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns all valid unlocked stock exchanges.
+    Returns: Array (21) of stations (65543); null if there are none
+    Edge: Empty result gives null.
 - **1562** `<RefObj> -> set owned share count: <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 6× (plugin.st.ex.buy.sell.CoRp); calls: `SE_IsClass`, `.SetShareOwnedCount`
+  - **Does** (medium): Sets the number of shares the player owns in this stock exchange.
+    Params: RefObj must be class 2148.
+    Effects: SetShareOwnedCount(n) on the exchange.
+    Edge: Other classes are ignored.
 - **1561** `$ret =|if <RefObj> -> get owned share count`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (plugin.st.ex.buy.sell); calls: `SE_IsClass`, `.GetShareOwnedCount`
+  - **Does** (medium): Returns the number of shares the player owns in this stock exchange.
+    Returns: int; 0 if the object is not class 2148
 - **1565** `set stock exchange commodity reports menu item: Enabled=<Var/Boolean>`
   params: %0 Var/Boolean; used 3× (plugin.st.ex.buy.sell); calls: `.SetStockExchangeShareReportMenuEnabled`
+  - **Does** (medium): Enables or disables the share report entry in the stock exchange menu.
+    Effects: gPlayerRace.SetStockExchangeShareReportMenuEnabled(0/1).
 - **1563** `set stock exchange corporate reports menu item: Enabled=<Var/Boolean>`
   params: %0 Var/Boolean; used 3× (plugin.st.ex.CoRp.report); calls: `.SetStockExchangeCorpReportMenuEnabled`
+  - **Does** (medium): Enables or disables the corporation report entry in the stock exchange menu.
+    Effects: gPlayerRace.SetStockExchangeCorpReportMenuEnabled(0/1).
 - **1564** `set stock exchange Company reports menu item: Enabled=<Var/Boolean>`
   params: %0 Var/Boolean; used 3× (plugin.st.ex.buy.sell.Comp); calls: `.SetStockExchangeCompanyReportMenuEnabled`
+  - **Does** (medium): Enables or disables the company report entry in the stock exchange menu.
+    Effects: gPlayerRace.SetStockExchangeCompanyReportMenuEnabled(0/1).
 - **1578** `$ret =|if <RefObj> -> is stock exchange accessible`
   params: %0 RefObj, %1 RetVar/IF; condition; used 1× (plugin.st.ex.loc.ExLocations); calls: `SE_IsClass`, `.IsAvailable`
+  - **Does** (medium): Tests whether the stock exchange is available/accessible.
+    Returns: int 1/0 from IsAvailable(); 0 if the object is not class 2148
 
 ## Trade Commands
 
 - **626** `$ret =|if get player money`
   params: %0 RetVar/IF; condition; used 16× (!lib.mtc.buysell); calls: `.GetMoney`
+  - **Does** (medium): Returns the player's credits.
+    Returns: int credits (GetMoney)
+    Edge: Presumably saturates/clamps above 32 bit; use 1540/1541/1542 for large amounts (not verified).
 - **1540** `$ret =|if get billions of credits in player account`
   params: %0 RetVar/IF; condition; used 1× (Graph.pl.credits.over.time.data); calls: `.GetLargeMoneyBillions`
+  - **Does** (medium): Returns the billions part of the player's credits.
+    Returns: int billions
 - **1541** `$ret =|if get amount of credits under a billion in player account`
   params: %0 RetVar/IF; condition; calls: `.GetLargeMoneyUnits`
+  - **Does** (medium): Returns the player's credits below one billion.
+    Returns: int 0..999999999
 - **1542** `$ret = get full amount of credits in player account formatted as string: include separators <Var/Number>, use millions suffix for very large numbers <Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Number; used 3× (Graph.pl.credits.over.time); calls: `.GetLargeMoneyString`
+  - **Does** (medium): Returns the player's full credit amount as a formatted string.
+    Returns: String (5)
+    Params: Flags: include thousands separators; use a millions suffix for very large numbers (passed to GetLargeMoneyString).
 - **662** `add money to player: <Var/Number>`
   params: %0 Var/Number; used 13× (!move.resupply.all); calls: `.AddMoney`
+  - **Does** (medium): Adds credits to the player's account.
+    Params: Number of credits; a negative value is passed through to AddMoney.
+    Effects: gPlayerRace.AddMoney(n).
 - **646** `$ret =|if <RefObj> -> add <Var/Number> units of <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Var/Ware; condition; used 118× (!config.add.wares.few.one); calls: `.AddWare`
+  - **Does** (medium): Adds the number of units of a ware to the object's cargo.
+    Returns: int from AddWare (units actually added)
+    Params: Ware code is main type << 16 | subtype; the case unpacks it as (w>>16)&255 and w&65535.
+    Effects: Changes cargo of the object.
+    Edge: Missing object returns 0.
 - **647** `$ret =|if <RefObj> -> install <Var/Number> units of <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Var/Ware; condition; used 40× (!fight.board.launchmarines); calls: `.InstallWare`
+  - **Does** (medium): Installs the number of units of an equipment/upgrade ware on the object.
+    Returns: int from InstallWare (units installed)
+    Params: Ware code unpacked like 646.
+    Effects: Changes installed equipment.
+    Edge: Missing object returns 0.
 - **604** `$ret = get volume of ware <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 7× (!lib.ai.ammo.supply); calls: `WareTypeVolume`
+  - **Does** (medium): Returns the cargo volume of a ware.
+    Returns: int (WareTypeVolume)
+    Params: Ware code is main<<16|sub.
 - **605** `$ret = get transport class of ware <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 2× (!ship.cmd.mtc.bestbuy.std); calls: `SA_GetTypeTK`
+  - **Does** (medium): Returns the transport class of a ware.
+    Returns: Transport class (type 13)
 - **606** `$ret =|if find station: product <Var/Ware> with best price:  max.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RetVar/IF, %1 Var/Ware, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Sector, %6 Var/Ship/Station, %7 Value; condition; used 4× (!lib.get.products.inrange); calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Searches for the best station for the ware (product, best price), mode value 6 passed to Galaxy.FindStationWithWare.
+    Returns: Station (type 65543) or null if none found
+    Params: Args: ware, price limit (max for product/sold, min for resource per syntax), amount, max jumps, start sector, trader (excluded station/object), exclude array. Price limit semantics decided by the mode inside the callee.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj) if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The trader value is passed as 7th arg; the exclude table does not include the script owner.
 - **1002** `$ret =|if <RefObj> -> find station: product <Var/Ware> with best price:  max.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware, %3 Var/Number, %4 Var/Number, %5 Var/Number, %6 Var/Sector, %7 Var/Ship/Station, %8 Value; condition; calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Same search as command 606 (product, best price, mode 6) but with a RefObj: the object is added to the excluded-station table.
+    Returns: Station (type 65543) or null if none found
+    Params: Args as command 606; RefObj is not the origin of the search.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj), NOT the RefObj if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The RefObj and (if not an array) the exclude value are added to the exclude table.
+  - Suspected (not verified): Default start sector is taken from thisObj, not from the RefObj, so '<obj> -> find station' without a sector searches around the script owner. Probably unintended (low confidence, no stock use).
 - **607** `$ret =|if find station: product <Var/Ware> with min. jumps:  max.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RetVar/IF, %1 Var/Ware, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Sector, %6 Var/Ship/Station, %7 Value; condition; used 5× (!move.resupply); calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Searches for the best station for the ware (product, fewest jumps), mode value 10 passed to Galaxy.FindStationWithWare.
+    Returns: Station (type 65543) or null if none found
+    Params: Args: ware, price limit (max for product/sold, min for resource per syntax), amount, max jumps, start sector, trader (excluded station/object), exclude array. Price limit semantics decided by the mode inside the callee.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj) if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The trader value is passed as 7th arg; the exclude table does not include the script owner.
 - **1003** `$ret =|if <RefObj> -> find station: product <Var/Ware> with min. jumps:  max.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware, %3 Var/Number, %4 Var/Number, %5 Var/Number, %6 Var/Sector, %7 Var/Ship/Station, %8 Value; condition; calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Same search as command 607 (product, fewest jumps, mode 10) but with a RefObj: the object is added to the excluded-station table.
+    Returns: Station (type 65543) or null if none found
+    Params: Args as command 607; RefObj is not the origin of the search.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj), NOT the RefObj if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The RefObj and (if not an array) the exclude value are added to the exclude table.
+  - Suspected (not verified): Default start sector is taken from thisObj, not from the RefObj, so '<obj> -> find station' without a sector searches around the script owner. Probably unintended (low confidence, no stock use).
 - **608** `$ret =|if find station: resource <Var/Ware> with best price: min.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RetVar/IF, %1 Var/Ware, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Sector, %6 Var/Ship/Station, %7 Value; condition; used 8× (!job.special.spacefly.hunter); calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Searches for the best station for the ware (resource, best price), mode value 5 passed to Galaxy.FindStationWithWare.
+    Returns: Station (type 65543) or null if none found
+    Params: Args: ware, price limit (max for product/sold, min for resource per syntax), amount, max jumps, start sector, trader (excluded station/object), exclude array. Price limit semantics decided by the mode inside the callee.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj) if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The trader value is passed as 7th arg; the exclude table does not include the script owner.
 - **1004** `$ret =|if <RefObj> -> find station: resource <Var/Ware> with best price: min.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware, %3 Var/Number, %4 Var/Number, %5 Var/Number, %6 Var/Sector, %7 Var/Ship/Station, %8 Value; condition; calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Same search as command 608 (resource, best price, mode 5) but with a RefObj: the object is added to the excluded-station table.
+    Returns: Station (type 65543) or null if none found
+    Params: Args as command 608; RefObj is not the origin of the search.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj), NOT the RefObj if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The RefObj and (if not an array) the exclude value are added to the exclude table.
+  - Suspected (not verified): Default start sector is taken from thisObj, not from the RefObj, so '<obj> -> find station' without a sector searches around the script owner. Probably unintended (low confidence, no stock use).
 - **609** `$ret =|if find station: resource <Var/Ware> with min. jumps: min.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RetVar/IF, %1 Var/Ware, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Sector, %6 Var/Ship/Station, %7 Value; condition; calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Searches for the best station for the ware (resource, fewest jumps), mode value 9 passed to Galaxy.FindStationWithWare.
+    Returns: Station (type 65543) or null if none found
+    Params: Args: ware, price limit (max for product/sold, min for resource per syntax), amount, max jumps, start sector, trader (excluded station/object), exclude array. Price limit semantics decided by the mode inside the callee.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj) if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The trader value is passed as 7th arg; the exclude table does not include the script owner.
 - **1005** `$ret =|if <RefObj> -> find station: resource <Var/Ware> with min. jumps: min.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware, %3 Var/Number, %4 Var/Number, %5 Var/Number, %6 Var/Sector, %7 Var/Ship/Station, %8 Value; condition; calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Same search as command 609 (resource, fewest jumps, mode 9) but with a RefObj: the object is added to the excluded-station table.
+    Returns: Station (type 65543) or null if none found
+    Params: Args as command 609; RefObj is not the origin of the search.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj), NOT the RefObj if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The RefObj and (if not an array) the exclude value are added to the exclude table.
+  - Suspected (not verified): Default start sector is taken from thisObj, not from the RefObj, so '<obj> -> find station' without a sector searches around the script owner. Probably unintended (low confidence, no stock use).
 - **663** `$ret =|if find station sells: resource <Var/Ware> with best price: max.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RetVar/IF, %1 Var/Ware, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Sector, %6 Var/Ship/Station, %7 Value; condition; used 1× (plugin.autotrade.getroute.long); calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Searches for the best station for the ware (station sells resource, best price), mode value 68 passed to Galaxy.FindStationWithWare.
+    Returns: Station (type 65543) or null if none found
+    Params: Args: ware, price limit (max for product/sold, min for resource per syntax), amount, max jumps, start sector, trader (excluded station/object), exclude array. Price limit semantics decided by the mode inside the callee.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj) if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The trader value is passed as 7th arg; the exclude table does not include the script owner.
 - **1006** `$ret =|if <RefObj> -> find station sells: resource <Var/Ware> with best price: max.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware, %3 Var/Number, %4 Var/Number, %5 Var/Number, %6 Var/Sector, %7 Var/Ship/Station, %8 Value; condition; calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Same search as command 663 (station sells resource, best price, mode 68) but with a RefObj: the object is added to the excluded-station table.
+    Returns: Station (type 65543) or null if none found
+    Params: Args as command 663; RefObj is not the origin of the search.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj), NOT the RefObj if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The RefObj and (if not an array) the exclude value are added to the exclude table.
+  - Suspected (not verified): Default start sector is taken from thisObj, not from the RefObj, so '<obj> -> find station' without a sector searches around the script owner. Probably unintended (low confidence, no stock use).
 - **664** `$ret =|if find station sells: resource <Var/Ware> with min. jumps: max.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RetVar/IF, %1 Var/Ware, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Sector, %6 Var/Ship/Station, %7 Value; condition; used 2× (!move.resupply); calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Searches for the best station for the ware (station sells resource, fewest jumps), mode value 72 passed to Galaxy.FindStationWithWare.
+    Returns: Station (type 65543) or null if none found
+    Params: Args: ware, price limit (max for product/sold, min for resource per syntax), amount, max jumps, start sector, trader (excluded station/object), exclude array. Price limit semantics decided by the mode inside the callee.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj) if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The trader value is passed as 7th arg; the exclude table does not include the script owner.
 - **1007** `$ret =|if <RefObj> -> find station sells: resource <Var/Ware> with min. jumps: max.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware, %3 Var/Number, %4 Var/Number, %5 Var/Number, %6 Var/Sector, %7 Var/Ship/Station, %8 Value; condition; calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Same search as command 664 (station sells resource, fewest jumps, mode 72) but with a RefObj: the object is added to the excluded-station table.
+    Returns: Station (type 65543) or null if none found
+    Params: Args as command 664; RefObj is not the origin of the search.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj), NOT the RefObj if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The RefObj and (if not an array) the exclude value are added to the exclude table.
+  - Suspected (not verified): Default start sector is taken from thisObj, not from the RefObj, so '<obj> -> find station' without a sector searches around the script owner. Probably unintended (low confidence, no stock use).
 - **1169** `$ret =|if find station: product <Var/Ware> with best price depend on jumps:  max.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RetVar/IF, %1 Var/Ware, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Sector, %6 Var/Ship/Station, %7 Value; condition; used 7× (!job.trade.docktrader); calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Searches for the best station for the ware (product, best price depending on jumps), mode value 38 passed to Galaxy.FindStationWithWare.
+    Returns: Station (type 65543) or null if none found
+    Params: Args: ware, price limit (max for product/sold, min for resource per syntax), amount, max jumps, start sector, trader (excluded station/object), exclude array. Price limit semantics decided by the mode inside the callee.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj) if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The trader value is passed as 7th arg; the exclude table does not include the script owner.
 - **1170** `$ret =|if find station: resource <Var/Ware> with best price depend on jumps: min.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RetVar/IF, %1 Var/Ware, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Sector, %6 Var/Ship/Station, %7 Value; condition; used 5× (!job.trade.freetrader.docksonly); calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Searches for the best station for the ware (resource, best price depending on jumps), mode value 37 passed to Galaxy.FindStationWithWare.
+    Returns: Station (type 65543) or null if none found
+    Params: Args: ware, price limit (max for product/sold, min for resource per syntax), amount, max jumps, start sector, trader (excluded station/object), exclude array. Price limit semantics decided by the mode inside the callee.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj) if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The trader value is passed as 7th arg; the exclude table does not include the script owner.
 - **1171** `$ret =|if find station sells: resource <Var/Ware> with best price depend on jumps: max.price=<Var/Number>, amount=<Var/Number>, max.jumps=<Var/Number>, startsector=<Var/Sector>, trader=<Var/Ship/Station>, exclude array=<Value>`
   params: %0 RetVar/IF, %1 Var/Ware, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Sector, %6 Var/Ship/Station, %7 Value; condition; used 8× (!job.trade.freetrader.docksonly); calls: `SE_ObjectExists`, `.GetSector`, `SE_ArraySize`, `C300.FindStationWithWare`
+  - **Does** (medium): Searches for the best station for the ware (station sells resource, price depending on jumps), mode value 100 passed to Galaxy.FindStationWithWare.
+    Returns: Station (type 65543) or null if none found
+    Params: Args: ware, price limit (max for product/sold, min for resource per syntax), amount, max jumps, start sector, trader (excluded station/object), exclude array. Price limit semantics decided by the mode inside the callee.
+    Edge: Null max.price/amount/max.jumps become -1 (no limit). Null start sector: uses the sector of the script owner (thisObj) if it is a ship/station. Exclude array: type 21 holds {type,value} pairs, only station/sector entries are used as excluded stations/sectors; returns null when nothing is found. The trader value is passed as 7th arg; the exclude table does not include the script owner.
 - **629** `$ret = get average price of ware <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 30× (!job.trade.freetrader.docksonly); calls: `WareTypePriceAverage`
+  - **Does** (medium): Returns the average price of a ware.
+    Returns: int credits (WareTypePriceAverage)
+    Params: Ware code main<<16|sub.
 - **630** `$ret = get max price of ware <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 13× (!job.trade.freetrader.docksonly); calls: `WareTypeMaxPrice`
+  - **Does** (medium): Returns the maximum price of a ware.
+    Returns: int credits (WareTypeMaxPrice)
+    Params: Ware code main<<16|sub.
 - **631** `$ret = get min price of ware <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 12× (!job.trade.freetrader.docksonly); calls: `WareTypeMinPrice`
+  - **Does** (medium): Returns the minimum price of a ware.
+    Returns: int credits (WareTypeMinPrice)
+    Params: Ware code main<<16|sub.
 - **632** `$ret = get max price of ware <Var/Ware> as secondary resource`
   params: %0 RetVar, %1 Var/Ware; used 2× (!job.trade.docktrader); calls: `WareTypeMaxPriceSec`
+  - **Does** (medium): Returns the maximum price of a ware as secondary resource.
+    Returns: int credits (WareTypeMaxPriceSec)
+    Params: Ware code main<<16|sub.
 - **633** `$ret = get min price of ware <Var/Ware> as secondary resource`
   params: %0 RetVar, %1 Var/Ware; calls: `WareTypeMinPriceSec`
+  - **Does** (medium): Returns the minimum price of a ware as secondary resource.
+    Returns: int credits (WareTypeMinPriceSec)
+    Params: Ware code main<<16|sub.
 - **653** `$ret =|if is ware <Var/Ware> illegal in <Var/Race> sectors`
   params: %0 RetVar/IF, %1 Var/Ware, %2 Var/Race; condition; used 6× (!job.trade.docktrader); calls: `WareTypeIsIllegalForRace`
+  - **Does** (medium): Tests whether the ware is illegal in sectors of the given race.
+    Returns: int from WareTypeIsIllegalForRace; null when false/0
+    Edge: False gives null rather than int 0.
 - **655** `$ret = get maintype of ware <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 12× (!galaxyeditor.create.flyingware)
+  - **Does** (high): Returns the main type of a ware code.
+    Returns: int (w>>16)&255
+    Edge: Pure bit extraction, no validation.
 - **656** `$ret = get subtype of ware <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 5× (!galaxyeditor.create.flyingware)
+  - **Does** (high): Returns the subtype of a ware code.
+    Returns: int w&65535
+    Edge: Pure bit extraction.
 - **657** `$ret = get ware from maintype <Var/Number> and subtype <Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Number; used 21× (!job.fight.defencebase); calls: `SA_GetNumSubTypes`
+  - **Does** (high): Builds a ware code from main type and subtype.
+    Returns: Ware (9) = main<<16|sub; null if sub >= number of subtypes of main
+    Edge: Main type is not range checked except via SA_GetNumSubTypes.
 - **1669** `$ret = get ware from subtype name <Var/String>`
   params: %0 RetVar, %1 Var/String; calls: `SA_GetTypeCodeByName`
+  - **Does** (medium): Returns the ware with the given internal type/subtype name.
+    Returns: Ware (9); null if the name does not resolve
+    Params: String is the internal type name.
 - **658** `$ret = get number of subtypes of maintype <Var/Number>`
   params: %0 RetVar, %1 Var/Number; used 20× (!job.fight.defencebase); calls: `SA_GetNumSubTypes`
+  - **Does** (medium): Returns the number of subtypes of a main type.
+    Returns: int
+    Params: Main type number.
 - **659** `$ret = <RefObj> -> get maintype`
   params: %0 RefObj, %1 RetVar; used 4× (!lib.get.best.missile.fortarget); calls: `.GetType`
+  - **Does** (medium): Returns the main type of an object.
+    Returns: int from GetType()
 - **660** `$ret = <RefObj> -> get subtype`
   params: %0 RefObj, %1 RetVar; used 1× (plugin.rrf.ufo.pickup); calls: `.GetSubType`
+  - **Does** (medium): Returns the subtype of an object.
+    Returns: int from GetSubType()
 - **1140** `$ret = get relvalue of <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 2× (!station.shieldstock.terran); calls: `SA_GetTypeRelValue`
+  - **Does** (medium): Returns the relative value of a ware.
+    Returns: int (SA_GetTypeRelValue)
 - **1456** `$ret = get notority require to buy ware: <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 2× (plugin.st.ex.loc.ex.dynmenu.updt); calls: `SA_GetTypeMinNotoriety`
+  - **Does** (medium): Returns the minimum notoriety needed to buy the ware.
+    Returns: int (SA_GetTypeMinNotoriety)
 - **1479** `$ret =|if is equipment: ware=<Var/Ware>`
   params: %0 RetVar/IF, %1 Var/Ware; condition; used 6× (!lib.get.products.inrange)
+  - **Does** (medium): Tests whether the ware is an equipment: ware flag table bit 1.
+    Returns: int: the flag bit value (1) or 0, not normalised to 1
+    Params: Ware code main<<16|sub.
+    Edge: Result is the masked bit, so it is 1, not 1.
 - **1480** `$ret =|if is upgrade: ware=<Var/Ware>`
   params: %0 RetVar/IF, %1 Var/Ware; condition; used 5× (!lib.get.products.inrange)
+  - **Does** (medium): Tests whether the ware is an upgrade: ware flag table bit 8.
+    Returns: int: the flag bit value (8) or 0, not normalised to 1
+    Params: Ware code main<<16|sub.
+    Edge: Result is the masked bit, so it is 8, not 1.
 - **1506** `$ret =|if is inventory: ware=<Var/Ware>`
   params: %0 RetVar/IF, %1 Var/Ware; condition
+  - **Does** (medium): Tests whether the ware is an inventory item: ware flag table bit 4.
+    Returns: int: the flag bit value (4) or 0, not normalised to 1
+    Params: Ware code main<<16|sub.
+    Edge: Result is the masked bit, so it is 4, not 1.
 - **1560** `add trade rank based on profit: race=<Var/Race> profit=<Var/Number>`
   params: %0 Var/Race, %1 Var/Number; used 3× (plugin.st.ex.buy.sell.CoRp); calls: `UpdateTradeRankingsFromProfit`
+  - **Does** (medium): Updates the trade rank of the race from a profit.
+    Params: Race and profit in credits.
+    Effects: UpdateTradeRankingsFromProfit(race, profit): changes trade ranking/experience.
 - **1584** `$ret =|if get trade stats for sector: <Var/Sector>, only include these wares: <Var/Array>, treat docks as producers: <Var/Boolean>, include player docks: <Var/Boolean>`
   params: %0 RetVar/IF, %1 Var/Sector, %2 Var/Array, %3 Var/Boolean, %4 Var/Boolean; condition; calls: `C700.ConvertScriptArrayToArray`, `SE_ArraySize`, `SE_ObjectExists`, `SE_IsClass`, `.GetEconomyStatus`, `SE_TableNext`, `SE_ArrayAlloc`, `SE_ArrayAppend`
+  - **Does** (medium): Returns trade statistics for one sector, summed per ware (GetEconomyStatus(5000, ...)), optionally filtered by a ware list.
+    Returns: Array (21) of 18 cells: for each of two tables (pair order as in code) four sub-arrays (wares, then three number arrays) plus a total int; null if no sector contributed
+    Params: Sector; ware array (null/empty = all wares); flag 3 treat docks as producers; flag 4 include player docks.
+    Edge: Sector must be class 2001 and exist; otherwise nothing is added and the result is null.
 - **1582** `$ret =|if get trade stats for sectors: <Var/Array>, only include these wares: <Var/Array>, treat docks as producers: <Var/Boolean>, include player docks: <Var/Boolean>`
   params: %0 RetVar/IF, %1 Var/Array, %2 Var/Array, %3 Var/Boolean, %4 Var/Boolean; condition; used 1× (plugin.st.ex.loc.ex.ProdResCheck); calls: `C700.ConvertScriptArrayToArray`, `SE_ArraySize`, `SE_ObjectExists`, `SE_IsClass`, `.GetEconomyStatus`, `SE_TableNext`, `SE_ArrayAlloc`, `SE_ArrayAppend`
+  - **Does** (medium): Same as 1584 but for an array of sectors; per-ware values are summed across all sectors.
+    Returns: Array (21) of 18 cells: for each of two tables (pair order as in code) four sub-arrays (wares, then three number arrays) plus a total int; null if no sector contributed
+    Params: Sector array; ware array (null/empty = all wares); flag 3 treat docks as producers; flag 4 include player docks.
+    Edge: Non-sector/missing entries are skipped; null if none contributed.
 
 ## General Object Commands / Weapon Information
 
 - **1132** `$ret =  get power generator of ship/station type <Var/Ware>`
   params: %0 Var/Ware, %1 RetVar; calls: `SA_GetTypeShieldPowerGeneration`, `.GetShieldPowerGenerator`
+  - **Does** (medium): Returns the shield power generation of a shield ware type; for other values calls GetShieldPowerGenerator on the value.
+    Returns: int power generation
+    Params: Ware of main type 5, 6 or 7 (shield types).
+    Edge: A ware of any other main type is treated as an object and returns 0 (VM answers 0 for non-object). Syntax says 'ship/station type' but the code supports only shield types.
+  - Suspected (not verified): Syntax text claims ship/station type, but code handles only main types 5-7; other types silently return 0. Likely mislabel (low confidence).
 - **1133** `$ret = <RefObj> -> get power generator`
   params: %0 RefObj, %1 RetVar; calls: `SA_GetTypeShieldPowerGeneration`, `.GetShieldPowerGenerator`
+  - **Does** (medium): Returns the shield power generator rating of the object (or of a shield ware type when a ware is passed).
+    Returns: int power generation
+    Params: RefObj is the ship/station.
+    Edge: Shares body with 1132.
 - **553** `$ret =|if <RefObj> -> fits laser <Var/Ware> into turret <Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware, %3 Var/Number; condition; calls: `.GetTurretLaserMask`, `SA_GetTypeGSubType`
+  - **Does** (medium): Tests whether the turret's laser mask accepts the laser type.
+    Returns: int 1; null if it does not fit
+    Params: Turret number; laser ware subtype is mapped via SA_GetTypeGSubType(8, sub).
+    Edge: false gives null.
 - **554** `$ret =|if <RefObj> -> get max. number of lasers in turret <Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number; condition; used 12× (!lib.ai.ammo.supply); calls: `.GetNumTurrets`, `.GetNumLasersInTurret`
+  - **Does** (medium): Returns the maximum number of lasers in the turret.
+    Returns: int; null/0 when the turret index >= number of turrets
+    Params: Turret index 0-based (0 is the main guns).
+    Edge: Out-of-range gives resultValue unset (0).
 - **555** `$ret = <RefObj> -> get laser type in turret <Var/Number> at slot <Var/Number>`
   params: %0 RefObj, %1 RetVar, %2 Var/Number, %3 Var/Number; used 6× (!lib.get.resupply.needed); calls: `.GetLaserTypeInTurret`
+  - **Does** (medium): Returns the laser type mounted in a turret at a slot.
+    Returns: Ware (9) = 8<<16|subtype; null if the slot is empty (<0)
+    Params: Turret index and slot index.
 - **731** `$ret =|if <RefObj> -> get laser type in bay <Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number; condition; calls: `.GetLasers`, `SE_ArraySize`
+  - **Does** (medium): Returns the laser type in the given gun bay of the ship.
+    Returns: Ware (9) = 8<<16|subtype; null if bay out of range or empty (<0)
+    Params: Bay index 0-based.
 - **556** `$ret = <RefObj> -> get number of turrets`
   params: %0 RefObj, %1 RetVar; used 14× (!lib.ai.ammo.supply); calls: `.GetNumTurrets`
+  - **Does** (medium): Returns the number of turrets of the object.
+    Returns: int from GetNumTurrets()
 - **1097** `$ret =|if <RefObj> -> turret <Var/Number> can use laser <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Var/Ware; condition; used 1× (!lib.ai.ammo.supply); calls: `SA_GetTypeGSubType`, `.CanTransportWareType`, `.GetTurretLaserMask`
+  - **Does** (medium): Tests whether the turret can use the laser: the ship must be able to transport the ware and the turret mask must include its group.
+    Returns: int 1/0
+    Params: Turret index; laser ware.
 - **1134** `$ret = get range of laser <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 1× (!plugin.fightcommand.weaponposs); calls: `SA_GetLaserTypeRange`
+  - **Does** (medium): Returns the range of a laser type.
+    Returns: int, SA_GetLaserTypeRange / 500 (engine units to metres by 500/m; integer division assumed)
+    Params: Laser ware.
 - **1135** `$ret = get shield damage of laser <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; calls: `SA_GetLaserTypeSectorShieldDamage`
+  - **Does** (medium): Returns the sector (out-of-combat) shield damage of the laser type.
+    Returns: int
+    Params: Laser ware.
 - **1136** `$ret = get hull damage of laser <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 1× (!move.mine.minemineral); calls: `SA_GetLaserTypeSectorHullDamage`
+  - **Does** (medium): Returns the sector (out-of-combat) hull damage of the laser type.
+    Returns: int
+    Params: Laser ware.
 - **1137** `$ret =|if get ammunition of laser <Var/Ware>`
   params: %0 RetVar/IF, %1 Var/Ware; condition; used 8× (!lib.ai.ammo.supply); calls: `SA_GetLaserTypeAmmunition`
+  - **Does** (medium): Returns the ammunition ware the laser type uses.
+    Returns: Ware (9); null if the laser needs none
+    Params: Laser ware.
 - **1400** `$ret = get bullet speed of laser <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 5× (!lib.get.best.missile.fortarget); calls: `SA_GetLaserTypeSpeed`, `SA_GetMissileTypeSpeed`
+  - **Does** (medium): Returns the bullet speed of a laser, or the speed of a missile when the main type is not laser.
+    Returns: int speed / 500
+    Params: Main type 8 = laser; any other main type is read as a missile subtype.
+    Edge: No check that the ware is a missile for the else branch.
 - **571** `$ret =|if <RefObj> -> can missile <Var/Ware> be installed`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 12× (!fight.board.launchmarines); calls: `.GetMissileMask`, `SA_GetTypeGSubType`, `.CanTransportWareType`
+  - **Does** (medium): Tests whether the missile type can be installed on the ship: cargo class fits and the ship's missile mask has the missile group bit.
+    Returns: int 1; null otherwise
+    Params: Missile ware.
 - **557** `$ret = get range of missile type <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 10× (!fight.attack.object.owp); calls: `SA_GetMissileTypeRange`
+  - **Does** (medium): Returns the range of a missile type.
+    Returns: int, SA_GetMissileTypeRange / 500
+    Params: Missile ware.
 - **1139** `$ret = get missile max damage of <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 21× (!fight.attack.object.bomber); calls: `SA_GetMissileTypeMaxDamage`
+  - **Does** (medium): Returns the maximum damage of a missile type.
+    Returns: int
+    Params: Missile ware.
 - **1388** `$ret = get default launch time difference for missile type: <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 5× (!fight.board.launchmarines); calls: `SA_GetMissileTypeLaunchDelay`, `SA_GetLaserTypeReloadTime`
+  - **Does** (medium): Returns the default launch delay of a missile, or the reload time of a laser when the main type is not 10.
+    Returns: int (SA_GetMissileTypeLaunchDelay / SA_GetLaserTypeReloadTime, units not verified)
+    Params: Main type 10 = missile; every other main type is read as a laser subtype.
 - **1300** `$ret = get missile flags of <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 4× (!lib.get.best.missile.fortarget); calls: `SA_GetMissileTypeGuidance`
+  - **Does** (medium): Returns the guidance flags of a missile type.
+    Returns: int (SA_GetMissileTypeGuidance)
+    Params: Missile ware.
 - **1333** `<RefObj> ->set laser energy to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `.GetObjectID`, `SA_SetLaser`
+  - **Does** (medium): Sets the laser energy of the ship.
+    Params: Number to pass as energy to SA_SetLaser.
+    Effects: SA_SetLaser(objectID, value).
+    Edge: Skipped when the object has no object ID.
 - **1452** `$ret = <RefObj> -> get compatible laser array: turret=<Var/Number>`
   params: %0 RefObj, %1 RetVar, %2 Var/Number; used 1× (!ship.signal.lasertower.setup); calls: `SA_GetNumSubTypes`, `.CanTransportWareType`, `.GetTurretLaserMask`, `SA_GetTypeGSubType`, `SE_TableSize`, `C700.ConvertArrayToScriptArray`, `SE_TableKeys`
+  - **Does** (medium): Returns the laser types the ship can carry and the turret can mount.
+    Returns: Array (21) of laser wares; null if none
+    Params: Turret index.
+    Edge: Empty result gives null.
 - **1483** `$ret =|if <RefObj> -> can turret <Var/Number> fire missiles`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number; condition; used 6× (!plugin.gz.missile.def.mk3); calls: `.GetNumTurrets`, `.IsTurretForMissiles`
+  - **Does** (medium): Tests whether the turret is a missile turret.
+    Returns: int 1; null otherwise
+    Params: Turret index must be 1..NumTurrets-1; turret 0 always gives false.
+    Edge: false gives null.
 - **1499** `$ret =|if <RefObj> -> get compatible missile array`
   params: %0 RefObj, %1 RetVar/IF; condition; used 10× (!lib.ai.ammo.supply); calls: `SE_ObjectExists`, `SE_IsClass`, `.GetMissileMask`, `SA_GetNumSubTypes`, `.CanTransportWareType`, `SA_GetTypeGSubType`, `GetWareNameID`, `SE_ArrayAppend`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns the missile types the ship could carry: allowed by its missile mask and cargo class, not in the hidden-type table, and with a name.
+    Returns: Array (21) of missile wares (type 9)
+    Params: RefObj must be a ship class (2004).
+    Edge: Missile mask 0 or non-ship gives null.
 - **1508** `$ret =|if <RefObj> -> get maximum laser range: turret=<Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number; condition; used 7× (!plugin.fightcommand.attack); calls: `SE_ObjectExists`, `.GetNumTurrets`, `.GetNumLasersInTurret`, `.GetLaserTypeInTurret`, `SA_GetLaserTypeRange`
+  - **Does** (high): Returns the maximum laser range among the ship's turrets (or one turret).
+    Returns: int range / 500; 0 if no lasers
+    Params: Turret index; -1 = all turrets (0..N-1, including turret 0).
+    Edge: Missing object gives null.
 - **1509** `$ret =|if <RefObj> -> get minimum laser range: turret=<Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number; condition; calls: `SE_ObjectExists`, `.GetNumTurrets`, `.GetNumLasersInTurret`, `.GetLaserTypeInTurret`, `SA_GetLaserTypeRange`
+  - **Does** (high): Returns the minimum laser range among the ship's turrets (or one turret).
+    Returns: int range / 500; 0 if no lasers
+    Params: Turret index; -1 = all turrets.
+    Edge: No lasers gives 0 (not 2147483647). Missing object gives null.
 - **1520** `$ret =|if <RefObj> -> get compatible missile array from cargobay`
   params: %0 RefObj, %1 RetVar/IF; condition; used 6× (!fight.attack.object.std); calls: `SE_ObjectExists`, `SE_IsClass`, `.GetMissileMask`, `SA_GetNumSubTypes`, `.GetNumMissiles`, `SA_GetTypeGSubType`, `GetWareNameID`, `SE_ArrayAppend`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Returns the missile types the ship has aboard.
+    Returns: Array (21) of missile wares
+    Params: RefObj must be a ship class (2004).
+    Edge: Missing missile mask, non-ship or none aboard gives null.
 - **1538** `$ret = get OOS shield damage of laser <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; calls: `SA_GetLaserTypeShieldDamage`
+  - **Does** (medium): Returns the out-of-sector shield damage of a laser type.
+    Returns: int (SA_GetLaserTypeShieldDamage)
+    Params: Laser ware.
 - **1539** `$ret = get OOS hull damage of laser <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; calls: `SA_GetLaserTypeHullDamage`
+  - **Does** (medium): Returns the out-of-sector hull damage of a laser type.
+    Returns: int (SA_GetLaserTypeHullDamage)
+    Params: Laser ware.
 - **1606** `$ret = get bullet flags of laser <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; calls: `SA_GetLaserTypeFlyFX`
+  - **Does** (medium): Returns the fly effect of a laser bullet.
+    Returns: int (SA_GetLaserTypeFlyFX)
+    Params: Laser ware.
 
 ## General Object Commands / Pilots
 
 - **1037** `$ret = <RefObj> -> get pilot name`
   params: %0 RefObj, %1 RetVar; used 13× (!lib.ds); calls: `.GetPilotName`
+  - **Does** (medium): Returns the pilot name of the ship.
+    Returns: string (type 5)
+    Edge: Null/destroyed object: VM answers 0.
 - **1038** `<RefObj> ->set pilot name to <Var/String>`
   params: %0 RefObj, %1 Var/String; used 4× (lib.ship.var.setpilotname); calls: `.SetPilotName`
+  - **Does** (medium): Sets the pilot name of the ship; a non-string argument clears the custom name.
+    Params: Argument must be a string (type 5) to set; any other type clears.
+    Effects: Ship pilot name changed
+    Edge: Null/destroyed object: VM answers 0.
 - **1039** `$ret = get random name: race=<Var/Race>`
   params: %0 RetVar, %1 Var/Race; used 8× (!galaxyeditor.obj.addmarine); calls: `GetRandomName`
+  - **Does** (medium): Returns a random pilot name string from the name table.
+    Returns: string (type 5)
+    Params: Race argument is effectively only tested for null: the handler compares the TYPE cell instruction[2], not the value.
+    Edge: Null argument selects name set 8, any other argument set 0 (so the race value never picks a race-specific set).
+  - Suspected (not verified): Test is `instruction[2] == 0` (type cell) rather than the race value in instruction[3]; the race value is never used. Maybe intentional (null = set 8) but name set never depends on race.
 - **1059** `$ret = get fight rank`
   params: %0 RetVar; calls: `.GetFightRanking`
+  - **Does** (medium): Returns the player's fight rank points.
+    Returns: int (type 4)
+    Edge: Player only; no object argument.
 - **1060** `$ret = get trade rank`
   params: %0 RetVar; calls: `.GetTradeRanking`
+  - **Does** (medium): Returns the player's trade rank points.
+    Returns: int (type 4)
+    Edge: Player only.
 - **1040** `<RefObj> ->set pilot speaker: voice=<Value>, face=<Value>, Pirate subrace=<Value>, Argon female=<Value>`
   params: %0 RefObj, %1 Value, %2 Value, %3 Value, %4 Value; calls: `.SetPilotVoiceAndFace`, `.SetPilotSubraceID`, `.SetPilotFemale`
+  - **Does** (medium): Sets the pilot voice, face, Pirate subrace and Argon-female flag on a ship.
+    Params: voice/face/female are ints, subrace is a race; female must be 0 or 1, otherwise -1 (unset). A parameter of the wrong type is replaced by 0.
+    Effects: Pilot speaker attributes of the ship changed
+    Edge: Wrong-typed voice/face/subrace become 0 (not unchanged); female -1 means unset.
 - **534** `$ret = <RefObj> -> get pilot fightskill`
   params: %0 RefObj, %1 RetVar; used 7× (!fight.attack.object.std); calls: `.GetPilotFightSkill`
+  - **Does** (medium): Returns the pilot's fight skill.
+    Returns: int (type 4)
+    Edge: Null/destroyed object: VM answers 0.
 - **533** `<RefObj> ->set pilot fightskill to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 3× (!fight.attack.object.std); calls: `.SetPilotFightSkill`
+  - **Does** (medium): Sets the pilot's fight skill.
+    Params: Value passed unchecked (no type test).
+    Effects: Pilot fight skill changed
+    Edge: Null/destroyed object: VM answers 0.
 - **1325** `$ret = <RefObj> -> get pilot tradeskill`
   params: %0 RefObj, %1 RetVar; calls: `.GetPilotTradeSkill`
+  - **Does** (medium): Returns the pilot's trade skill.
+    Returns: int (type 4)
+    Edge: Null/destroyed object: VM answers 0.
 - **1326** `<RefObj> ->set pilot tradeskill to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `.SetPilotTradeSkill`
+  - **Does** (medium): Sets the pilot's trade skill.
+    Params: Value passed unchecked (no type test).
+    Effects: Pilot trade skill changed
+    Edge: Null/destroyed object: VM answers 0.
 - **1204** `$ret = <RefObj> -> get pilot morale`
   params: %0 RefObj, %1 RetVar; used 2× (!lib.check.use.emergencyjump); calls: `.GetPilotMorale`
+  - **Does** (medium): Returns the pilot's morale.
+    Returns: int (type 4)
+    Edge: Null/destroyed object: VM answers 0.
 - **1222** `<RefObj> ->set pilot morale: <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 1× (plugin.rrf.stock.m8); calls: `.SetPilotMorale`
+  - **Does** (medium): Sets the pilot's morale.
+    Params: Value passed unchecked.
+    Effects: Pilot morale changed
+    Edge: Null/destroyed object: VM answers 0.
 - **1205** `$ret = <RefObj> -> get pilot aggression`
   params: %0 RefObj, %1 RetVar; used 2× (!lib.check.use.emergencyjump); calls: `.GetPilotAggression`
+  - **Does** (medium): Returns the pilot's aggression.
+    Returns: int (type 4)
+    Edge: Null/destroyed object: VM answers 0.
 - **1223** `<RefObj> ->set pilot aggression: <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 1× (plugin.rrf.stock.m8); calls: `.SetPilotAggression`
+  - **Does** (medium): Sets the pilot's aggression.
+    Params: Value passed unchecked.
+    Effects: Pilot aggression changed
+    Edge: Null/destroyed object: VM answers 0.
 - **1245** `$ret =|if <RefObj> -> pilot eject from ship`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.LeaveShip`
+  - **Does** (high): Makes the ship's pilot leave the ship in a pod (astronaut), started in a forked task.
+    Returns: int 1 if started (type 4), null for the player ship
+    Effects: Spawns a pod (Astronaut) only if owner race mask & 918334; pilot speaker object moves to the pod; ship pilot cleared via LeaveShip
+    Edge: Player ship: nothing happens and null returned. Result 1 is set before the fork, so it says started, not that a pod was created (non-matching owner races get no pod).
 - **1246** `$ret =|if <RefObj> -> move pilot to ship <Var/Ship>: disable=<Var/Boolean>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship, %3 Var/Boolean; condition; calls: `.ReleasePilotSpeaker`, `.RemoveCopyPilotSpeaker`, `.SetPilotSpeaker`
+  - **Does** (high): Moves the pilot (speaker object) from the RefObj ship to the target ship.
+    Returns: int (type 4): result of target SetPilotSpeaker (1 on success, else 0/null)
+    Params: RefObj = source ship; Ship param = target; Boolean = pilot left (disable) flag passed to RemoveCopyPilotSpeaker (PilotLeftShip vs ChangePilot 0). Syntax text calls the Boolean 'disable'.
+    Effects: Destroys the target ship's existing pilot speaker; takes pilot from source (or creates a new 1700 pilot from it) and installs it on target; target inherits name/skills and owner
+    Edge: SetPilotSpeaker fails if the new pilot is already in a container or target already has one; the old target pilot is already destroyed by then, source pilot already removed.
 - **1468** `$ret = get trade rank title: text=<Var/Boolean>`
   params: %0 RetVar, %1 Var/Boolean; calls: `GetTitleFromTradeRanking`, `.GetTradeRanking`, `GetTradeRankingTitleName`
+  - **Does** (medium): Returns the player's trade rank title as number, or its name string when the flag is set.
+    Returns: int title index (type 4) or string (type 5)
+    Params: Boolean text=1 gives the name string.
 - **1469** `$ret = get fight rank title: text=<Var/Boolean>`
   params: %0 RetVar, %1 Var/Boolean; calls: `GetTitleFromFightRanking`, `.GetFightRanking`, `GetFightRankingTitleName`
+  - **Does** (medium): Returns the player's fight rank title as number, or its name string when the flag is set.
+    Returns: int title index or string
+    Params: Boolean text=1 gives the name string.
 - **1470** `$ret = get trade rank percentage`
   params: %0 RetVar; calls: `GetTitleFromTradeRanking`, `.GetTradeRanking`, `GetAdvanceFromTradeRanking`
+  - **Does** (medium): Returns the percent progress of the player to the next trade rank.
+    Returns: int (type 4)
 - **1471** `$ret = get fight rank precentage`
   params: %0 RetVar; calls: `GetTitleFromFightRanking`, `.GetFightRanking`, `GetAdvanceFromFightRanking`
+  - **Does** (medium): Returns the percent progress of the player to the next fight rank.
+    Returns: int (type 4)
 - **1472** `$ret = <RefObj> -> get notoriety title to race <Var/Race>: text=<Var/Boolean>`
   params: %0 RefObj, %1 RetVar, %2 Var/Race, %3 Var/Boolean; calls: `.GetNotoriety`, `GetTitleFromNotoriety`, `GetNotorietyTitleName`, `.GetID`
+  - **Does** (medium): Returns the notoriety title between two races as number, or its name string when the flag is set.
+    Returns: int title (type 4) or string (type 5)
+    Params: RefObj and the Race argument are used as indexes into the race table (the first is a race, not a ship). Boolean text=1 gives the name string.
 - **1473** `$ret = <RefObj> -> get notority percentage to race <Var/Race>`
   params: %0 RefObj, %1 RetVar, %2 Var/Race; calls: `GetNotoriety`, `GetTitleFromNotoriety`, `GetAdvanceFromNotoriety`
+  - **Does** (medium): Returns the percent progress to the next notoriety title between two races.
+    Returns: int (type 4)
+    Params: First operand is used as a race (gRaces index).
 - **1492** `$ret =|if get mission rank: name=<Var/String>`
   params: %0 RetVar/IF, %1 Var/String; condition; used 2× (!plugin.faction.notoriety); calls: `.GetMissionRank`
+  - **Does** (medium): Returns the player's mission rank for the named mission-rank category.
+    Returns: int (type 4)
+    Params: Name string selects the rank category.
 - **1493** `set mission rank: name=<Var/String> rank=<Var/Number>`
   params: %0 Var/String, %1 Var/Number; used 2× (!plugin.faction.notoriety); calls: `.SetMissionRank`
+  - **Does** (medium): Sets the player's mission rank for the named category.
+    Params: Name string, rank number.
+    Effects: Player race mission rank changed
 
 ## General Object Commands / Create Objects
 
 - **739** `$ret = create ship: type=<Var/Ship Type> owner=<Var/Race> addto=<Value> x=<Var/Number> y=<Var/Number> z=<Var/Number>`
   params: %0 RetVar, %1 Var/Ship Type, %2 Var/Race, %3 Value, %4 Var/Number, %5 Var/Number, %6 Var/Number; used 17× (!fight.war.protectsector); calls: `SE_IsClass`, `SA_GetShipTypeClass`, `Create`, `.AddTo`, `CreateSwarm`
+  - **Does** (medium): Creates a ship of the given type for an owner race, in a sector (or a container ship), at x/y/z, and returns it.
+    Returns: ship (65542), null if not created
+    Params: x/y/z in metres (script units, multiplied by 500 for the engine). Type low 16 bits = ship subtype; the class to instantiate comes from the ship type table; 'addto' is a sector, or a ship only when it is class 2033.
+    Effects: New ship object in the sector; Create arguments differ per class (2064, 2068 pods/others, 2070 swarm, default)
+    Edge: addto of ship type that is not class 2033: nothing created, null. Unknown ship type (no class): null.
 - **747** `$ret = create station: type=<Var/Station Type> owner=<Var/Race> addto=<Var/Sector> x=<Var/Number> y=<Var/Number> z=<Var/Number>`
   params: %0 RetVar, %1 Var/Station Type, %2 Var/Race, %3 Var/Sector, %4 Var/Number, %5 Var/Number, %6 Var/Number; used 1× (!galaxyeditor.create.station); calls: `GetFactoryClassFromSubType`, `GetDockClassFromSubType`, `Create`, `.AddTo`, `.InitPowerPlantEfficiency`
+  - **Does** (medium): Creates a factory or dock station of the given type for an owner race in a sector at x/y/z.
+    Returns: station (65543), null if no class for the type
+    Params: x/y/z in metres (x500). Type main byte (bits 16..23) 6 = factory, anything else is treated as a dock; class from subtype (low 16 bits).
+    Effects: New station added to the sector; factories get InitPowerPlantEfficiency
+    Edge: Main type other than 6 (not only 5) goes to the dock class lookup.
 - **748** `$ret = create gate: type=<Var/Number> addto=<Var/Sector> gateid=<Var/Number> dstsecx=<Var/Number> dstsecy=<Var/Number> dstgateid=<Var/Number> x=<Var/Number> y=<Var/Number> z=<Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Sector, %3 Var/Number, %4 Var/Number, %5 Var/Number, %6 Var/Number, %7 Var/Number, %8 Var/Number, %9 Var/Number; used 3× (!galaxyeditor.create.gate); calls: `C2014`, `.GetOwner`, `GetID`, `.SetOwner`, `.AddTo`
+  - **Does** (medium): Creates a warp gate in a sector and returns it.
+    Returns: object (65553)
+    Params: Cell order: type, sector, x, y, z, then four ints (gate id, destination sector x/y, destination gate id) in metres x500 for position. Owner = owner of the sector.
+    Effects: New WarpGate object added to the sector
+    Edge: No null checks: a non-sector addto fails inside the call.
 - **749** `$ret = create asteroid: type=<Var/Number> addto=<Var/Sector> resource=<Var/Number> yield=<Var/Number> x=<Var/Number> y=<Var/Number> z=<Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Sector, %3 Var/Number, %4 Var/Number, %5 Var/Number, %6 Var/Number, %7 Var/Number; used 1× (!galaxyeditor.create.asteroid); calls: `C2012`, `.AddTo`
+  - **Does** (medium): Creates an asteroid in a sector and returns it.
+    Returns: object (65553)
+    Params: Cell order: type, sector, resource, yield, x, y, z (metres x500).
+    Effects: New Asteroid added to the sector
 - **799** `$ret = create debris: type=<Var/Number> addto=<Var/Sector> resource=<Var/Number> yield=<Var/Number> x=<Var/Number> y=<Var/Number> z=<Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Sector, %3 Var/Number, %4 Var/Number, %5 Var/Number, %6 Var/Number, %7 Var/Number; used 1× (!galaxyeditor.create.debris); calls: `C1650`, `.AddTo`
+  - **Does** (medium): Creates an asteroid field ('debris') in a sector and returns it.
+    Returns: object (65553)
+    Params: Cell order: type, sector, resource, yield, x, y, z (metres x500). Creates an AsteroidField, same arguments as asteroid.
+    Effects: New AsteroidField added to the sector
 - **753** `$ret = create nebula: type=<Var/Number> addto=<Var/Sector> x=<Var/Number> y=<Var/Number> z=<Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Sector, %3 Var/Number, %4 Var/Number, %5 Var/Number; used 1× (!galaxyeditor.create.nebula); calls: `C2043`, `.GetBackgroundType`, `.SetFogNear`, `SA_GetBgTypeFogNear`, `.SetFogFar`, `SA_GetBgTypeFogFar`, `.SetHueModifier`, `SA_GetBgTypeHueModifier`, `.SetDustBodyRate`, `SA_GetBgTypeDustBodyRate`, `.SetNumDustInstances`, `SA_GetBgTypeNumDustInstances`, `.AddTo`
+  - **Does** (medium): Creates a nebula in a sector, copying fog and dust parameters from the sector background type.
+    Returns: object (65553)
+    Params: x/y/z metres x500. The 'type' parameter (cells 2,3) is never read; appearance comes from the sector's background type.
+    Effects: New Nebula (fog near/far, hue, dust rates for 8 bodies, dust instances) added to the sector
+  - Suspected (not verified): Type parameter is ignored by the handler.
 - **754** `$ret = create sun: subtype=<Var/Number> r=<Var/Number> g=<Var/Number> b=<Var/Number> addto=<Var/Sector> x=<Var/Number> y=<Var/Number> z=<Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Sector, %5 Var/Number, %6 Var/Number, %7 Var/Number, %8 Var/Number; used 1× (!galaxyeditor.create.sun); calls: `C2008`, `.AddTo`
+  - **Does** (medium): Creates a sun with given colour in a sector.
+    Returns: object (65553)
+    Params: Cell order is r, g, b, sector, x, y, z, subtype (the syntax text lists subtype first, but %N binding is by signature). x/y/z metres x500.
+    Effects: New Sun added to the sector
 - **755** `$ret = create planet: subtype=<Var/Number> addto=<Var/Sector> x=<Var/Number> y=<Var/Number> z=<Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Sector, %3 Var/Number, %4 Var/Number, %5 Var/Number; used 1× (!galaxyeditor.create.planet); calls: `SE_Distance3`, `SE_MulDivFix`, `C2002`, `.SetOwner`, `.GetOwner`, `.AddTo`
+  - **Does** (medium): Creates a planet in a sector; position is only a direction, the planet is placed at 400000000 engine units from the origin.
+    Returns: object (65553)
+    Params: Cell order: subtype, sector, x, y, z; position vector is normalised to length 400000000; zero vector means +x.
+    Effects: New Planet owned by the sector owner, added to the sector
+    Edge: Position length is discarded.
 - **756** `$ret = create special: type=<Var/Number> addto=<Var/Sector> x=<Var/Number> y=<Var/Number> z=<Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Sector, %3 Var/Number, %4 Var/Number, %5 Var/Number; used 1× (!galaxyeditor.create.special); calls: `C1001`, `.AddTo`
+  - **Does** (medium): Creates a custom special galaxy object in a sector.
+    Returns: object (65553)
+    Params: type, sector, x, y, z (metres x500).
+    Effects: New CustomGalObject added to the sector
 - **776** `$ret = create flying ware: maintype=<Var/Number> subtype=<Var/Number> count=<Var/Number> sector=<Var/Sector> x=<Var/Number> y=<Var/Number> z=<Var/Number> selfdestruct=<Var/Number>`
   params: %0 RetVar, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Sector, %5 Var/Number, %6 Var/Number, %7 Var/Number, %8 Var/Number; used 1× (!galaxyeditor.create.flyingware); calls: `C2084`, `.AddTo`, `.StartSelfDestructTimer`
+  - **Does** (medium): Creates a flying ware (WareInSpace) of maintype/subtype/count in a sector.
+    Returns: object (65553)
+    Params: x/y/z metres x500; selfdestruct int: nonzero starts the self-destruct timer.
+    Effects: New WareInSpace in the sector
 
 ## General Object Commands / War Commands
 
 - **1579** `$ret =|if <RefObj> -> get WarObject ID`
   params: %0 RefObj, %1 RetVar/IF; condition; used 10× (!fight.defend.sector); calls: `.GetWarObjectID`
+  - **Does** (medium): Returns the war object id of the object.
+    Returns: int (type 4); null if the object is null/0
+    Edge: Result not set for 0 object.
 - **1580** `$ret =|if get name of current War State`
   params: %0 RetVar/IF; condition; calls: `C300.GetWarStateName`, `C316.GetWarState`
+  - **Does** (medium): Returns the name of the current war state.
+    Returns: string (type 5)
 - **1588** `$ret =|if get name of next expected War State (final choice may differ!)`
   params: %0 RetVar/IF; condition; calls: `C300.GetWarStateName`, `C316.GetNextExpectedWarState`
+  - **Does** (medium): Returns the name of the next expected war state.
+    Returns: string (type 5)
 - **1589** `$ret =|if is player currently observing War State`
   params: %0 RetVar/IF; condition; calls: `C316.IsPlayerObservingWarState`
+  - **Does** (medium): Returns whether the player is currently observing the war state.
+    Returns: int (type 4)
 - **1593** `$ret =|if did player observe currently active War State`
   params: %0 RetVar/IF; condition; calls: `C316.WasWarStateObserved`
+  - **Does** (medium): Returns whether the currently active war state was observed.
+    Returns: int (type 4)
 - **1590** `$ret =|if get progress of current War State`
   params: %0 RetVar/IF; condition; calls: `C316.GetWarStateProgress`
+  - **Does** (medium): Returns the progress of the current war state.
+    Returns: int (type 4)
 - **1591** `$ret =|if get start time of current War State`
   params: %0 RetVar/IF; condition; calls: `C316.GetWarStateStartTime`
+  - **Does** (medium): Returns the start time of the current war state.
+    Returns: int (type 4)
 - **1592** `$ret =|if get end time of current War State (may change!)`
   params: %0 RetVar/IF; condition; calls: `C316.GetWarStateEndTime`
+  - **Does** (medium): Returns the end time of the current war state (may change).
+    Returns: int (type 4)
 - **1594** `$ret =|if get duration of War State <Var/String>`
   params: %0 RetVar/IF, %1 Var/String; condition; calls: `C300.GetWarStateDuration`, `C300.GetWarStateByName`
+  - **Does** (medium): Returns the duration of the named war state.
+    Returns: int (type 4)
+    Params: Name string.
 - **1622** `set war manager: enable=<Var/Boolean>`
   params: %0 Var/Boolean; calls: `C316.RestartWarManager`, `C316.KillWarManager`
+  - **Does** (medium): Enables (restarts) or disables (kills) the war manager.
+    Params: Nonzero = RestartWarManager, zero = KillWarManager.
+    Effects: War manager state
 
 ## General Object Commands
 
 - **700** `$ret =|if <RefObj> -> get object class`
   params: %0 RefObj, %1 RetVar/IF; condition; used 11× (!lib.ai.ammo.supply); calls: `SE_ObjectExists`, `SE_GetClass`
+  - **Does** (medium): Returns the object class of the object.
+    Returns: class (type 12), null if the object does not exist
+    Edge: Result unset for nonexistent object.
 - **705** `$ret =|if <RefObj> -> is of class <Var/Class>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Class; condition; used 353× (!config.rrf); calls: `SE_IsClass`, `.GetTypeCode`, `.IsWareCategory`
+  - **Does** (medium): Tests whether the object is of a class (or ship type / ware category, depending on the argument type); returns 1 if so.
+    Returns: int 1 or null
+    Params: Shared body with 710: argument type 12 (class) uses SE_IsClass; otherwise for a ship the type code is compared, else IsWareCategory.
+    Edge: Returns null (false) otherwise.
 - **1187** `$ret = <RefObj> -> get true owner`
   params: %0 RefObj, %1 RetVar; used 9× (!config.rrf); calls: `.GetTrueOwner`, `.GetID`
+  - **Does** (high): Returns the race id of the true owner of the ship.
+    Returns: race (type 10), null if no true owner
+    Edge: Differs from 701 only by name: for ships both return the owner field (GetTrueOwner returns owner).
 - **701** `$ret =|if <RefObj> -> get owner race`
   params: %0 RefObj, %1 RetVar/IF; condition; used 159× (!fight.attack.enemiesrange.land); calls: `.GetOwner`, `GetID`
+  - **Does** (medium): Returns the owner race id of the object.
+    Returns: race (type 10)
+    Edge: Null owner gives 0 via VM.
 - **1030** `<RefObj> ->set owner race to <Var/Race>`
   params: %0 RefObj, %1 Var/Race; used 1× (!galaxyeditor.obj.changeowner); calls: `.SetOwner`
+  - **Does** (medium): Sets the owner race of the object.
+    Params: Argument must be a race (type 10), otherwise nothing happens.
+    Effects: Owner changed
 - **702** `$ret =|if <RefObj> -> get environment`
   params: %0 RefObj, %1 RetVar/IF; condition; used 28× (!job.trade.militarysupply); calls: `.GetEnvironment`, `SE_ObjectExists`, `SE_IsClass`
+  - **Does** (medium): Returns the environment object (sector, station, ship carrier) the object is in, typed by class.
+    Returns: object, type 65559/65562/65542/65543/65544/65553 by class; null if none
+    Edge: If the RefObj type is a sector (65544), returns null.
 - **703** `$ret =|if <RefObj> -> get sector`
   params: %0 RefObj, %1 RetVar/IF; condition; used 287× (!fight.attack.object.bomber); calls: `.GetSector`
+  - **Does** (medium): Returns the sector the object is in.
+    Returns: sector (65544), null if none
 - **704** `$ret =|if <RefObj> -> get homebase`
   params: %0 RefObj, %1 RetVar/IF; condition; used 20× (!job.fight.defencebase); calls: `.GetDefaultHomebase`, `.GetOwnerObject`, `SE_IsClass`
+  - **Does** (medium): Returns the homebase of the object (wings: default homebase), typed by class.
+    Returns: object, null if none
 - **713** `<RefObj> ->set homebase to <Var/Ship/Station>`
   params: %0 RefObj, %1 Var/Ship/Station; used 36× (!config.faction.atreus); calls: `.SetDefaultHomebase`, `.SetOwnerObject`, `SE_ObjectExists`, `SE_IsClass`, `.GetOwner`
+  - **Does** (medium): Sets the homebase of the object; null or 0 clears it.
+    Params: Wings use SetDefaultHomebase, others SetOwnerObject. Only accepted if the base has the same owner.
+    Effects: Homebase changed
+    Edge: Different-owner base is silently ignored.
 - **1162** `$ret =|if <RefObj> -> get homesector`
   params: %0 RefObj, %1 RetVar/IF; condition; used 22× (!job.fight.attackallenemies); calls: `.GetHomeSector`
+  - **Does** (medium): Returns the home sector of the object.
+    Returns: sector (65544), null if none
 - **1163** `<RefObj> ->set homesector to <Var/Sector>`
   params: %0 RefObj, %1 Var/Sector; used 3× (!job.fight.defencebase); calls: `.SetHomeSector`
+  - **Does** (medium): Sets the home sector of the object.
+    Effects: Home sector changed
 - **706** `$ret =|if <RefObj> -> exists`
   params: %0 RefObj, %1 RetVar/IF; condition; used 770× (!config.add.wares.one.one); calls: `SE_ObjectExists`
+  - **Does** (medium): Returns 1 if the object exists.
+    Returns: int 1 or null
+    Edge: Requires the operand to carry the object-type flag (65536); non-object operand gives null.
 - **707** `$ret =|if <RefObj> -> get ware type code of object`
   params: %0 RefObj, %1 RetVar/IF; condition; used 22× (!fight.attack.object.std); calls: `.GetTypeCode`
+  - **Does** (medium): Returns the ware type code of the object (e.g. ship type).
+    Returns: ware (type 9)
 - **710** `$ret =|if <RefObj> -> is of type <Var/Ship Type/Station Type>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship Type/Station Type; condition; used 1× (!wing.cmd.jump.std); calls: `SE_IsClass`, `.GetTypeCode`, `.IsWareCategory`
+  - **Does** (medium): Tests whether the object is of the given ship/station type; returns 1 if so.
+    Returns: int 1 or null
+    Params: Shared body with 705.
+    Edge: Null if not.
 - **1036** `$ret = <RefObj> -> get ID code`
   params: %0 RefObj, %1 RetVar; used 14× (lib.ship.sh.attack.trader.flee); calls: `GetIDCode`
+  - **Does** (medium): Returns the ID code string of the object (like 'AB-123').
+    Returns: string (type 5)
 - **708** `$ret =|if <RefObj> -> get serial name of station`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_IsClass`, `.GetFactoryID`
+  - **Does** (medium): Returns the serial (factory) name of a station.
+    Returns: station serial (type 11)
+    Params: Class 2006 stations only.
+    Edge: Non-factory stations return null.
 - **1043** `<RefObj> ->set serial name of station to <Var/Stations Serial>`
   params: %0 RefObj, %1 Var/Stations Serial; calls: `SE_IsClass`, `.SetFactoryID`
+  - **Does** (medium): Sets the serial (factory) name of a station.
+    Params: Class 2006 only; otherwise ignored.
+    Effects: Factory id changed
 - **1028** `$ret = <RefObj> -> get name`
   params: %0 RefObj, %1 RetVar; used 7× (!ship.signal.lasertower.setup); calls: `GetObjectName`
+  - **Does** (medium): Returns the name of the object.
+    Returns: string (type 5)
 - **1029** `<RefObj> ->set name to <Var/String>`
   params: %0 RefObj, %1 Var/String; used 4× (!move.deploy.satellites); calls: `.SetYourName`
+  - **Does** (medium): Sets the custom name of the object; a non-string argument clears it.
+    Params: Argument must be a string (type 5).
+    Effects: Custom name changed
 - **1061** `$ret =|if <RefObj> -> is known`
   params: %0 RefObj, %1 RetVar/IF; condition; used 10× (!fight.attack.enemiesrange.land); calls: `.GetUnknown`
+  - **Does** (medium): Returns 1 if the object is known to the player.
+    Returns: int (type 4)
+    Params: Inverted GetUnknown.
 - **1062** `<RefObj> ->set known status to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 1× (!lib.ext.mapsector); calls: `.SetKnown`
+  - **Does** (medium): Sets the known status of the object.
+    Params: Value passed to SetKnown unchecked.
+    Effects: Known flag changed (map/sector visibility)
 - **716** `$ret =|if <RefObj> -> get current laser strength`
   params: %0 RefObj, %1 RetVar/IF; condition; used 6× (!plugin.acp.fight.attack.object); calls: `.GetLaser`
+  - **Does** (medium): Returns the current laser strength of the ship.
+    Returns: int (type 4)
 - **717** `$ret =|if <RefObj> -> get maximum laser strength`
   params: %0 RefObj, %1 RetVar/IF; condition; used 15× (!fight.attack.object.std); calls: `.GetMaxLaser`
+  - **Does** (medium): Returns the maximum laser strength of the ship.
+    Returns: int (type 4)
 - **903** `$ret =|if <RefObj> -> get max laser strength in turret <Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number; condition; used 6× (!move.mine.minemineral); calls: `.GetMaxLaserStrengthInTurret`
+  - **Does** (medium): Returns the maximum laser strength in the given turret.
+    Returns: int (type 4)
+    Params: Turret number passed unchecked.
 - **718** `$ret =|if <RefObj> -> get max. shield type that can be installed`
   params: %0 RefObj, %1 RetVar/IF; condition; used 4× (!ship.signal.lasertower.setup); calls: `.GetMaxShieldType`
+  - **Does** (medium): Returns the best shield type that can be installed in the ship.
+    Returns: ware (type 9), main type 9 | subtype
 - **720** `$ret =|if <RefObj> -> get number of shield bays`
   params: %0 RefObj, %1 RetVar/IF; condition; used 4× (!ship.signal.lasertower.setup); calls: `.GetNumShieldBays`
+  - **Does** (medium): Returns the number of shield bays.
+    Returns: int (type 4)
 - **721** `$ret =|if <RefObj> -> get number of laser bays`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.GetNumLaserBays`
+  - **Does** (medium): Returns the number of laser bays.
+    Returns: int (type 4)
 - **722** `$ret =|if <RefObj> -> get most destructive missile type that can be installed`
   params: %0 RefObj, %1 RetVar/IF; condition; used 7× (plugin.rrf.bomber.logic); calls: `.GetMaxDamageMissileType`
+  - **Does** (medium): Returns the most destructive missile type that can be installed.
+    Returns: ware (type 9), main type 10 | subtype
 - **723** `$ret =|if <RefObj> -> get relation to object <Var/Ship/Station>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship/Station; condition; used 1× (plugin.rrf.monitor.4.signal); calls: `.GetRelation`, `.GetOwner`, `GetID`
+  - **Does** (medium): Returns the relation (-1/0/1) of the RefObj to the given object; for a wing, uses the owner race of the object.
+    Returns: relation (type 14): -1, 0, 1
+    Params: For wings (65559) GetRelation is called with the target's owner race id.
+    Edge: Result clamped to sign.
 - **744** `<RefObj> ->set relation against <Value> to <Relation>`
   params: %0 RefObj, %1 Value, %2 Relation; used 75× (!fight.attack.boarded); calls: `.SetRelation`, `.SetGroupRelation`
+  - **Does** (medium): Sets the relation of the object against a race/group to the given value.
+    Params: Wing or race argument: race relation (SetRelation); otherwise group relation.
+    Effects: Relation changed
 - **1200** `<RefObj> ->set relations from notoriety: include player as target and race > teladi as owner=<Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 3× (!fight.attack.object.owp); calls: `.GetOwner`, `GetMask`, `.SetRelationsFromNotoriety`
+  - **Does** (medium): Sets the object's relations from notoriety (player as target and race > teladi as owner if the flag is set).
+    Params: Only applied if the object exists and (flag nonzero or the owner's race mask & 393790).
+    Effects: Relations of the object recomputed from notoriety
 - **724** `$ret =|if <RefObj> -> get relation to race <Var/Race>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Race; condition; used 17× (!fight.defend.sector); calls: `.GetRelation`, `.GetGroupRelation`
+  - **Does** (medium): Returns the relation (-1/0/1) of the RefObj to the given race.
+    Returns: relation (type 14): -1, 0, 1
+    Params: Wings use GetRelation, others GetGroupRelation.
+    Edge: Clamped to sign.
 - **727** `$ret =|if <RefObj> -> is <Var/Ship/Station> a enemy`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship/Station; condition; used 56× (!fight.attack.object.bomber); calls: `.IsEnemy`
+  - **Does** (medium): Returns 1 if the second object is an enemy of the RefObj.
+    Returns: int 1 or null
+    Edge: Null when not an enemy.
 - **728** `$ret =|if <RefObj> -> is <Var/Ship/Station> a friend`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship/Station; condition; calls: `.IsFriend`
+  - **Does** (medium): Returns 1 if the second object is a friend of the RefObj.
+    Returns: int 1 or null
+    Edge: Null when not.
 - **729** `$ret =|if <RefObj> -> is <Var/Ship/Station> neutral to me`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship/Station; condition; calls: `.IsNeutral`
+  - **Does** (medium): Returns 1 if the second object is neutral to the RefObj.
+    Returns: int 1 or null
+    Edge: Null when not.
 - **725** `$ret =|if <RefObj> -> get notoriety to race <Var/Race>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Race; condition; used 1× (!job.trade.docktrader); calls: `.GetOwner`, `.GetNotoriety`
+  - **Does** (medium): Returns the notoriety of the RefObj's owner race to the given race.
+    Returns: int (type 4); null if no owner
 - **726** `$ret =|if get notoriety from race <Var/Race> to race <Var/Race>`
   params: %0 RetVar/IF, %1 Var/Race, %2 Var/Race; condition; used 16× (!fight.war.protectsector); calls: `GetNotoriety`
+  - **Does** (medium): Returns the notoriety from race 1 to race 2.
+    Returns: int (type 4)
+    Params: Races used as indexes into the race table.
 - **1207** `set notoriety of <Var/Race> -> <Var/Race> to <Var/Number> points`
   params: %0 Var/Race, %1 Var/Race, %2 Var/Number; calls: `SetNotoriety`
+  - **Does** (medium): Sets the notoriety between two races to the given points.
+    Params: Race 1 -> race 2.
+    Effects: Notoriety changed
 - **730** `$ret =|if <RefObj> -> get shield type in bay <Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number; condition; calls: `.GetShields`, `SE_ArraySize`
+  - **Does** (medium): Returns the shield type installed in the given bay.
+    Returns: ware (type 9), main type 9 | subtype; null if bay empty/out of range
+    Params: Bay index is 0-based per the code (0 <= n < number of shields).
+    Edge: Out-of-range index or empty bay: null.
 - **732** `$ret =|if <RefObj> -> has same environment as <Var/Ship/Station>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship/Station; condition; used 57× (!fight.attack.object.owp); calls: `.GetEnvironment`
+  - **Does** (medium): Returns 1 if both objects have the same environment.
+    Returns: int 1 or null
+    Edge: Two objects both without environment compare equal (0 == 0) and give 1.
 - **733** `$ret =|if <RefObj> -> is in same sector as <Var/Ship/Station>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship/Station; condition; used 55× (!fight.attack.object.bomber); calls: `.GetSector`
+  - **Does** (medium): Returns 1 if both objects are in the same sector.
+    Returns: int 1 or null
+    Edge: Two objects both without a sector compare equal and give 1.
 - **734** `$ret =|if <RefObj> -> is landed`
   params: %0 RefObj, %1 RetVar/IF; condition; used 1× (!fight.fleetcmdr.defend); calls: `.IsLanded`, `SE_IsClass`
+  - **Does** (medium): Returns the object the ship is landed in (typed by class), or null.
+    Returns: object, typed 65559/65562/65542/65543/65544/65553
 - **745** `$ret =|if <RefObj> -> is docked`
   params: %0 RefObj, %1 RetVar/IF; condition; used 94× (!fight.attack.enemiesrange.land); calls: `.IsDocked`, `SE_IsClass`
+  - **Does** (medium): Returns the object the ship is docked at (typed by class), or null.
+    Returns: object, typed by class
 - **746** `$ret =|if <RefObj> -> is docking possible of <Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value; condition; used 18× (!lib.nav.switch); calls: `.IsDockingPossibleOf`
+  - **Does** (medium): Returns 1 if the RefObj could dock at the given object.
+    Returns: int 1 or null
 - **513** `$ret =|if <RefObj> -> is docking allowed at <Var/Ship/Station>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship/Station; condition; used 34× (!job.fight.defencebase); calls: `.IsDockingAllowedForShip`
+  - **Does** (medium): Returns 1 if the ship is allowed to dock at the given station/ship.
+    Returns: int 1 or null
+    Params: Calls IsDockingAllowedForShip on the station operand with the RefObj as argument.
 - **735** `$ret =|if <RefObj> -> is in a sector`
   params: %0 RefObj, %1 RetVar/IF; condition; used 11× (!fight.attack.object.bomber); calls: `SE_IsClass`, `.GetEnvironment`
+  - **Does** (medium): Returns 1 if the object's environment is a sector.
+    Returns: int 1 or null
 - **736** `$ret =|if <RefObj> -> get attacker`
   params: %0 RefObj, %1 RetVar/IF; condition; used 22× (!fight.attack.object.owp); calls: `.GetAttacker`, `SE_IsClass`
+  - **Does** (medium): Returns the last attacker of the object, typed by class.
+    Returns: object; null if none
 - **737** `<RefObj> ->set attacker to <Var/Ship/Station>`
   params: %0 RefObj, %1 Var/Ship/Station; used 3× (!fight.attack.object.owp); calls: `.SetAttacker`
+  - **Does** (medium): Sets the attacker of the object.
+    Effects: Attacker field changed
 - **738** `$ret = get distance between <Var/Ship/Station> and <Var/Ship/Station>`
   params: %0 RetVar, %1 Var/Ship/Station, %2 Var/Ship/Station; used 84× (!fight.attack.object.bomber); calls: `.GetDistance`
+  - **Does** (high): Returns the distance between two objects.
+    Returns: int (type 4), metres (engine units / 500)
+    Edge: Falls back to position distance when an object has no engine instance.
 - **796** `$ret = <RefObj> -> get distance to: x=<Var/Number> y=<Var/Number> z=<Var/Number>`
   params: %0 RefObj, %1 RetVar, %2 Var/Number, %3 Var/Number, %4 Var/Number; used 7× (!job.trade.planetsupply); calls: `SE_DistanceA3`, `.GetPos`
+  - **Does** (medium): Returns the distance from the object to a point.
+    Returns: int (type 4), metres (engine / 500)
+    Params: x/y/z in metres.
 - **797** `$ret = <RefObj> -> get distance to: position array=<Var/Array>`
   params: %0 RefObj, %1 RetVar, %2 Var/Array; used 12× (!fight.attack.enemiesrange.land); calls: `SE_DistanceA3`, `.GetPos`
+  - **Does** (medium): Returns the distance from the object to a position array.
+    Returns: int (type 4), metres
+    Params: Array {4,x,4,y,4,z}: elements 1,3,5 are read, no type or size check.
 - **798** `$ret = get distance: position array1=<Var/Array>  array2=<Var/Array>`
   params: %0 RetVar, %1 Var/Array, %2 Var/Array; used 1× (!config.create.nearplanet); calls: `SE_Distance3`
+  - **Does** (medium): Returns the distance between two position arrays.
+    Returns: int (type 4), metres
+    Params: Arrays {4,x,4,y,4,z}: elements 1,3,5 are read, no checks.
 - **740** `$ret = <RefObj> -> get x position`
   params: %0 RefObj, %1 RetVar; used 26× (!config.create.nearplanet); calls: `.GetPos`
+  - **Does** (medium): Returns the x position of the object in metres.
+    Returns: int (type 4), engine / 500
 - **741** `$ret = <RefObj> -> get y position`
   params: %0 RefObj, %1 RetVar; used 26× (!config.create.nearplanet); calls: `.GetPos`
+  - **Does** (medium): Returns the y position of the object in metres.
+    Returns: int (type 4), engine / 500
 - **742** `$ret = <RefObj> -> get z position`
   params: %0 RefObj, %1 RetVar; used 26× (!config.create.nearplanet); calls: `.GetPos`
+  - **Does** (medium): Returns the z position of the object in metres.
+    Returns: int (type 4), engine / 500
 - **795** `$ret = <RefObj> -> get position as array`
   params: %0 RefObj, %1 RetVar; used 41× (!job.fight.defencebase); calls: `.GetPos`
+  - **Does** (medium): Returns the position of the object as an array {4,x,4,y,4,z} in metres.
+    Returns: array (type 21)
 - **743** `$ret = get player ship`
   params: %0 RetVar
+  - **Does** (medium): Returns the player ship.
+    Returns: ship (65542); null if there is none
 - **759** `$ret =|if <RefObj> -> is disabled`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (!ship.cmd.follow.spacefly); calls: `.IsDisabled`
+  - **Does** (medium): Returns 1 if the object is disabled.
+    Returns: int (type 4)
 - **760** `<RefObj> ->station trade and production tasks: on=<Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 2× (lib.station.strike); calls: `.StartTasks`, `.StopTasks`
+  - **Does** (medium): Starts (nonzero) or stops (0) the trade and production tasks of the station.
+    Effects: Station tasks started or stopped
 - **761** `$ret =|if <RefObj> -> is in active sector`
   params: %0 RefObj, %1 RetVar/IF; condition; used 93× (!fight.attack.enemiesrange.land); calls: `.GetObjectID`
+  - **Does** (high): Returns 1 if the object is in the active (loaded) sector, i.e. it has a non-zero engine object id.
+    Returns: int (type 4) 0/1
+    Edge: Tests GetObjectID() != 0.
 - **765** `<RefObj> ->destruct: show no explosion=<Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 20× (!job.special.taxi); calls: `C150.StartKilled`, `.SelfDestruct`
+  - **Does** (medium): Destroys the object: player ship goes through the killed path, others self-destruct in a forked task.
+    Params: Flag nonzero = silent (SelfDestruct 17), 0 = with explosion (2); ignored for the player ship.
+    Effects: Object destroyed (explosion optional)
+    Edge: Player ship: Client.StartKilled(0,0), flag ignored.
 - **1341** `<RefObj> ->destroy object: killer=<Value>, show no explosion=<Var/Number>`
   params: %0 RefObj, %1 Value, %2 Var/Number; used 2× (!move.mine.minemineral); calls: `C150.StartKilled`, `.KilledInGalaxy`
+  - **Does** (medium): Destroys the object as if killed by the given killer; the player ship is killed in a forked task with a cutscene start.
+    Params: killer=any object value; last param nonzero = no explosion (cause code 17 instead of 2)
+    Effects: Calls KilledInGalaxy(17 or 2, killer): notifies listeners (event 2048) then SelfDestruct(11,0); for the player ship also Client.StartKilled(0,0).
+    Edge: Null/destroyed object does nothing. KilledInGalaxy parameter names are (killer, cause) but the handler passes the cause code first and the killer second (names in KC may just be swapped).
 - **767** `<RefObj> ->set position: x=<Var/Number> y=<Var/Number> z=<Var/Number>`
   params: %0 RefObj, %1 Var/Number, %2 Var/Number, %3 Var/Number; used 12× (!config.create.nearplanet); calls: `.SetPos`
+  - **Does** (medium): Sets the object's position to x,y,z.
+    Params: x,y,z in script units, multiplied by 500 to engine units
+    Effects: SetPos on the object (stored position; for the 3D body see 1224).
+    Edge: Null object does nothing. Does not update the 3D body; use 'force position' (1224) for that.
 - **1224** `<RefObj> ->force position: x=<Var/Number> y=<Var/Number> z=<Var/Number>`
   params: %0 RefObj, %1 Var/Number, %2 Var/Number, %3 Var/Number; used 3× (al.plugin.bw.detector.event); calls: `.GetObjectID`, `SA_SetPos`, `.GetPos`, `.SetPos`
+  - **Does** (medium): Forces the object to a position, updating both the 3D body and the stored position.
+    Params: x,y,z in script units (x500 to engine units)
+    Effects: SA_SetPos on the object's engine id, then GetPos and SetPos on the KC object.
+    Edge: Does nothing if the object is null or has no 3D object id (not activated / inactive sector).
 - **768** `<RefObj> ->set rotation: alpha=<Var/Number> beta=<Var/Number> gamma=<Var/Number>`
   params: %0 RefObj, %1 Var/Number, %2 Var/Number, %3 Var/Number; calls: `.SetRot`
+  - **Does** (medium): Sets the object's rotation angles alpha, beta, gamma.
+    Params: angles passed unchanged (no scaling); unit is the engine angle unit as stored in the position array
+    Effects: SetRot on the object (stored rotation only).
+    Edge: Null object does nothing. No 3D body update shown in the case.
 - **777** `$ret = <RefObj> -> get rot alpha`
   params: %0 RefObj, %1 RetVar; used 1× (plugin.bw.detector.fwd.project); calls: `.GetPos`
+  - **Does** (medium): Returns rotation alpha of the object (element 3 of GetPos()).
+    Returns: int (type 4)
+    Params: unscaled engine angle value
+    Edge: Null object gives 0/null via VM.
 - **778** `$ret = <RefObj> -> get rot beta`
   params: %0 RefObj, %1 RetVar; used 1× (plugin.bw.detector.fwd.project); calls: `.GetPos`
+  - **Does** (medium): Returns rotation beta of the object (element 4 of GetPos()).
+    Returns: int (type 4)
+    Params: unscaled engine angle value
+    Edge: Null object gives 0/null via VM.
 - **779** `$ret = <RefObj> -> get rot gamma`
   params: %0 RefObj, %1 RetVar; calls: `.GetPos`
+  - **Does** (medium): Returns rotation gamma of the object (element 5 of GetPos()).
+    Returns: int (type 4)
+    Params: unscaled engine angle value
+    Edge: Null object gives 0/null via VM.
 - **780** `$ret = <RefObj> -> get size of object`
   params: %0 RefObj, %1 RetVar; used 43× (!fight.attack.object.bomber); calls: `.GetSize`
+  - **Does** (medium): Returns the size of the object divided by 500.
+    Returns: int (type 4)
+    Params: script units (engine size / 500), integer division
+    Edge: Null object gives 0.
 - **784** `$ret =|if <RefObj> -> get max upgrades for upgrade <Var/Ware>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ware; condition; used 12× (!lib.ai.ammo.supply); calls: `.GetMaxUpgrades`
+  - **Does** (high): Returns the maximum number of the given upgrade ware that the ship can have installed.
+    Returns: int (type 4); null if the ware is not an upgrade
+    Params: ware must be flagged 8 in the ware table
+    Edge: Not an upgradable ware: result stays null. Ship.GetMaxUpgrades handles only subtypes 17 (engine tuning, max extra speed), 18 (rudder optimisation) and 16 (cargo bay extension, max minus current); any other returns null.
 - **785** `$ret =|if <RefObj> -> get max speed`
   params: %0 RefObj, %1 RetVar/IF; condition; used 16× (!fight.attack.enemiesrange.land); calls: `SA_GetTypeMaxSpeed`, `.GetSubType`
+  - **Does** (high): Returns the base maximum speed of the ship type (type table, no upgrades or damage).
+    Returns: int (type 4)
+    Params: engine speed / 500 (m/s)
+    Edge: Uses SA_GetTypeMaxSpeed(7, subtype), ignores installed tuning and hull damage; compare 1049 (current) and 788 (max upgraded).
 - **1049** `$ret = <RefObj> -> get current max speed`
   params: %0 RefObj, %1 RetVar; used 12× (!lib.get.best.missile.fortarget); calls: `.GetMaxSpeed`
+  - **Does** (high): Returns the ship's current maximum speed including installed speed upgrades and hull-damage penalty.
+    Returns: int (type 4)
+    Params: engine speed / 500 (m/s)
+    Edge: Ship.GetMaxSpeed = type speed*(10+upgrade%)/10, then linearly scaled to 30% between 90% and 10% hull.
 - **1131** `$ret = <RefObj> -> get current speed`
   params: %0 RefObj, %1 RetVar; used 8× (!fight.attack.object.bomber); calls: `.GetCurrentSpeed`
+  - **Does** (medium): Returns the object's current speed.
+    Returns: int (type 4)
+    Params: engine units / 500 = m/s
+    Edge: Null object gives 0.
 - **1332** `<RefObj> ->set ship speed to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 2× (!fight.board.launchmarines); calls: `.SetSpeed`
+  - **Does** (medium): Sets the ship's speed (and desired speed) to the given value, clamped to 0..its maximum.
+    Params: speed in m/s, multiplied by 500 to engine units
+    Effects: SA_SetDesiredSpeed and SA_SetSpeed on the ship's 3D object.
+    Edge: Ship without 3D object (inactive) is ignored. Clamped to SA_GetMaxSpeed, negative becomes 0.
 - **786** `$ret =|if <RefObj> -> get max hull`
   params: %0 RefObj, %1 RetVar/IF; condition; used 7× (!job.special.repairteam); calls: `.GetMaxHull`
+  - **Does** (medium): Returns the maximum hull of the ship.
+    Returns: int (type 4)
+    Params: hull points from type table
+    Edge: Null object gives 0.
 - **787** `$ret =|if <RefObj> -> get hull`
   params: %0 RefObj, %1 RetVar/IF; condition; used 10× (!fight.attack.object.bomber); calls: `.GetHull`
+  - **Does** (medium): Returns the current hull of the ship.
+    Returns: int (type 4)
+    Params: hull points
+    Edge: Null object gives 0.
 - **1047** `<RefObj> ->set hull to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 4× (!job.special.repairteam); calls: `.SetHull`
+  - **Does** (medium): Sets the ship's hull, clamped to 0..max hull.
+    Params: hull points
+    Effects: Stores hull and calls SA_SetHull on the 3D object if present.
+    Edge: Below 0 becomes 0, above max becomes max. Whether hull 0 destroys the ship was not read.
 - **900** `$ret =|if <RefObj> -> get hull percent`
   params: %0 RefObj, %1 RetVar/IF; condition; used 16× (!job.fight.defencebase); calls: `.GetHullPercent`
+  - **Does** (high): Returns hull as percent of max hull.
+    Returns: int 0..100 (type 4); 0 if max hull is 0
+    Params: percent
+    Edge: Null object gives 0.
 - **715** `$ret =|if <RefObj> -> get maximum shield strength`
   params: %0 RefObj, %1 RetVar/IF; condition; used 5× (!plugin.acp.fight.attack.object); calls: `.GetMaxShield`
+  - **Does** (medium): Returns the maximum shield strength of the object.
+    Returns: int (type 4)
+    Params: shield energy points
+    Edge: Station: engine value when active, else sum of installed generators' energy.
 - **714** `$ret =|if <RefObj> -> get current shield strength`
   params: %0 RefObj, %1 RetVar/IF; condition; used 21× (!fight.attack.object.bomber); calls: `.GetShield`
+  - **Does** (medium): Returns the current shield strength of the object.
+    Returns: int (type 4)
+    Params: shield energy points
+    Edge: Null object gives 0.
 - **1048** `<RefObj> ->set current shield strength to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 6× (!move.mine.minemineral); calls: `.SetShield`
+  - **Does** (medium): Sets the current shield strength.
+    Params: shield energy points
+    Effects: SA_SetShield if active, else stores value clamped to max; adds/removes the object from the shield-reload list.
+    Edge: Negative becomes 0.
 - **901** `$ret =|if <RefObj> -> get shield percent`
   params: %0 RefObj, %1 RetVar/IF; condition; used 25× (!fight.attack.object.std); calls: `.GetShieldPercent`
+  - **Does** (high): Returns shield as percent of max shield.
+    Returns: int 0..100 (type 4); 0 if max shield is 0
+    Params: percent
+    Edge: Null object gives 0.
 - **902** `$ret =|if <RefObj> -> get shield and hull percent`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.GetShield`, `.GetMaxShield`, `.GetHull`, `.GetMaxHull`
+  - **Does** (high): Returns combined shield+hull percent: 100*(shield+hull)/(maxshield+maxhull).
+    Returns: int (type 4); 0 if both maxima are 0
+    Params: percent
 - **788** `$ret =|if <RefObj> -> get max upgraded speed`
   params: %0 RefObj, %1 RetVar/IF; condition; used 1× (!plugin.acp.fight.skill.std); calls: `.GetMaxUpgradedSpeed`
+  - **Does** (high): Returns the maximum speed the ship could reach with all speed upgrades installed.
+    Returns: int (type 4)
+    Params: engine speed / 500 (m/s)
+    Edge: type speed*(10+max extra speed)/10; ignores installed upgrades and damage.
 - **789** `$ret =|if <RefObj> -> get dock bay size`
   params: %0 RefObj, %1 RetVar/IF; condition; used 13× (!move.fleet.rejoin); calls: `.GetDockBaySize`
+  - **Does** (medium): Returns the number of dock bays (ports) of a station/carrier.
+    Returns: int (type 4)
+    Edge: Ship base returns 0; station uses SA_GetTypeNumDockPorts; one class uses SA_GetTypeDockBaySize(7,subtype).
 - **790** `$ret =|if <RefObj> -> get number of landed ships`
   params: %0 RefObj, %1 RetVar/IF; condition; used 1× (plugin.rrf.stockcaps); calls: `.GetNumOfLandedShips`
+  - **Does** (medium): Returns the number of ships landed (docked inside) at the station.
+    Returns: int (type 4)
+    Edge: Ships return 0; one class (line 96851) returns the docked-ship table size instead of a landed count.
 - **792** `<Var/Race>add notoriety: race=<Var/Race> value=<Var/Number>`
   params: %0 Var/Race, %1 Var/Race, %2 Var/Number; used 3× (!move.scanpatrol); calls: `AddNotoriety`
+  - **Does** (medium): Adds a notoriety value to the first race's notoriety towards the second race.
+    Params: value in notoriety points
+    Effects: Changes race notoriety. Generic version changes only the player's entry; amount x25/10 to percent step, own race ignored.
+    Edge: Races in the no-change mask are skipped.
 - **793** `<RefObj> ->set ship disabled to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 2× (!ship.cmd.follow.spacefly); calls: `.SetDisabled`
+  - **Does** (medium): Sets or clears the ship's disabled flag (flag bit 1024).
+    Params: nonzero = disabled
+    Effects: Ship flag 1024 only; no engine call in SetDisabled.
+    Edge: Null object does nothing. Fly objects override SetDisabled with extra UI cleanup.
 - **906** `<RefObj> ->put into environment <RefObj> ->`
   params: %0 RefObj, %1 RefObj; used 14× (!ship.rebuild.action); calls: `.MovePlayerTo`, `.MoveTo`
+  - **Does** (medium): Moves the object into the given environment (sector or container).
+    Params: target environment object
+    Effects: Player ship: MovePlayerTo, otherwise MoveTo (start in space for sectors, or move into container).
+    Edge: MoveTo returns immediately for the player ship, so both calls are safe.
 - **1015** `<RefObj> ->station send defend squad against ship <Var/Ship/Station>`
   params: %0 RefObj, %1 Var/Ship/Station; used 1× (!station.signal.attacked.pl); calls: `.SendSquadG`
+  - **Does** (medium): Station sends its landed fighters to defend against the given attacker.
+    Params: attacker ship or station
+    Effects: Sets station relation to attacker to -10000 and launches an armed free fighter squad.
+    Edge: Destroyed station (flag -2147483648) sends none.
 - **1044** `$ret = get Kha'ak aggression level`
   params: %0 RetVar; calls: `GetAggressionLevel`
+  - **Does** (high): Returns the Kha'ak aggression level.
+    Returns: int 0..100 (type 4)
+    Edge: Stored on race 7 (Kha'ak).
 - **1045** `set Kha'ak aggression level to <Var/Number>`
   params: %0 Var/Number; calls: `SetAggressionLevel`
+  - **Does** (high): Sets the Kha'ak aggression level (0..100).
+    Params: must be type 4 and >=0, values >100 clamped to 100
+    Effects: Sets aggressionLevel on race 7.
+    Edge: Non-number or negative argument: ignored.
 - **1063** `$ret = <RefObj> -> is detectable`
   params: %0 RefObj, %1 RetVar; calls: `.GetNoFind`
+  - **Does** (high): Returns whether the object's no-find flag is set (NOT 'detectable').
+    Returns: 1/0 (type 4)
+    Edge: Inverted: flag 32 means excluded from searches, so 1 means NOT detectable.
   - **Engine bug (S13, AP FL):** Answer inverted: returns GetNoFind() != 0, and NoFind means 'excluded from searches'. Use `not` on the result, or another test.
 - **1064** `$ret = <RefObj> -> is hired`
   params: %0 RefObj, %1 RetVar; calls: `.IsHired`
+  - **Does** (high): Intends to return whether the ship is hired, but stores the answer in the result type slot.
+    Returns: 0/null in practice
+    Edge: Variable gets type 0/1 with value 0, so reads as null/0.
   - **Engine bug (S2, AP FL):** The result goes into the type slot: the variable gets type 0/1 and value 0, so it reads as 0/null. Do not rely on it.
 - **1070** `$ret = get player name`
   params: %0 RetVar; used 2× (!ship.cmd.deploysats.pl); calls: `.GetName`
+  - **Does** (medium): Returns the player's name.
+    Returns: string (type 5)
+    Edge: Taken from the player race object.
 - **1096** `<RefObj> ->disable ship rebuild`
   params: %0 RefObj; used 6× (plugin.rrf.patrol); calls: `.SetRebuild`
+  - **Does** (medium): Disables ship rebuild for the object (clears the rebuild flag).
+    Effects: SetRebuild(0) clears the rebuild flag (asteroid bit 2, station bit 256).
+    Edge: Null object does nothing.
 - **1142** `$ret = order ship in next shipyard: owner=<Var/Race> sector=<Var/Sector> class=<Var/Class> optional: default shiptype for race:<Var/Race>`
   params: %0 RetVar, %1 Var/Race, %2 Var/Sector, %3 Var/Class, %4 Var/Race; calls: `GetDefaultGSubTypeFromShipClass`, `OrderShipObjInNextSY`
+  - **Does** (medium): Orders a new ship at the next shipyard of the owner race in the sector.
+    Returns: ship (65542) or null
+    Params: owner race (type 10), sector (type 65544), ship class; default subtype from class via GetDefaultGSubTypeFromShipClass
+    Effects: Creates a shipyard order via OrderShipObjInNextSY.
+    Edge: Null if owner is not a race, sector is not a sector, class has no default subtype (<0) or no shipyard is found.
 - **1144** `$ret =|if <RefObj> -> is hidden`
   params: %0 RefObj, %1 RetVar/IF; condition; used 4× (al.plugin.bw.detector.event); calls: `.IsHiddenInSectorMap`
+  - **Does** (high): Returns 1 if the object is hidden in the sector map (hidden flag or inside a nebula range).
+    Returns: 1 (type 4) or null
+    Edge: Returns null (false) when not hidden. Some classes (line 65880) just return IsHidden().
 - **1145** `$ret =|if <RefObj> -> is target visible <Var/Ship/Station>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Ship/Station; condition; used 6× (!fight.attack.object.std); calls: `.GetEnvironment`, `.IsTargetVisible`
+  - **Does** (high): Returns whether the target is visible to the object (not hidden, or within sensor range).
+    Returns: 1/null (type 4)
+    Params: target ship/station
+    Edge: Only evaluated when both objects have the same environment, otherwise null. If either is hidden in sector map, visible only within global parameter 12 distance plus both sizes.
 - **1179** `$ret = <RefObj> -> get asteroid yield`
   params: %0 RefObj, %1 RetVar; used 1× (!move.scan.debris); calls: `.GetYield`
+  - **Does** (medium): Returns the yield of the asteroid/object.
+    Returns: int (type 4)
+    Edge: Null object gives 0.
 - **1198** `$ret =|if <RefObj> -> is asteroid scanned`
   params: %0 RefObj, %1 RetVar/IF; condition; used 1× (!move.scan.asteroids); calls: `.GetScanned`
+  - **Does** (medium): Returns whether the asteroid has been scanned by the player.
+    Returns: int (type 4) or null for null object
+    Edge: Null object: null.
 - **1199** `<RefObj> ->set asteroid scanned to <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 1× (!move.scan.asteroid); calls: `.SetScanned`
+  - **Does** (medium): Sets the asteroid's scanned flag.
+    Params: nonzero = scanned
+    Effects: SetScanned on the object.
+    Edge: Null object ignored.
 - **1213** `$ret = <RefObj> -> get resource waretype of asteroid`
   params: %0 RefObj, %1 RetVar; used 3× (!move.collectrocks); calls: `.GetResourceMainType`, `.GetResourceSubType`
+  - **Does** (medium): Returns the asteroid's resource ware (main type << 16 | subtype).
+    Returns: ware (type 9) or null if code is 0 or object null
+    Edge: No resource gives null.
 - **1214** `$ret =|if <RefObj> -> has collectible rocks`
   params: %0 RefObj, %1 RetVar/IF; condition; used 6× (!move.collectrocks); calls: `.HasCollectibleRocks`
+  - **Does** (medium): Returns whether the asteroid has collectible rocks.
+    Returns: int (type 4)
+    Edge: Null object: null.
 - **1203** `$ret = <RefObj> -> get flying ware count`
   params: %0 RefObj, %1 RetVar; used 2× (!wing.cmd.collectflyingwares.std); calls: `.GetCount`
+  - **Does** (medium): Returns the count of the flying ware object (units in the container).
+    Returns: int (type 4)
+    Edge: Null object gives 0.
 - **1221** `<RefObj> ->ignore collisions: <Var/Number>`
   params: %0 RefObj, %1 Var/Number; used 3× (plugin.rrf.patrol); calls: `.GetObjectID`, `SA_SetFlags2`, `SA_GetFlags2`
+  - **Does** (medium): Sets or clears the 'ignore collisions' flag (0x20000 of flags2) on the object's 3D body.
+    Params: nonzero = ignore collisions
+    Effects: SA_SetFlags2 on the engine object.
+    Edge: Does nothing for null object or object without 3D object id (inactive).
 - **1654** `$ret =|if get player HQ`
   params: %0 RetVar/IF; condition; calls: `.GetHeadquarters`
+  - **Does** (high): Returns the player's headquarters station.
+    Returns: station (65543) or null if none set
+    Edge: Null result when no HQ set.
 - **1655** `<RefObj> ->set as player HQ`
   params: %0 RefObj; calls: `SE_IsClass`, `.GetOwner`, `.SetHeadquarters`
+  - **Does** (high): Sets the object as the player's headquarters.
+    Params: must be a player-owned station of class 2046
+    Effects: Stores HQ on the player race.
+    Edge: Ignored for other classes or foreign owner.
 - **1218** `$ret =|if player HQ has blueprints for: type=<Var/Ship Type>`
   params: %0 RetVar/IF, %1 Var/Ship Type; condition; calls: `.GetHeadquarters`, `SE_ObjectExists`, `SE_IsClass`, `.HasBlueprints`
+  - **Does** (high): Returns whether the player HQ has blueprints of the ship type.
+    Returns: 1/0 (type 4)
+    Params: ship type code (type<<16|subtype)
+    Edge: 0 if no HQ, HQ missing, or not class 2046.
 - **1217** `add blueprints to player HQ: type=<Var/Ship Type>`
   params: %0 Var/Ship Type; calls: `.GetHeadquarters`, `SE_ObjectExists`, `SE_IsClass`, `.AddBlueprints`
+  - **Does** (high): Adds blueprints of the ship type to the player HQ.
+    Params: ship type code
+    Effects: AddBlueprints on HQ.
+    Edge: Ignored without a valid HQ station of class 2046.
 - **1219** `remove blueprints from player HQ: type=<Var/Ship Type>`
   params: %0 Var/Ship Type; calls: `.GetHeadquarters`, `SE_ObjectExists`, `SE_IsClass`, `.RemoveBlueprints`
+  - **Does** (high): Removes blueprints of the ship type from the player HQ.
+    Params: ship type code
+    Effects: RemoveBlueprints on HQ.
+    Edge: Ignored without a valid HQ station of class 2046.
 - **1335** `$ret =|if move player to ship <Var/Ship>: Teleport=<Var/Number>`
   params: %0 RetVar/IF, %1 Var/Ship, %2 Var/Number; condition; calls: `SE_IsClass`, `.GetOwner`, `.HasCockpit`, `C150.GetClientState`, `.GetEnvironment`, `.IsDocked`, `TI_Delay`, `C150.StopFastForward`, `C503.KillMenus`, `C503.CloseAllMenus`, `C503.EnsureNoOpenMenu`, `C630.IsOpen`, `C200.PlaySample`, `C620.Play`, `.ChangePlayerShipTo`, `.SelfDestruct`
+  - **Does** (high): Switches the player into another own ship in the same sector, optionally with teleport effect; self-destructs old ship if class 2064.
+    Returns: 1 on success, 0 otherwise (type 4)
+    Params: ship must be own, with cockpit, in same sector as player, player not docked, client not in cinematic state; Teleport flag plays sample 991 and cutscene text 2096/2097
+    Effects: Closes all menus, calls ChangePlayerShipTo; old ship of class 2064 gets SelfDestruct(18,0) in a forked task.
+    Edge: Returns 0 when conditions fail, menus cannot be closed or a message box is open.
 - **1349** `$ret = get maker race: shiptype=<Value>`
   params: %0 RetVar, %1 Value; used 1× (plugin.rrf.patrol); calls: `SA_GetTypeDefaultRace`
+  - **Does** (medium): Returns the default maker race of the ship type.
+    Returns: race (type 10)
+    Params: type code: type = bits 16-23, subtype = low 16 bits
 - **1350** `$ret = <RefObj> -> get maker race`
   params: %0 RefObj, %1 RetVar; used 1× (Graph.pl.ships.by.class.by.maker); calls: `SE_ObjectExists`, `SA_GetTypeDefaultRace`, `.GetType`, `.GetSubType`
+  - **Does** (medium): Returns the maker race of a ship/station (default race of its type and subtype).
+    Returns: race (type 10) or null
+    Edge: Only for ship/station types; null otherwise or if object does not exist.
 - **1370** `<RefObj> ->jump out of existence`
   params: %0 RefObj; used 4× (!fight.attack.boarded); calls: `SE_ObjectExists`, `.JumpOutOfExistence`
+  - **Does** (high): Makes the ship jump out of existence (jump effect, then removed).
+    Effects: Sets speed 0, plays object effect 46 and waits 1000 ms if in a sector, then Remove().
+    Edge: Ignored for the player ship and non-existing objects. Waits 1 s (TI_Delay) in the sector case.
 - **1385** `$ret =|if <RefObj> -> get flight wing`
   params: %0 RefObj, %1 RetVar/IF; condition; used 5× (!lib.get.allships.ingroup); calls: `.GetWing`
+  - **Does** (medium): Returns the flight wing the object belongs to.
+    Returns: wing (65559) or null
+    Edge: Null if not in a wing.
 - **1353** `$ret =|if <RefObj> -> is civilian ship`
   params: %0 RefObj, %1 RetVar/IF; condition; used 1× (!lib.ai.ammo.supply); calls: `SE_ObjectExists`, `.IsCivilian`
+  - **Does** (high): Returns whether the ship is flagged civilian.
+    Returns: int (type 4); null if object does not exist
+    Edge: Ship flag bit 29; stations return 0.
 - **1437** `$ret =|if <RefObj> -> get number of decks on ship`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.GetDeckNumber`
+  - **Does** (medium): Returns the number of decks of the ship.
+    Returns: int (type 4)
 - **1438** `$ret =|if <RefObj> -> get ship boarding defence level`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.GetDefenceLevel`
+  - **Does** (medium): Returns the boarding defence level of the ship.
+    Returns: int (type 4)
 - **1439** `$ret =|if <RefObj> -> get hacking security level`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.GetHackingSecurity`
+  - **Does** (medium): Returns the hacking security level of the ship.
+    Returns: int (type 4)
 - **1453** `$ret =|if <RefObj> -> realign gate: gatenum=<Value> gate to link=<Var/Warpgate> force=<Var/Boolean>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value, %3 Var/Warpgate, %4 Var/Boolean; condition; calls: `.RealignGate`, `.GetGateID`
+  - **Does** (medium): Realigns a gate: re-links a gate direction to the given target gate.
+    Returns: int (type 4); 0 on failure
+    Params: gatenum = direction index; gate to link as gate object or gate id; force flag
+    Effects: Sector.RealignGate changes the gate link of the sector.
+    Edge: Returns 0 if the direction has no link, the target gate does not exist, is not jumpable or is a hub gate.
 - **1475** `$ret = <RefObj> -> get ship variation`
   params: %0 RefObj, %1 RetVar; calls: `SA_GetShipTypeVariation`, `.GetSubType`
+  - **Does** (medium): Returns the ship type variation of the object's subtype.
+    Returns: int (type 4)
 - **1476** `$ret = get ship variation: subtype=<Var/Number>`
   params: %0 RetVar, %1 Var/Number; used 2× (!lib.get.randomshiptype); calls: `SA_GetShipTypeVariation`
+  - **Does** (medium): Returns the ship type variation for a ship subtype.
+    Returns: int (type 4)
+    Params: type 9 (ware) uses the low 16 bits as subtype, otherwise the number itself
 - **1482** `$ret =|if <RefObj> -> is missile boat`
   params: %0 RefObj, %1 RetVar/IF; condition; used 24× (!fight.attack.object.std); calls: `.IsMissileBoat`
+  - **Does** (medium): Returns whether the ship is a missile boat.
+    Returns: int (type 4)
 - **1484** `$ret =|if <RefObj> -> is military outpost`
   params: %0 RefObj, %1 RetVar/IF; condition; used 13× (!job.trade.militarysupply); calls: `.GetTypeCode`
+  - **Does** (medium): Returns whether the station type is a military outpost (flag bit 1 of the station type table).
+    Returns: 1/0 (type 4)
+    Edge: Looks up by the object's type code only.
 - **1486** `$ret =|if <RefObj> -> get debris count`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `C1650.GetCatchWareCount`, `.GetResourceMainType`, `.GetResourceSubType`, `.GetYield`
+  - **Does** (medium): Returns how many collectible ware units the resource object would give when harvested.
+    Returns: int (type 4)
+    Edge: Uses resource main/sub type and yield.
 - **1498** `$ret =|if <RefObj> -> is invincible`
   params: %0 RefObj, %1 RetVar/IF; condition; used 4× (!lib.ds); calls: `SE_ObjectExists`, `.IsInvincible`
+  - **Does** (high): Returns 1 if the object is invincible.
+    Returns: 1/0 (type 4); null if object does not exist
+    Edge: Flag 16.
 - **1505** `$ret =|if <RefObj> -> find nearest military outpost`
   params: %0 RefObj, %1 RetVar/IF; condition; used 6× (!job.fight.defencebase); calls: `SE_ObjectExists`, `.GetSector`, `.FindNearestMilitaryOutpost`, `.GetOwner`
+  - **Does** (medium): Finds the nearest military outpost of the object's owner starting from the object's sector.
+    Returns: station (65543) or null
+    Edge: Null for nonexistent object or no outpost.
 - **1507** `$ret =|if <RefObj> -> get boarding shield threshold`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (!lib.get.shieldthreshold); calls: `.GetShieldBoardingThreshold`
+  - **Does** (medium): Returns the shield boarding threshold of the ship.
+    Returns: int (type 4)
 - **1587** `$ret =|if <RefObj> -> is gate/beacon: <Var/Warpgate> jumpable`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Warpgate; condition; calls: `SE_IsClass`, `.IsJumpable`
+  - **Does** (medium): Returns whether the jump drive/gate object can jump to the given sector (only classes 2014/2062).
+    Returns: int (type 4), 0 for other classes
+    Params: the class check is applied to the gate/beacon argument
+    Edge: Other classes return 0.
 - **1615** `$ret = get ship class from subtype: <Var/Ship Type>`
   params: %0 RetVar, %1 Var/Ship Type; calls: `SA_GetShipTypeClass`
+  - **Does** (medium): Returns the ship class for a ship subtype.
+    Returns: class (type 12)
+    Params: ship type code (low 16 bits used)
 - **1617** `$ret =|if <RefObj> -> mine is armed`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `SE_IsClass`, `SE_ObjectExists`, `.IsActive`
+  - **Does** (medium): Returns whether a mine (class 2066) is armed.
+    Returns: int (type 4); 0 for other classes
+    Edge: Wrong class or nonexistent object gives 0.
 - **1618** `<RefObj> ->set mine armed state to <Var/Boolean>`
   params: %0 RefObj, %1 Var/Boolean; calls: `SE_IsClass`, `SE_ObjectExists`, `.SetActive`
+  - **Does** (medium): Sets the armed state of a mine (class 2066).
+    Params: boolean
+    Effects: SetActive on the mine.
+    Edge: Ignored for other classes or nonexistent object.
 
 ## Universe and Sector Commands
 
 - **757** `$ret =|if find ship: sector=<Var/Sector> class or type=<Value> race=<Var/Race> flags=<Var/Number> refobj=<Value> maxdist=<Var/Number> maxnum=<Var/Number> refpos=<Var/Array>`
   params: %0 RetVar/IF, %1 Var/Sector, %2 Value, %3 Var/Race, %4 Var/Number, %5 Value, %6 Var/Number, %7 Var/Number, %8 Var/Array; condition; used 104× (!fight.board.launchmarines); calls: `.FindShip`, `SE_ObjectExists`, `SE_GetExprType`, `SE_ArraySize`, `SE_ArrayAlloc`
+  - **Does** (medium): Finds ships in a sector by class/type, race and flags, optionally limited by distance and count.
+    Returns: ship (65542), array of ships (type 21) or null
+    Params: class or type: type 12 = class, type 9 = ware/type code (-1 otherwise); flags bit 65536 makes refobj count (only if it exists); refpos array {4,x,4,y,4,z}: coordinates in km x500; maxdist x500.
+    Edge: Several results come back as a type-21 script array of (type,value) pairs; a single result is returned as a plain object; no match gives null. refpos null means no reference position.
 - **1033** `$ret =|if <RefObj> -> find ship: class or type=<Value> race=<Var/Race> flags=<Var/Number> refobj=<Value> maxnum=<Var/Number>  with homebase=<Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value, %3 Var/Race, %4 Var/Number, %5 Value, %6 Var/Number, %7 Value; condition; used 5× (plugin.rrf.carrier.deploy); calls: `C2001.FindShipInObj`, `SE_ObjectExists`, `SE_GetExprType`, `SE_ArraySize`, `SE_ArrayAlloc`
+  - **Does** (medium): Finds ships inside an object (sector/station/ship container) with a given homebase, by class/type, race, flags and count.
+    Returns: ship or array of ships or null
+    Params: homebase = owner object; refobj used if flag 65536 and exists; class/type as in 757
+    Edge: Several results come back as a type-21 script array of (type,value) pairs; a single result is returned as a plain object; no match gives null. Container must be class 2033, 2016 or 2001 else null; flag 0x40000000 with maxnum<=0 returns null.
 - **758** `$ret =|if find asteroid: sector=<Var/Sector> resourcetype=<Var/Number> min.yield=<Var/Number> flags=<Var/Number> refobj=<Value> maxdist=<Var/Number> maxnum=<Var/Number> refpos=<Var/Array>`
   params: %0 RetVar/IF, %1 Var/Sector, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Value, %6 Var/Number, %7 Var/Number, %8 Var/Array; condition; used 7× (!job.special.spacefly.hunter); calls: `.FindAsteroid`, `SE_ObjectExists`, `SE_GetExprType`, `SE_ArraySize`, `SE_ArrayAlloc`
+  - **Does** (medium): Finds asteroids in a sector by resource type, minimum yield, flags, distance and count.
+    Returns: asteroid (65553), array or null
+    Params: resource type used only if given as type 4, else -1; flags bit 65536 makes refobj count (only if it exists); refpos array {4,x,4,y,4,z}: coordinates in km x500; maxdist x500
+    Edge: Several results come back as a type-21 script array of (type,value) pairs; a single result is returned as a plain object; no match gives null.
 - **1212** `$ret =|if find debris: sector=<Var/Sector> resource=<Var/Ware> min yield=<Var/Number> flags=<Var/Number> refobj=<Value> num=<Var/Number> max distance=<Var/Number> refpos=<Var/Array>`
   params: %0 RetVar/IF, %1 Var/Sector, %2 Var/Ware, %3 Var/Number, %4 Var/Number, %5 Value, %6 Var/Number, %7 Var/Number, %8 Var/Array; condition; used 9× (!job.trade.iceminer); calls: `.FindDebris`, `SE_GetExprType`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Finds debris/asteroid pieces in a sector by ware, minimum yield, flags, distance and count.
+    Returns: object (65553), array or null
+    Params: ware 0 = any (-1) else low 16 bits (subtype); max distance x500; refpos array in km x500
+    Edge: Several results come back as a type-21 script array of (type,value) pairs; a single result is returned as a plain object; no match gives null. Sector null gives null.
 - **1143** `$ret =|if find nebula: sector=<Var/Sector> type=<Var/Number> effect=<Var/Number> flags=<Var/Number> refobj=<Var/Ship/Station> maxdist=<Var/Number> maxnum=<Var/Number> refpos=<Var/Array>`
   params: %0 RetVar/IF, %1 Var/Sector, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Ship/Station, %6 Var/Number, %7 Var/Number, %8 Var/Array; condition; calls: `.FindNebula`, `SE_GetExprType`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Finds nebulae in a sector by type, effect, flags, distance and count.
+    Returns: nebula (65553), array or null
+    Params: type 0 = any (-1); sector must be type 65544; refpos array in km x500
+    Edge: Several results come back as a type-21 script array of (type,value) pairs; a single result is returned as a plain object; no match gives null.
 - **766** `$ret =|if find flying ware: sector=<Var/Sector> maintype=<Var/Number> subtype=<Var/Number> flags=<Var/Number> refobj=<Value> maxdist=<Var/Number> maxnum=<Var/Number>, refpos=<Var/Array>`
   params: %0 RetVar/IF, %1 Var/Sector, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Value, %6 Var/Number, %7 Var/Number, %8 Var/Array; condition; used 13× (!job.pirate.plunderships); calls: `.FindFlyingWare`, `SE_ObjectExists`, `SE_GetExprType`, `SE_ArraySize`, `SE_ArrayAlloc`
+  - **Does** (medium): Finds flying wares in a sector by main type, subtype, flags, distance and count.
+    Returns: flying ware (65553), array or null
+    Params: main/sub type 0 = any (-1); flags bit 65536 makes refobj count (only if it exists); refpos array {4,x,4,y,4,z}: coordinates in km x500; maxdist x500
+    Edge: Several results come back as a type-21 script array of (type,value) pairs; a single result is returned as a plain object; no match gives null.
 - **794** `$ret =|if find station: sector=<Var/Sector> class or type=<Value> race=<Var/Race> flags=<Var/Number> refobj=<Value> maxdist=<Var/Number> maxnum=<Var/Number> refpos=<Var/Array>`
   params: %0 RetVar/IF, %1 Var/Sector, %2 Value, %3 Var/Race, %4 Var/Number, %5 Value, %6 Var/Number, %7 Var/Number, %8 Var/Array; condition; used 29× (!fight.defend.sector); calls: `.FindStation`, `SE_ObjectExists`, `SE_GetExprType`, `SE_ArraySize`, `SE_ArrayAlloc`
+  - **Does** (medium): Finds stations in a sector by class/type, race and flags, optionally limited by distance and count.
+    Returns: station (65543), array or null
+    Params: class or type as in 757; flags bit 65536 makes refobj count (only if it exists); refpos array {4,x,4,y,4,z}: coordinates in km x500; maxdist x500
+    Edge: Several results come back as a type-21 script array of (type,value) pairs; a single result is returned as a plain object; no match gives null.
 - **709** `$ret =|if find station in galaxy: startsector=<Var/Sector> class or type=<Value> race=<Var/Race> flags=<Var/Number> refobj=<Value> serial=<Var/Stations Serial> max.jumps=<Var/Number>`
   params: %0 RetVar/IF, %1 Var/Sector, %2 Value, %3 Var/Race, %4 Var/Number, %5 Value, %6 Var/Stations Serial, %7 Var/Number; condition; used 26× (!config.faction.atreus); calls: `.FindStationInGalaxy`, `SE_ObjectExists`, `SE_GetExprType`, `SE_ArraySize`, `SE_ArrayAlloc`
+  - **Does** (medium): Finds stations in the galaxy starting from a sector, nearest first, by class/type, race, flags, serial and max jumps.
+    Returns: station (65543), array or null
+    Params: flag bit 0x40000000 is masked off (no max-count mode); serial 0 = any; max.jumps 0 = any; refobj only used if flag 65536 and exists
+    Edge: Several results come back as a type-21 script array of (type,value) pairs; a single result is returned as a plain object; no match gives null.
 - **1035** `$ret =|if find station in galaxy: startsector=<Var/Sector> class or type=<Value> race=<Var/Race> flags=<Var/Number> refobj=<Value> serial=<Var/Stations Serial> max.jumps=<Var/Number> num=<Var/Number>`
   params: %0 RetVar/IF, %1 Var/Sector, %2 Value, %3 Var/Race, %4 Var/Number, %5 Value, %6 Var/Stations Serial, %7 Var/Number, %8 Var/Number; condition; used 23× (!job.special.repairteam); calls: `.FindStationInGalaxy`, `SE_ObjectExists`, `SE_GetExprType`, `SE_ArraySize`, `SE_ArrayAlloc`
+  - **Does** (medium): Like 709 but with a maximum result count, so array results are possible (flag 0x40000000 allowed).
+    Returns: station, array or null
+    Params: num = maximum number of results (needs flag 0x40000000); serial 0 = any; max.jumps 0 = any
+    Edge: Several results come back as a type-21 script array of (type,value) pairs; a single result is returned as a plain object; no match gives null. With flag 0x40000000 and num<=0 returns null. Type 0 vs -1 for 'no type' makes no difference (only values >0 are tested).
 - **1336** `$ret =|if find gate: flags=<Var/Number>, refobj=<Value>, max dist=<Var/Number>, refpos=<Var/Array>`
   params: %0 RetVar/IF, %1 Var/Number, %2 Value, %3 Var/Number, %4 Var/Array; condition; used 12× (!fight.war.protectsector); calls: `SE_ObjectExists`, `.GetSector`, `.FindGate`, `SE_GetExprType`, `SE_ArraySize`, `SE_ArrayAlloc`
+  - **Does** (medium): Finds warp gates near the reference object/position in the sector; flags, max distance (x500).
+    Returns: gate (65553), array or null
+    Params: refobj: sector, or object whose sector is used; with refpos the sector is element 7 of the position array
+    Edge: Several results come back as a type-21 script array of (type,value) pairs; a single result is returned as a plain object; no match gives null. Null if no sector can be determined.
 - **1586** `$ret =|if find gate: flags=<Var/Number>, refobj=<Value>, max dist=<Var/Number>, refpos=<Var/Array> object check=<Var/Ship/Station>`
   params: %0 RetVar/IF, %1 Var/Number, %2 Value, %3 Var/Number, %4 Var/Array, %5 Var/Ship/Station; condition; used 3× (!move.jumptogate.nearest); calls: `SE_ObjectExists`, `.GetSector`, `.FindGateObject`, `SE_GetExprType`, `SE_ArraySize`, `SE_ArrayAlloc`
+  - **Does** (medium): Like 1336 but also returns gate objects with an object check argument.
+    Returns: gate (65553), array or null
+    Params: sector from refobj (65544 or object's sector) or position array element 7; last arg = object to check
+    Edge: Several results come back as a type-21 script array of (type,value) pairs; a single result is returned as a plain object; no match gives null.
 - **800** `$ret =|if get sector from universe index: x=<Var/Number>, y=<Var/Number>`
   params: %0 RetVar/IF, %1 Var/Number, %2 Var/Number; condition; used 7× (!lib.get.gateless.sector); calls: `.GetOwner`
+  - **Does** (medium): Returns the sector at the given universe grid index.
+    Returns: sector (65544) or null
+    Params: x,y grid indices; sector grid of 24x20
+    Edge: Returns null if the cell has no sector (no owner). Indices not range checked in the case.
 - **801** `$ret = get max sectors in x direction`
   params: %0 RetVar; used 4× (!lib.get.gateless.sector)
+  - **Does** (high): Returns the number of sector columns in the universe (constant 24).
+    Returns: 24 (type 4)
 - **802** `$ret = get max sectors in y direction`
   params: %0 RetVar; used 4× (!lib.get.gateless.sector)
+  - **Does** (high): Returns the number of sector rows in the universe (constant 20).
+    Returns: 20 (type 4)
 - **803** `$ret =|if <RefObj> -> is sector known by the player`
   params: %0 RefObj, %1 RetVar/IF; condition; used 3× (!move.mine.trade); calls: `.GetUnknown`
+  - **Does** (high): Returns 1 if the sector is known to the player.
+    Returns: 1 or null
+    Edge: Unknown sector: null.
 - **804** `$ret = <RefObj> -> get universe x index`
   params: %0 RefObj, %1 RetVar; used 6× (!fight.war.protectsector); calls: `.GetX`
+  - **Does** (medium): Returns the sector's x index in the universe map.
+    Returns: int (type 4)
 - **805** `$ret = <RefObj> -> get universe y index`
   params: %0 RefObj, %1 RetVar; used 6× (!fight.war.protectsector); calls: `.GetY`
+  - **Does** (medium): Returns the sector's y index in the universe map.
+    Returns: int (type 4)
 - **806** `$ret = <RefObj> -> get north warp gate`
   params: %0 RefObj, %1 RetVar; calls: `.GetNorthGate`
+  - **Does** (medium): Returns the north warp gate of the sector.
+    Returns: gate (65553) or null if none
+    Edge: Null if the sector has no such gate.
 - **807** `$ret = <RefObj> -> get south warp gate`
   params: %0 RefObj, %1 RetVar; calls: `.GetSouthGate`
+  - **Does** (medium): Returns the south warp gate of the sector.
+    Returns: gate (65553) or null if none
+    Edge: Null if the sector has no such gate.
 - **808** `$ret = <RefObj> -> get east warp gate`
   params: %0 RefObj, %1 RetVar; calls: `.GetEastGate`
+  - **Does** (medium): Returns the east warp gate of the sector.
+    Returns: gate (65553) or null if none
+    Edge: Null if the sector has no such gate.
 - **809** `$ret = <RefObj> -> get west warp gate`
   params: %0 RefObj, %1 RetVar; calls: `.GetWestGate`
+  - **Does** (medium): Returns the west warp gate of the sector.
+    Returns: gate (65553) or null if none
+    Edge: Null if the sector has no such gate.
 - **811** `$ret =|if <RefObj> -> get warp gate: gate id=<Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number; condition; used 2× (!galaxyeditor.create.gates); calls: `.GetGate`
+  - **Does** (medium): Returns the warp gate with the given gate id in the sector.
+    Returns: gate (65553) or null
+    Params: gate id 0..5 index into sector's gate slots
+    Edge: Null when none at that id.
 - **1058** `$ret = <Var/Warpgate> get gate id`
   params: %0 Var/Warpgate, %1 RetVar; calls: `.GetGateID`
+  - **Does** (medium): Returns the gate id (index) of the gate.
+    Returns: int (type 4)
 - **1074** `$ret =|if get next gate on route from <Var/Sector> to <Var/Sector>`
   params: %0 RetVar/IF, %1 Var/Sector, %2 Var/Sector; condition; used 7× (!move.emergencyjump); calls: `GS_Route`, `.GetX`, `.GetY`, `.GetGate`
+  - **Does** (high): Returns the next gate on the route from one sector to another.
+    Returns: gate (65553) or null
+    Edge: Null if either sector is null or there is no route (GS_Route < 0).
 - **1057** `$ret = <Var/Warpgate> get gate destination: return sector=<Var/Number>`
   params: %0 Var/Warpgate, %1 RetVar, %2 Var/Number; used 5× (!move.emergencyjump); calls: `.GetDestinationSector`, `.GetDestinationGate`
+  - **Does** (high): Returns the destination of a gate: its destination sector if the last param is nonzero, else the destination gate.
+    Returns: sector (65544) or gate (65553), or null
+    Params: last parameter selects sector
+    Edge: Null if the gate has no destination.
 - **711** `$ret =|if get jumps from sector <Var/Sector> to sector <Var/Sector>`
   params: %0 RetVar/IF, %1 Var/Sector, %2 Var/Sector; condition; used 30× (!fight.attack.object); calls: `GS_RouteLen`, `.GetX`, `.GetY`
+  - **Does** (high): Returns the number of jumps between two sectors.
+    Returns: int (type 4) or null
+    Edge: Null if either sector is null or no route (<0).
 - **712** `$ret =|if get next sector on route from sector <Var/Sector> to sector <Var/Sector>`
   params: %0 RetVar/IF, %1 Var/Sector, %2 Var/Sector; condition; used 19× (!fight.attack.object.bomber); calls: `GetNextRouteSector`, `.GetX`, `.GetY`
+  - **Does** (high): Returns the next sector on the route between two sectors.
+    Returns: sector (65544) or null
+    Edge: Null if either sector null or no route.
 - **810** `$ret = find a random sector: startsector=<Var/Sector>, jumps=<Var/Number>, owner=<Var/Race>`
   params: %0 RetVar, %1 Var/Sector, %2 Var/Number, %3 Var/Race; used 23× (!job.fight.defencebase); calls: `C300.FindSector`
+  - **Does** (medium): Finds a random sector near the start sector, within given jumps, optionally owned by a race.
+    Returns: sector (65544) or null
+    Params: owner race is turned into a bit mask (1<<race); owner 0 = any; jumps = range
+    Edge: Null if none found.
 - **1206** `$ret = find a random sector: startsector=<Var/Sector>, jumps=<Var/Number>, owner=<Var/Race>, security level=<Var/Number>`
   params: %0 RetVar, %1 Var/Sector, %2 Var/Number, %3 Var/Race, %4 Var/Number; used 1× (!ship.job.patrol); calls: `C300.FindSector`
+  - **Does** (medium): Like 810 with an extra security level selecting mode 0/1/other (flags 0, 8192, 16384).
+    Returns: sector (65544) or null
+    Params: security level 0/1/other maps to extra flags; owner mask 1<<race
+    Edge: Null if none found.
 - **1334** `$ret =|if <RefObj> -> find all sectors within <Var/Number> jumps: Only known sectors=<Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Var/Number; condition; used 8× (!job.trade.iceminer); calls: `SE_IsClass`, `.GetSector`, `C300.FindSector`, `SE_GetExprType`, `SE_ArraySize`, `SE_ArrayAlloc`
+  - **Does** (medium): Finds all sectors within N jumps of the object's sector, optionally only known sectors.
+    Returns: sector, array (type 21) or null
+    Params: Ship/station args are resolved to their sector; known-only flag 2097152; flag 1073741824 = jump radius mode
+    Edge: Several results come back as a type-21 script array of (type,value) pairs; a single result is returned as a plain object; no match gives null.
 - **1008** `$ret = <RefObj> -> get ship array from sector/ship/station`
   params: %0 RefObj, %1 RetVar; used 7× (!lib.get.sectors.inrange); calls: `.GetShips`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`
+  - **Does** (high): Returns an array of all ships in the sector/ship/station.
+    Returns: array of (65542, ship) pairs (type 21) or null
+    Edge: Null (not an empty array) when the container has no ship table.
 - **1009** `$ret = <RefObj> -> get station array from sector`
   params: %0 RefObj, %1 RetVar; used 4× (!job.fight.defencebase); calls: `.GetStations`, `.GetFactories`, `.GetDocks`, `.GetShipsPlayer`, `.GetStationsPlayer`, `.GetAsteroids`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`
+  - **Does** (high): Returns an array of all stations in the sector (shares case body with 1010-1014).
+    Returns: array of (65543, station) pairs (type 21) or null
+    Edge: Null when the sector's table is empty/null.
 - **1010** `$ret = <RefObj> -> get factory array from sector`
   params: %0 RefObj, %1 RetVar; used 1× (!lib.find.illegalfab); calls: `.GetStations`, `.GetFactories`, `.GetDocks`, `.GetShipsPlayer`, `.GetStationsPlayer`, `.GetAsteroids`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`
+  - **Does** (high): Returns an array of all factories in the sector (shares case body with 1009-1014).
+    Returns: array of (65543, station) pairs (type 21) or null
+    Edge: Null when the sector's table is empty/null.
 - **1011** `$ret = <RefObj> -> get dock array from sector`
   params: %0 RefObj, %1 RetVar; calls: `.GetStations`, `.GetFactories`, `.GetDocks`, `.GetShipsPlayer`, `.GetStationsPlayer`, `.GetAsteroids`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`
+  - **Does** (medium): Returns an array of (type,id) pairs for the sector's docks (stations with docking facility).
+    Returns: array (21) of {65543, station} pairs, or null when the sector has none
+    Params: RefObj = sector
+    Edge: Null/destroyed sector or empty result: returns null (resultType stays 0). Result entries are tagged with the type code shown.
 - **1012** `$ret = <RefObj> -> get player owned ship array from sector`
   params: %0 RefObj, %1 RetVar; used 4× (!fight.attack.object); calls: `.GetStations`, `.GetFactories`, `.GetDocks`, `.GetShipsPlayer`, `.GetStationsPlayer`, `.GetAsteroids`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`
+  - **Does** (medium): Returns an array of (type,id) pairs for the sector's player-owned ships.
+    Returns: array (21) of {65542, ship} pairs, or null
+    Params: RefObj = sector
+    Edge: Null/destroyed sector or empty result: returns null (resultType stays 0). Result entries are tagged with the type code shown.
 - **1013** `$ret = <RefObj> -> get player owned station array from sector`
   params: %0 RefObj, %1 RetVar; used 3× (!fight.attack.object); calls: `.GetStations`, `.GetFactories`, `.GetDocks`, `.GetShipsPlayer`, `.GetStationsPlayer`, `.GetAsteroids`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`
+  - **Does** (medium): Returns an array of (type,id) pairs for the sector's player-owned stations.
+    Returns: array (21) of {65543, station} pairs, or null
+    Params: RefObj = sector
+    Edge: Null/destroyed sector or empty result: returns null (resultType stays 0). Result entries are tagged with the type code shown.
 - **1014** `$ret = <RefObj> -> get asteroid array from sector`
   params: %0 RefObj, %1 RetVar; calls: `.GetStations`, `.GetFactories`, `.GetDocks`, `.GetShipsPlayer`, `.GetStationsPlayer`, `.GetAsteroids`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`
+  - **Does** (medium): Returns an array of (type,id) pairs for the sector's asteroids.
+    Returns: array (21) of {65553, asteroid} pairs, or null
+    Params: RefObj = sector
+    Edge: Null/destroyed sector or empty result: returns null (resultType stays 0). Result entries are tagged with the type code shown.
 - **1067** `$ret =|if <RefObj> -> get owned ships: class/type=<Value>`
   params: %0 RefObj, %1 RetVar/IF, %2 Value; condition; used 25× (!lib.fight.defencebase.start); calls: `SE_IsClass`, `.GetOwnedShips`, `GetOwnedShips`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`, `.GetTypeCode`, `SE_ArrayResize`
+  - **Does** (medium): Returns the ships owned by the RefObj (a race object or a station) filtered by class or type code.
+    Returns: array (21) of {65542, ship} pairs, or null if the owner is invalid or nothing matches
+    Params: Value = class id (type 12, matched with IsClass) or ship type code (type 9, matched with GetTypeCode); a null/0 value matches all ships
+    Edge: RefObj must be a race (65542, class 2033) or station (65543, class 2016) else null. The decompile shows both GetOwnedShips() on the object and on gRaces[id]; the exact choice per type was not separated. Other filter type codes match nothing.
 - **1068** `$ret =  get ship array: of race <Var/Race> class/type=<Value>`
   params: %0 Var/Race, %1 RetVar, %2 Value; used 12× (!lib.ds); calls: `SE_IsClass`, `.GetOwnedShips`, `GetOwnedShips`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`, `.GetTypeCode`, `SE_ArrayResize`
+  - **Does** (medium): Returns the ships owned by a race, filtered by class or type code.
+    Returns: array (21) of {65542, ship} pairs, or null if nothing matches
+    Params: Var/Race = race (cell value indexes gRaces); Value = class (type 12) or ship type code (type 9); 0 matches all
+    Edge: Shares the body of 1067, so a Race operand is accepted via the same check. Unknown filter type matches nothing.
 - **1069** `$ret =  get station array: of race <Var/Race> class/type=<Value>`
   params: %0 Var/Race, %1 RetVar, %2 Value; used 22× (!lib.addware.tostation); calls: `GetOwnedStations`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`, `SE_IsClass`, `.GetTypeCode`, `SE_ArrayResize`
+  - **Does** (medium): Returns the stations owned by a race, filtered by class or type code.
+    Returns: array (21) of {65543, station} pairs, or null if the race owns none/none match
+    Params: Var/Race = race (gRaces index); Value = class (type 12) or station type code (type 9); 0 matches all
+    Edge: gRaces[race].GetOwnedStations() is called without any type check on the race operand; an invalid race value indexes gRaces blindly.
 - **1459** `$ret = get station array: product=<Var/Ware> include empty=<Var/Boolean>`
   params: %0 RetVar, %1 Var/Ware, %2 Var/Boolean; calls: `C300.FindStationsWithWare`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Finds stations in the whole galaxy that produce the given ware, optionally including empty ones.
+    Returns: array (21) of {65543, station} pairs, or null
+    Params: Var/Ware = ware; Var/Boolean = include empty stations (cell value, third argument of FindStationsWithWare). Mode 2 = product.
+    Edge: If the engine query returns 0, result is null. Ware/boolean type cells are not checked.
 - **1460** `$ret = get station array: resource=<Var/Ware> include empty=<Var/Boolean>`
   params: %0 RetVar, %1 Var/Ware, %2 Var/Boolean; calls: `C300.FindStationsWithWare`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Finds stations in the whole galaxy that use the given ware as a resource, optionally including empty ones.
+    Returns: array (21) of {65543, station} pairs, or null
+    Params: Var/Ware = ware; Var/Boolean = include empty stations. Mode 1 = resource.
+    Edge: Same as 1459.
 - **1320** `$ret =|if player has police license for race <Var/Race>`
   params: %0 RetVar/IF, %1 Var/Race; condition; used 2× (!job.fight.defencebase); calls: `.HasLicense`
+  - **Does** (high): Tests whether the player holds the police license of the given race.
+    Returns: int (4): nonzero when the player ship carries the license ware (ware type 16, race license subtype), else 0
+    Params: Var/Race = race (gRaces index)
+    Edge: Race without a license subtype gives 0. The check counts the license ware in the player ship's cargo.
 - **791** `player loses police licence for race <Var/Race>`
   params: %0 Var/Race; used 3× (!job.fight.defencebase); calls: `.LoseLicense`
+  - **Does** (medium): Removes the police license of the given race from the player (cargo) and logs 'Lost the %s police license'.
+    Params: Var/Race = race
+    Effects: Removes all licence wares of that race from the player ship and writes a log message
+    Edge: Only acts if race == m3.GetOwner() (the owner of the object stored in m3 in PlayerRace); for other races nothing happens. No license held: nothing happens.
 - **1331** `$ret =|if <RefObj> -> is core sector`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (plugin.rrf.jump.global); calls: `.IsCoreSector`
+  - **Does** (high): Tests whether the sector is flagged as a core sector.
+    Returns: int (4): 1 if sector flag bit 4 is set, else 0
+    Params: RefObj = sector
+    Edge: Method on a non-sector object would fail/return 0.
 - **1461** `<RefObj> ->set sector to core security <Var/Boolean>`
   params: %0 RefObj, %1 Var/Boolean; calls: `.SetCoreSector`
+  - **Does** (high): Sets or clears the core-sector flag (sector flag bit 4) of the sector.
+    Params: RefObj = sector; Boolean value cell: nonzero sets, 0 clears
+    Effects: Changes sectorFlags bit 4
+    Edge: No class check on the RefObj.
 - **1372** `$ret = get ship type array: maker race=<Var/Race> class=<Value>`
   params: %0 RetVar, %1 Var/Race, %2 Value; used 2× (!lib.get.randomshiptype); calls: `SA_GetNumSubTypes`, `SE_ArrayAlloc`, `SA_GetTypeDefaultRace`, `SE_IsClass`, `SA_GetShipTypeClass`, `SE_ArrayResize`
+  - **Does** (medium): Returns an array of all ship types (ware 458752|index) filtered by default maker race and ship class.
+    Returns: array (21) of {9, shiptype-ware} pairs, or null if none
+    Params: Var/Race = maker race id (0 = any; matched against SA_GetTypeDefaultRace(7,type)); Value = class (type 12 only; 0 = any)
+    Edge: If the class filter is non-zero with type other than 12, nothing matches (a non-zero race is compared to the raw cell value).
 - **1485** `$ret =|if <RefObj> -> get planet array`
   params: %0 RefObj, %1 RetVar/IF; condition; used 2× (!config.create.nearplanet); calls: `.GetPlanets`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`, `.GetSubType`, `SE_ArrayResize`
+  - **Does** (medium): Returns the planets of the sector (without subtype 128).
+    Returns: array (21) of {65553, planet} pairs, or null when none
+    Params: RefObj = sector
+    Edge: Null/empty planet list: null (condition false). Planets with subtype 128 are skipped.
 - **1487** `set discovered status: type=<Value> status=<Var/Boolean>`
   params: %0 Value, %1 Var/Boolean; calls: `.SetObjectWareKnown`, `.SetObjectWareUnknown`, `.SetWareKnown`, `.SetWareUnknown`
+  - **Does** (medium): Marks a ware, ship type or station type as known or unknown to the player.
+    Params: Value = ware (type 9) or ship/station/other object type (65542/65543/65553, the type is taken from the object's own type/subtype); Boolean: true = set known, false = set unknown
+    Effects: Changes the player's discovered-ware tables (PlayerRace.SetWareKnown/Unknown, SetObjectWareKnown/Unknown)
+    Edge: Other type codes: ignored.
 - **1488** `$ret =|if has <Value> been discovered`
   params: %0 RetVar/IF, %1 Value; condition; calls: `.IsWareKnown`, `.GetType`, `.GetSubType`
+  - **Does** (medium): Tests whether a ware, ship type or station type is discovered by the player.
+    Returns: int (4): nonzero if known, 0 if not or the type is unsupported
+    Params: Value = ware (type 9) or ship/station object (65542/65543; checked by type<<16|subtype)
+    Edge: Types other than 9/65542/65543 return 0.
 - **1504** `$ret =|if <RefObj> -> get all stationary objects: include asteroids=<Var/Boolean>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Boolean; condition; used 1× (!lib.get.objs.insector); calls: `SE_ObjectExists`, `.GetDocks`, `.GetFactories`, `.GetGates`, `SE_ArrayAppend`, `.GetAsteroids`, `SE_ArraySize`, `SE_TableNext`
+  - **Does** (medium): Returns the stationary objects of the sector: docks, factories and gates, optionally asteroids.
+    Returns: array (21) of (type,object) pairs, or null if empty/invalid sector
+    Params: RefObj = sector; Boolean = include asteroids (only honoured when its type cell is 4)
+    Edge: SE_ObjectExists check first. Docks and factories are tagged 65543, gates and asteroids 65553. A station that is both dock and factory appears twice.
 - **1521** `$ret =|if <RefObj> -> get buyable wares in sector: include playerfacs=<Var/Number> include shipyards=<Var/Number> include docks=<Var/Number>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Number, %3 Var/Number, %4 Var/Number; condition; calls: `SE_ObjectExists`, `SE_IsClass`, `.GetFactories`, `SE_TableNext`, `.GetOwner`, `.GetProducts`, `.GetDocks`, `.GetTradeables`, `C700.ConvertArrayToScriptArray`, `SE_TableKeys`
+  - **Does** (medium): Returns the wares that can be bought in a sector: products of factories, optionally docks' tradeable wares.
+    Returns: array (21) of {9, ware} pairs, or null if the object is not a sector
+    Params: RefObj = sector (class 2001); params 1..3 are numbers: include player stations (nonzero), include shipyards, include docks; shipyard/dock flags pick which factories/docks count
+    Edge: Player-owned factories are skipped unless the first flag is nonzero; shipyards (class 2037) skipped unless the second flag; docks only when the third flag is set. Result is deduplicated (table keys).
 - **1567** `$ret =|if <RefObj> -> is sector visible`
   params: %0 RefObj, %1 RetVar/IF; condition; calls: `.GetVisible`
+  - **Does** (high): Returns the sector's visibility counter (player objects that see it).
+    Returns: int (4): visibleCount, so nonzero (>0) when visible, usable as a condition
+    Params: RefObj = sector
+    Edge: Returns a count, not a 0/1 boolean.
 - **1577** `$ret =|if <RefObj> -> get player object count in sector: class=<Var/Class>`
   params: %0 RefObj, %1 RetVar/IF, %2 Var/Class; condition; calls: `.GetPlayerObjectCount`
+  - **Does** (high): Counts the player-owned objects in a sector, optionally by class, including player ships landed in docks/factories.
+    Returns: int (4) count
+    Params: RefObj = sector; Class = filter class id (0 = all)
+    Edge: Landed ships are counted via CountLandedPlayerShips of each dock/factory/ship container.
 - **1585** `$ret =|if get cluster sectors for race <Var/Race>, startsector: <Var/Sector>, threshold: <Var/Number>, only include known: <Var/Boolean>`
   params: %0 RetVar/IF, %1 Var/Race, %2 Var/Sector, %3 Var/Number, %4 Var/Boolean; condition; used 5× (Graph.SX.stn.select); calls: `.GetOwner`, `GetID`, `.GetUnknown`, `GetObjectName`, `SE_TableSize`, `SE_TableNext`, `GS_RouteLen`, `.GetX`, `.GetY`, `SE_TableRemove`, `C700.ConvertArrayToScriptArray`, `SE_TableKeys`
+  - **Does** (medium): Finds the connected cluster of sectors owned by a race that lie within a route distance of the start sector.
+    Returns: array (21) of {65544, sector} pairs; the start sector alone when threshold is 0; null when the race owns no sector
+    Params: Race = owner id, compared with the owner's GetID(); Sector = start sector; Number = max route length between neighbour sectors (GS_RouteLen on sector x/y); Boolean = skip unknown (undiscovered) sectors
+    Edge: Sectors owned by the race within the threshold of the start sector seed the set, then flood-fill with the threshold. The start sector itself is not added unless owned. Decompile is flattened so the early-out paths are inferred.
 
 ## Other / NPCs
 
 - **1120** `$ret = get random NPC`
   params: %0 RetVar; calls: `C8047.GetRandomNPC`
+  - **Does** (medium): Returns a random NPC from the pool.
+    Returns: object (65553) from EvilNpcPool.GetRandomNPC
+    Edge: May return null/0 when the pool is empty.
 - **1121** `$ret = <RefObj> -> get NPC personal ship`
   params: %0 RefObj, %1 RetVar; calls: `SE_IsClass`, `.GetPersonalShip`
+  - **Does** (medium): Returns the personal ship of an NPC.
+    Returns: ship (65542)
+    Params: RefObj = NPC (class 8048)
+    Edge: Non-NPC objects: returns null.
 - **1122** `<RefObj> ->NPC send voice message: id=<Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `SE_IsClass`, `.SendVoiceMessage`
+  - **Does** (medium): Makes an NPC send a voice message.
+    Params: RefObj = NPC (class 8048); Number = voice message id
+    Effects: Plays/sends the voice message through the NPC
+    Edge: Non-NPC objects: ignored.
 - **1123** `<RefObj> ->release NPC personal ship`
   params: %0 RefObj; calls: `SE_IsClass`, `.ReleasePersonalShip`
+  - **Does** (medium): Releases the NPC's personal ship.
+    Params: RefObj = NPC (class 8048)
+    Effects: Releases the personal ship
+    Edge: Non-NPC objects: ignored.
 - **1124** `<RefObj> ->release NPC`
   params: %0 RefObj; calls: `SE_IsClass`, `.Release`
+  - **Does** (medium): Releases the NPC (frees it back).
+    Params: RefObj = NPC (class 8048)
+    Effects: Calls NPC Release()
+    Edge: Non-NPC objects: ignored.
 - **1125** `$ret = <RefObj> -> NPC wants to bail`
   params: %0 RefObj, %1 RetVar; calls: `SE_IsClass`, `.WantsToBail`
+  - **Does** (high): Tests whether the NPC wants to bail out.
+    Returns: int (4) from WantsToBail()
+    Params: RefObj = NPC (class 8048)
+    Edge: Non-NPC objects: returns null.
 - **1126** `$ret = <RefObj> -> NPC is aggressive`
   params: %0 RefObj, %1 RetVar; calls: `SE_IsClass`, `.IsAggressive`
+  - **Does** (high): Tests whether the NPC is aggressive.
+    Returns: int (4) from IsAggressive()
+    Params: RefObj = NPC (class 8048)
+    Edge: Non-NPC objects: returns null.
 - **1127** `<RefObj> ->spawn NPC personal ship: rank=<Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `SE_IsClass`, `.SpawnPersonalShip`
+  - **Does** (medium): Spawns a personal ship for the NPC with the given rank.
+    Params: RefObj = NPC (class 8048); Number = rank
+    Effects: Creates the NPC's personal ship
+    Edge: Non-NPC objects: ignored.
 - **1128** `<RefObj> ->spawn NPC fleet: rank=<Var/Number>`
   params: %0 RefObj, %1 Var/Number; calls: `SE_IsClass`, `.SpawnFleet`
+  - **Does** (medium): Spawns an NPC fleet with the given rank.
+    Params: RefObj = NPC (class 8048); Number = rank
+    Effects: Creates the NPC fleet
+    Edge: Non-NPC objects: ignored.
 - **1129** `$ret = <RefObj> -> get NPC fleet`
   params: %0 RefObj, %1 RetVar; calls: `SE_IsClass`, `.GetFleet`, `SE_ArrayAlloc`, `SE_TableSize`, `SE_TableNext`
+  - **Does** (medium): Returns the ships of the NPC's fleet.
+    Returns: array (21) of {65542, ship} pairs
+    Params: RefObj = NPC (class 8048)
+    Edge: Non-NPC objects: null. If the NPC has no fleet table, the result is an empty array (allocated with size 0), not null.
 
 ## Other / Events
 
 - **1090** `$ret =|if display news article: page=<Var/Number> newsid=<Var/Number> occurrences=<Var/Number> maxoffertime=<Var/Number> maxtime=<Var/Number> placeholder:race1=<Var/Number> race2=<Var/Number> customarray=<Var/Array>`
   params: %0 RetVar/IF, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Number, %6 Var/Number, %7 Var/Number, %8 Var/Array; condition; calls: `C4194.AddEventNewsItemFromScript`
+  - **Does** (high): Creates a bulletin-board news article from a text page and event id.
+    Returns: int (4): key of the new live event, or null if no template exists for page/event
+    Params: Numbers: text page, event/news id (1..99), shows (occurrences), offer duration, lifetime, race1, race2; Array = custom arguments as (type,value) pairs converted to text
+    Effects: Adds a live event to BbsNews.liveEvents (capped at 1000; oldest dropped)
+    Edge: Page < 1 or event id outside 1..99 gives no event (null).
 - **1091** `change event news availibility: <Var/Number> race=<Var/Race> sector=<Var/Sector> jumps=<Var/Number>`
   params: %0 Var/Number, %1 Var/Race, %2 Var/Sector, %3 Var/Number; calls: `C4194.ChangeOfferStationAvailability`
+  - **Does** (high): Changes where a live news event is offered: adds a race to its race mask and sets the station and maximum distance.
+    Params: Numbers: event key; Race (bit 1<<race is OR-ed in); Sector (stored as the offer station); Number = max distance, capped at 200 route units
+    Effects: Edits liveEvents[key] fields 4,5,6
+    Edge: Unknown event key: ignored. Race 0 / station 0 skip their part.
+  - **Engine bug (S52, AP FL):** The distance limit is taken from the type cell of the last parameter, not its value: the news item is always limited to the type code (4 for a number).
 - **1141** `register god event: script=<Script Name> mask=<Var/Number>`
   params: %0 Script Name, %1 Var/Number; calls: `C302.RegisterScript`
+  - **Does** (medium): Registers a script with the god (random event) engine under an event mask.
+    Params: Script Name = script; Number = event mask
+    Effects: Adds the script to GodEngine's registered scripts
 - **1146** `abort god event: <Var/Quest>`
   params: %0 Var/Quest; calls: `SE_IsClass`, `TI_Delay`, `C302.EventAborted`
+  - **Does** (medium): Aborts a god event quest one tick later.
+    Params: Var/Quest = quest object (class 6100)
+    Effects: Forks a task that waits 1 tick then calls GodEngine.EventAborted(quest)
+    Edge: Not a class-6100 object: ignored. The calling script does not wait (the delay is in a forked task).
 - **1147** `finish god event: <Var/Quest>`
   params: %0 Var/Quest; calls: `SE_IsClass`, `TI_Delay`, `C302.EventFinished`
+  - **Does** (medium): Finishes a god event quest one tick later.
+    Params: Var/Quest = quest object (class 6100)
+    Effects: Forks a task that waits 1 tick then calls GodEngine.EventFinished(quest)
+    Edge: Not class 6100: ignored. Caller does not wait.
 
 ## Other / AL Engine
 
 - **1000** `al engine: register script=<Script Name>`
   params: %0 Script Name; used 1× (al.plugin.bw.detector.event); calls: `C301.RegisterPlugin`
+  - **Does** (medium): Registers a script as a plugin with the AL engine.
+    Params: Script Name = script
+    Effects: AlPlugins.RegisterPlugin
 - **1001** `al engine: unregister script <Script Name>`
   params: %0 Script Name; calls: `C301.UnregisterPlugin`
+  - **Does** (medium): Unregisters a script from the AL engine.
+    Params: Script Name = script
+    Effects: AlPlugins.UnregisterPlugin
 - **1024** `al engine: set plugin <Var/String> description to <Var/String>`
   params: %0 Var/String, %1 Var/String; used 1× (al.plugin.bw.detector.event); calls: `C301.SetPluginDesc`
+  - **Does** (medium): Sets the description text of an AL plugin.
+    Params: String 1 = plugin script name, String 2 = description
+    Effects: AlPlugins.SetPluginDesc
 - **1025** `al engine: set plugin <Var/String> timer interval to <Var/Number> s`
   params: %0 Var/String, %1 Var/Number; used 5× (al.plugin.bw.detector.event); calls: `C301.SetPluginInterval`
+  - **Does** (medium): Sets the timer interval of an AL plugin.
+    Params: String = plugin script name; Number = interval in seconds (per editor text)
+    Effects: AlPlugins.SetPluginInterval
 
 ## Other / Custom Menu Commands
 
 - **1230** `$ret =|if open custom menu: title=<Var/String> description=<Var/String> option array=<Var/Array>`
   params: %0 RetVar/IF, %1 Var/String, %2 Var/String, %3 Var/Array; condition; used 59× (!lib.get.enemytarget); calls: `C605.GetActiveMonitorControlObject`, `SE_ArrayAlloc`, `C150.GetClientState`, `C630.IsOpen`, `TI_Delay`, `C503.GetActiveMenu`, `CreateNextCustomInfo`, `CreateNextCustom`, `OpenNextMenu`, `CreateCustomInfo`, `CreateCustom`, `C503.SetActiveMenu`, `SE_ObjectExists`, `SE_ArraySize`
+  - **Does** (medium): Opens a custom text menu for the player and waits until it closes. Returns the chosen value.
+    Returns: int 0 if not opened; otherwise the selected return value with its type tag, or an array (21) when the choice has more than one value
+    Params: String 1 = title, String 2 = description, Array = option array built by the custom-menu commands; max options fixed at 4
+    Effects: Opens the menu (class 2328 CreateCustom/CreateNextCustom), sets MenuManager active menu
+    Edge: If the menu cannot be opened (client state non-zero, a message box open) the command returns int 0. Cancel gives the default -1 (nonzero, true in a condition). Menu is chained as next menu when another menu is active.
+  - Suspected (not verified): Opens only when client state == 0 ('!state & 1' is (!state)&1): with any flag set no menu appears and the default is returned (S3, known).
 - **1489** `$ret =|if open custom info menu: title=<Var/String> description=<Var/String> option array=<Var/Array> maxoptions=<Var/Number>`
   params: %0 RetVar/IF, %1 Var/String, %2 Var/String, %3 Var/Array, %4 Var/Number; condition; used 7× (plugin.mini.game.messagebox); calls: `C605.GetActiveMonitorControlObject`, `SE_ArrayAlloc`, `C150.GetClientState`, `C630.IsOpen`, `TI_Delay`, `C503.GetActiveMenu`, `CreateNextCustomInfo`, `CreateNextCustom`, `OpenNextMenu`, `CreateCustomInfo`, `CreateCustom`, `C503.SetActiveMenu`, `SE_ObjectExists`, `SE_ArraySize`
+  - **Does** (medium): Opens a custom text menu for the player and waits until it closes. Like 1230 but with an info panel and a maximum number of options.
+    Returns: As 1230
+    Params: String 1 = title, String 2 = description, Array = options, Number = maximum options (0 gives 4)
+    Effects: Opens the info custom menu (CreateCustomInfo)
+    Edge: If the menu cannot be opened (client state non-zero, a message box open) the command returns int 0. Cancel gives the default -1 (nonzero, true in a condition). Menu is chained as next menu when another menu is active.
   - **Engine bug (S3, AP):** Opens only when the client state is exactly 0 (`!state & 1`); with any client flag set the script gets the default answer at once. Fixed in FL.
 - **1445** `$ret = create custom menu array`
   params: %0 RetVar; used 27× (!lib.get.enemytarget)
+  - **Does** (high): Creates an empty custom menu array.
+    Returns: array (21), empty
 - **1416** `$ret = create custom menu array: heading=<Var/String>`
   params: %0 RetVar, %1 Var/String; used 25× (!lib.input.enemytarget.core); calls: `C700.DataTypeToString`
+  - **Does** (medium): Creates a custom menu array that starts with a heading line.
+    Returns: array (21) containing one heading entry {4,-1,5,text}
+    Params: String = heading; non-strings are converted to text
+    Edge: Value is converted by DataTypeToString unless type is 5 (string) or 21 (array/text reference).
 - **1444** `$ret = create custom menu array, info lines=<Var/String>, <Var/String>, <Var/String>, <Var/String>, <Var/String>`
   params: %0 RetVar, %1 Var/String, %2 Var/String, %3 Var/String, %4 Var/String, %5 Var/String; calls: `SE_ArrayAlloc`, `SE_ArrayResize`, `C700.ConvertArrayToScriptArray`
+  - **Does** (medium): Creates a custom menu array from up to five info lines.
+    Returns: array (21) of info-line entries {4,-2,type,text}
+    Params: Up to five String values; only values of type 5 or 21 are kept (others silently skipped)
+    Edge: Non-string operands are dropped, not converted, unlike 1446.
 - **1447** `add custom menu item to array <Value>: text=<Var/String> returnvalue=<Value>`
   params: %0 Value, %1 Var/String, %2 Value; used 167× (!lib.get.enemytarget); calls: `C700.DataTypeToString`, `SE_ArrayAppend`
+  - **Does** (medium): Appends a selectable item (text and return value) to a custom menu array.
+    Params: Value = menu array; String = item text; Value = return value (type,value)
+    Effects: Appends entry {5,text,retType,retValue} (or {21,...} for a text reference) to the array
+    Edge: Text of other types is converted to a string. Array operand is not checked.
 - **1448** `add custom menu heading to array <Value>: title=<Var/String>`
   params: %0 Value, %1 Var/String; used 44× (!plugin.gz.missile.def.mk3.menu); calls: `C700.DataTypeToString`, `SE_ArrayAppend`
+  - **Does** (medium): Appends a heading line to a custom menu array.
+    Params: Value = menu array; String = heading
+    Effects: Appends entry {4,-1,5,text}
+    Edge: Array operand is not type-checked.
 - **1446** `add custom menu info line to array <Value>: text=<Var/String>`
   params: %0 Value, %1 Var/String; used 63× (!lib.get.enemytarget); calls: `C700.DataTypeToString`, `SE_ArrayAppend`
+  - **Does** (medium): Appends an info line to a custom menu array.
+    Params: Value = menu array; String = text
+    Effects: Appends entry {4,-2,5,text}
+    Edge: Array operand is not type-checked.
 - **1522** `add section to custom menu: <Var/Array>`
   params: %0 Var/Array; used 56× (!lib.input.getstation); calls: `SE_ArrayAppend`
+  - **Does** (medium): Appends a section separator (entry code -3) to a custom menu array.
+    Params: Array = menu array
+    Effects: Appends {4,-3}
+    Edge: Ignored if the operand is not an array (21) or is 0.
 - **1523** `$ret = create text for custom menu, left=<Var/String>, right=<Var/String>`
   params: %0 RetVar, %1 Var/String, %2 Var/String; used 32× (!ship.cmd.freightfetch.pre); calls: `C700.DataTypeToString`
+  - **Does** (medium): Builds a two-column menu text array from a left and a right string.
+    Returns: array (21) {4,0,5,left,4,-1,5,right}
+    Params: Two String values; non-strings are converted to text
 - **1527** `add value selection to menu: <Var/Array>, text=<Var/String>, value array=<Var/Array>, default=<Var/Number>, return id=<Var/String>`
   params: %0 Var/Array, %1 Var/String, %2 Var/Array, %3 Var/Number, %4 Var/String; used 28× (!ship.cmd.boardship.preload); calls: `SE_ArraySize`, `SE_ArrayAppend`, `C700.DataTypeToString`
+  - **Does** (medium): Appends a value-selection entry (entry code -4) with a list of values to a custom menu array.
+    Params: Array = menu array; String = text; Array = value array (must be non-empty array); Number = default index; String = return id
+    Effects: Appends {4,-4,text,21,values,4,default,retId}
+    Edge: Silently ignored if the menu or value operand is not an array or the value array is empty. A non-integer or zero default becomes 0.
 - **1545** `add info line section to menu: <Var/Array>`
   params: %0 Var/Array; used 9× (plugin.st.ex.buy.sell.CoRp); calls: `SE_ArrayAppend`
+  - **Does** (medium): Appends an info-line section marker (code -7) to a custom menu array.
+    Params: Array = menu array
+    Effects: Appends {4,-7}
+    Edge: Ignored if not an array.
 - **1546** `add info line heading to menu: <Var/Array>, heading=<Var/String>`
   params: %0 Var/Array, %1 Var/String; used 4× (!lib.input.enemytarget.core); calls: `C700.DataTypeToString`, `SE_ArrayAppend`
+  - **Does** (medium): Appends an info-line heading (code -6) to a custom menu array.
+    Params: Array = menu array; String = heading
+    Effects: Appends {4,-6,5,text}
 - **1547** `$ret = create menu return value: open menu, menu script=<Var/String>, script args=<Var/Array>`
   params: %0 RetVar, %1 Var/String, %2 Var/Array; used 12× (plugin.st.ex.CoRp.ind.dynmenu); calls: `SE_ArrayAppend`, `SE_ArraySize`
+  - **Does** (medium): Builds a menu return value that opens a menu script with arguments.
+    Returns: array (21) {4,-1,5,script, args...}
+    Params: String = menu script name; Array = script arguments (optional; an array is expanded element by element, a single typed value is appended as is)
+    Edge: Argument 0 means no arguments. Not a menu entry: used as the return-value cell of items.
 - **1548** `$ret = create menu return value: run script <Var/String>, script args=<Var/Array>`
   params: %0 RetVar, %1 Var/String, %2 Var/Array; used 2× (Graph.SX.stn.select); calls: `SE_ArrayAppend`, `SE_ArraySize`
+  - **Does** (medium): Builds a menu return value that runs a script with arguments.
+    Returns: array (21) {4,-2,5,script, args...}
+    Params: String = script name; Array = script arguments
+    Edge: Same as 1547 but code -2.
 - **1549** `add trade bar to menu: <Var/Array>, text=<Var/String>, min=<Var/Number>, max=<Var/Number>, current=<Var/Number>, return value=<Var/String>, left text=<Var/String>, right text=<Var/String>`
   params: %0 Var/Array, %1 Var/String, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/String, %6 Var/String, %7 Var/String; used 7× (!ship.cmd.freightfetch.pre); calls: `C700.DataTypeToString`, `SE_ArrayAppend`
+  - **Does** (medium): Appends a trade bar (slider, code -5) to a custom menu array.
+    Params: Array = menu array; String = text; Numbers = min, max, current; String = return value id; String = left text; String = right text
+    Effects: Appends {4,-5,text,min,max,cur,retvalue,5,left,5,right}
+    Edge: Left/right text only used if they are strings, otherwise "". Operand cells are copied raw.
 - **1550** `add new grouping to menu: <Var/Array>, text=<Var/String>, open=<Var/Boolean>`
   params: %0 Var/Array, %1 Var/String, %2 Var/Boolean; used 6× (plugin.st.ex.compCoRpInd.menu); calls: `SE_ArrayAppend`, `C700.DataTypeToString`
+  - **Does** (medium): Starts a collapsible group (code -8) in a custom menu array.
+    Params: Array = menu array; String = group title; Boolean = initially open
+    Effects: Appends {4,-8,text,4,open?1:0}
 - **1551** `add end grouping to menu: <Var/Array>`
   params: %0 Var/Array; used 8× (plugin.st.ex.compCoRpInd.menu); calls: `SE_ArrayAppend`
+  - **Does** (medium): Ends the current group (code -9) in a custom menu array.
+    Params: Array = menu array
+    Effects: Appends {4,-9}
+    Edge: No check on the operand.
 - **1552** `set menu option: <Var/Array>, maximum infolines=<Var/Number>`
   params: %0 Var/Array, %1 Var/Number; used 7× (Graph.SX.stn.select); calls: `SE_ArrayAppend`
+  - **Does** (medium): Sets the maximum number of info lines (menu option 1).
+    Params: Array = menu array; Number = maximum info lines
+    Effects: Appends {4,-10,4,1,4,value}
 - **1553** `set menu option: <Var/Array>, page up/down keys for info=<Var/Boolean>`
   params: %0 Var/Array, %1 Var/Boolean; used 5× (Graph.SX.stn.select); calls: `SE_ArrayAppend`
+  - **Does** (medium): Enables or disables page up/down for info (menu option 2).
+    Params: Array = menu array; Boolean
+    Effects: Appends {4,-10,4,2,4,0|1}
 - **1566** `set menu option: <Var/Array>, use hover line=<Var/Boolean>`
   params: %0 Var/Array, %1 Var/Boolean; used 3× (plugin.st.ex.buy.sell.CoRp); calls: `SE_ArrayAppend`
+  - **Does** (medium): Enables or disables the hover line (menu option 3).
+    Params: Array = menu array; Boolean
+    Effects: Appends {4,-10,4,3,4,0|1}
 - **1596** `set menu option: <Var/Array>, maximum menu height=<Var/Number> lines`
   params: %0 Var/Array, %1 Var/Number; used 20× (Graph.SX.stn.select); calls: `SE_ArrayAppend`
+  - **Does** (medium): Sets the maximum menu height in lines (menu option 4).
+    Params: Array = menu array; Number = lines
+    Effects: Appends {4,-10,4,4,4,value}
 - **1554** `$ret = create menu return value: command 'Open All Groups'`
   params: %0 RetVar; used 2× (plugin.st.ex.loc.ex.dynmenu)
+  - **Does** (medium): Creates the return value 'open all groups'.
+    Returns: array (21) {4,-3}
 - **1555** `$ret = create menu return value: command 'Close All Groups'`
   params: %0 RetVar; used 2× (plugin.st.ex.loc.ex.dynmenu)
+  - **Does** (medium): Creates the return value 'close all groups'.
+    Returns: array (21) {4,-4}
 - **1556** `add non selectable menu item: <Var/Array>, text=<Var/String>`
   params: %0 Var/Array, %1 Var/String; used 56× (!plugin.gz.missile.def.mk3.menu); calls: `SE_ArrayAppend`, `C700.DataTypeToString`
+  - **Does** (medium): Appends a non-selectable text line (code -11) to a custom menu array.
+    Params: Array = menu array; String = text
+    Effects: Appends {4,-11,text,4}
+  - Suspected (not verified): Decompiled literal ends with a lone type cell 4 without a value (odd length): probably a decompiler artefact, not verified in bytecode.
 
 ## Other
 
 - **1329** `$ret =|if <RefObj> -> get user input: type=<Script Reference Type>, title=<Var/String>`
   params: %0 RefObj, %1 RetVar/IF, %2 Script Reference Type, %3 Var/String; condition; used 73× (!lib.get.enemytarget); calls: `SE_ObjectExists`, `C605.GetActiveMonitorControlObject`, `C150.GetClientState`, `C630.IsOpen`, `TI_Delay`, `SE_IsClass`, `.GetSector`, `C503.GetActiveMenu`, `C503.SetActiveMenu`, `CreateUserInput`, `OpenNextMenu`, `SetGetUserInput`, `CreateNextForCmdConsole`, `SE_ArraySize`
+  - **Does** (medium): Opens a user-input menu so the player picks an object/value of the given reference type; waits until the player answers or the menu closes.
+    Returns: Selected (type,value) from the menu; if the menu returns a 2-element array it is unpacked; null if no menu was opened
+    Params: RefObj = command console object; Script Reference Type = what to pick (cell value passed to the menu); String = title
+    Effects: Opens user-input menu (class 2273)
+    Edge: RefObj null/nonexistent: the active monitor control object, else the player ship, is used. Not opened when a message box is open or another menu would conflict (already an active menu: chained as next menu). Sector for the dialog: explicit (1537 only), else the object if it is a sector, else the object's sector, else the player's sector. Polls every 200 ms.
+  - Suspected (not verified): Opens only when client state == 0 ('!state & 1'), S3 known.
 - **1530** `$ret =|if <RefObj> -> get user input without sector: type=<Script Reference Type>, title=<Var/String>`
   params: %0 RefObj, %1 RetVar/IF, %2 Script Reference Type, %3 Var/String; condition; used 1× (!lib.get.input.menu); calls: `SE_ObjectExists`, `C605.GetActiveMonitorControlObject`, `C150.GetClientState`, `C630.IsOpen`, `TI_Delay`, `SE_IsClass`, `.GetSector`, `C503.GetActiveMenu`, `C503.SetActiveMenu`, `CreateUserInput`, `OpenNextMenu`, `SetGetUserInput`, `CreateNextForCmdConsole`, `SE_ArraySize`
+  - **Does** (medium): Opens a user-input menu so the player picks an object/value of the given reference type; waits until the player answers or the menu closes. 'Without sector' variant.
+    Returns: Selected (type,value) from the menu; if the menu returns a 2-element array it is unpacked; null if no menu was opened
+    Params: As 1329
+    Effects: As 1329
+    Edge: RefObj null/nonexistent: the active monitor control object, else the player ship, is used. Not opened when a message box is open or another menu would conflict (already an active menu: chained as next menu). Sector for the dialog: explicit (1537 only), else the object if it is a sector, else the object's sector, else the player's sector.
+  - Suspected (not verified): Opens only when client state == 0 ('!state & 1'), S3 known. Also 'without sector' passes the same sector computation and the same flag value 1 as 1537 (flag = cmdId != 1329), so it is not obviously different from 1537 in the handler.
 - **1537** `$ret =|if <RefObj> -> get user input type=<Script Reference Type>, title=<Var/String>, sector=<Var/Sector>`
   params: %0 RefObj, %1 RetVar/IF, %2 Script Reference Type, %3 Var/String, %4 Var/Sector; condition; used 5× (!lib.get.input.menu); calls: `SE_ObjectExists`, `C605.GetActiveMonitorControlObject`, `C150.GetClientState`, `C630.IsOpen`, `TI_Delay`, `SE_IsClass`, `.GetSector`, `C503.GetActiveMenu`, `C503.SetActiveMenu`, `CreateUserInput`, `OpenNextMenu`, `SetGetUserInput`, `CreateNextForCmdConsole`, `SE_ArraySize`
+  - **Does** (medium): Opens a user-input menu so the player picks an object/value of the given reference type; waits until the player answers or the menu closes. With an explicit sector argument.
+    Returns: Selected (type,value) from the menu; if the menu returns a 2-element array it is unpacked; null if no menu was opened
+    Params: As 1329 plus Var/Sector = sector used for the dialog (only if its type cell is 65544 and non-zero)
+    Effects: As 1329
+    Edge: RefObj null/nonexistent: the active monitor control object, else the player ship, is used. Not opened when a message box is open or another menu would conflict (already an active menu: chained as next menu). Sector for the dialog: explicit (1537 only), else the object if it is a sector, else the object's sector, else the player's sector.
   - **Engine bug (S3, AP):** Same as 1489: with any client flag set no dialog opens, the default answer comes back. Fixed in FL.
 - **1490** `capture screen`
   calls: `X2_CaptureFrame`
+  - **Does** (medium): Captures a screenshot of the current frame.
+    Effects: Calls X2_CaptureFrame (writes a screenshot file)
 - **1491** `set monitor mode and viewpoint: monitor=<Var/Number> cockpit=<Var/Number> mode=<Var/Number> alpha=<Var/Number> beta=<Var/Number> gamma=<Var/Number> range=<Var/Number>`
   params: %0 Var/Number, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Number, %6 Var/Number; calls: `C605.GetMonitor`, `.SetCockpitNumber`, `.SwitchViewCameraTypeTo`, `.SetPovAbsolute`, `.SetZoomAbsolute`
+  - **Does** (medium): Configures a camera monitor: cockpit number, view camera type and absolute point of view and zoom.
+    Params: Numbers: monitor id, cockpit number, camera type, POV x, y, z, zoom (absolute)
+    Effects: Calls SetCockpitNumber, SwitchViewCameraTypeTo, SetPovAbsolute, SetZoomAbsolute on the monitor
+    Edge: Unknown monitor id: ignored.
 - **1531** `add encyclopedia custom article: News, id=<Var/String>, title page=<Var/Number>, title id=<Var/Number>, text page=<Var/Number>, text id=<Var/Number>, timeout=<Var/Number>`
   params: %0 Var/String, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Number; calls: `C2313.AddCustomArticle`
+  - **Does** (medium): Adds a custom encyclopedia article in category News (group 200) (id, title and text references, timeout).
+    Params: String = article id; Numbers: title page, title id, text page (arg5), text id (arg6), lifetime (unit not verified)
+    Effects: Adds/replaces MenuEncyclopedia.customArticles[id] with the game age as start time
+    Edge: Ignored if id is not a non-empty string. An existing article with the same id is replaced. Group numbers map News 200, Info 202, History 201, Stories 203.
 - **1532** `add encyclopedia custom article: Information, id=<Var/String>, title page=<Var/Number>, title id=<Var/Number>, text page=<Var/Number>, text id=<Var/Number>, timeout=<Var/Number>`
   params: %0 Var/String, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Number; calls: `C2313.AddCustomArticle`
+  - **Does** (medium): Adds a custom encyclopedia article in category Information (group 202) (id, title and text references, timeout).
+    Params: String = article id; Numbers: title page, title id, text page (arg5), text id (arg6), lifetime (unit not verified)
+    Effects: Adds/replaces MenuEncyclopedia.customArticles[id] with the game age as start time
+    Edge: Ignored if id is not a non-empty string. An existing article with the same id is replaced. Group numbers map News 200, Info 202, History 201, Stories 203.
 - **1533** `add encyclopedia custom article: History, id=<Var/String>, title page=<Var/Number>, title id=<Var/Number>, text page=<Var/Number>, text id=<Var/Number>, timeout=<Var/Number>`
   params: %0 Var/String, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Number; calls: `C2313.AddCustomArticle`
+  - **Does** (medium): Adds a custom encyclopedia article in category History (group 201) (id, title and text references, timeout).
+    Params: String = article id; Numbers: title page, title id, text page (arg5), text id (arg6), lifetime (unit not verified)
+    Effects: Adds/replaces MenuEncyclopedia.customArticles[id] with the game age as start time
+    Edge: Ignored if id is not a non-empty string. An existing article with the same id is replaced. Group numbers map News 200, Info 202, History 201, Stories 203.
 - **1534** `add encyclopedia custom article: Stories, id=<Var/String>, title page=<Var/Number>, title id=<Var/Number>, text page=<Var/Number>, text id=<Var/Number>, timeout=<Var/Number>`
   params: %0 Var/String, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Number; calls: `C2313.AddCustomArticle`
+  - **Does** (medium): Adds a custom encyclopedia article in category Stories (group 203) (id, title and text references, timeout).
+    Params: String = article id; Numbers: title page, title id, text page (arg5), text id (arg6), lifetime (unit not verified)
+    Effects: Adds/replaces MenuEncyclopedia.customArticles[id] with the game age as start time
+    Edge: Ignored if id is not a non-empty string. An existing article with the same id is replaced. Group numbers map News 200, Info 202, History 201, Stories 203.
 - **1535** `remove encyclopedia custom article: id=<Var/String>`
   params: %0 Var/String; calls: `C2313.RemoveCustomArticle`
+  - **Does** (high): Removes a custom encyclopedia article by id.
+    Params: String = article id
+    Effects: MenuEncyclopedia.RemoveCustomArticle
+    Edge: Ignored if id is not a non-empty string or unknown.
 - **1536** `set encyclopedia custom article sectors: id=<Var/String>, sector array=<Value>`
   params: %0 Var/String, %1 Value; calls: `SE_ArraySize`, `SE_ArrayAppend`, `C2313.SetCustomArticleSectors`
+  - **Does** (medium): Limits a custom encyclopedia article to a set of sectors.
+    Params: String = article id; Value = a sector or an array of (type,sector) pairs (only 65544 entries used)
+    Effects: Sets the article's sector list (sectors, class 2001, or owners, class 401)
+    Edge: Ignored if id is not a string, article unknown or the value is 0. The decompile merges the array and single-value branches.
 - **1543** `show graph using graph data array <Var/Array>`
   params: %0 Var/Array; used 19× (Graph.SX.stn.owned.shares); calls: `C150.GetClientState`, `C630.IsOpen`, `TI_Delay`, `C503.GetActiveMenu`, `OpenNextMenu`, `CreateNext`, `C700.ConvertScriptArrayToArray`, `C503.SetActiveMenu`, `C2327`, `SE_IsClass`
+  - **Does** (medium): Shows a graph menu (chart) from a graph data array and waits until it is closed.
+    Params: Array = graph data
+    Effects: Opens menu 2327 / ChartMenu, chained if another menu is active
+    Edge: Does nothing if the menu cannot open (client state/message box).
   - **Engine bug (S3, AP):** Same as 1489. Fixed in FL.
 - **1608** `add player graph: script=<Script Name> pageid=<Var/Number> textid=<Var/Number> group pageid=<Var/Number> group textid=<Var/Number> subgroup=<Var/Number> (0-7)`
   params: %0 Script Name, %1 Var/Number, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Number; used 15× (Graph.pl.credits.over.time.data); calls: `C2330.AddGraph`
+  - **Does** (medium): Adds a graph in the player's statistics (graph script, text page/id, group page/id, subgroup 0-7).
+    Params: Script Name; Numbers: title page, title id, group page, group id, subgroup/column 0-7
+    Effects: ScriptGraphMenu.AddGraph on the player race
 - **1609** `remove player graph: script=<Script Name> group pageid=<Var/Number> group textid=<Var/Number>`
   params: %0 Script Name, %1 Var/Number, %2 Var/Number; used 5× (Graph.pl.credits.over.time.data); calls: `C2330.RemoveGraph`
+  - **Does** (medium): Removes a player graph by script and group.
+    Params: Script Name; Numbers: group page, group id
+    Effects: ScriptGraphMenu.RemoveGraph on the player race
 - **1610** `add class graph: class=<Var/Class> script=<Script Name> pageid=<Var/Number> textid=<Var/Number> group pageid=<Var/Number> group textid=<Var/Number> subgroup=<Var/Number> (0-7)`
   params: %0 Var/Class, %1 Script Name, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Number, %6 Var/Number; calls: `C2330.AddGraph`
+  - **Does** (medium): Adds a graph for a class of objects (the class id is used as the graph owner).
+    Params: Class value; Script Name; Numbers: title page, title id, group page, group id, subgroup 0-7
+    Effects: ScriptGraphMenu.AddGraph(class, ...)
 - **1611** `remove class graph: class=<Var/Class> script=<Script Name> group pageid=<Var/Number> group textid=<Var/Number>`
   params: %0 Var/Class, %1 Script Name, %2 Var/Number, %3 Var/Number; calls: `C2330.RemoveGraph`
+  - **Does** (medium): Removes a graph registered for a class.
+    Params: Class; Script Name; Numbers: group page, group id
+    Effects: ScriptGraphMenu.RemoveGraph
 - **1612** `<RefObj> -> add object graph: script=<Script Name> pageid=<Var/Number> textid=<Var/Number> group pageid=<Var/Number> group textid=<Var/Number> subgroup=<Var/Number> (0-7)`
   params: %0 RefObj, %1 Script Name, %2 Var/Number, %3 Var/Number, %4 Var/Number, %5 Var/Number, %6 Var/Number; used 7× (Graph.pl.station.data); calls: `C2330.AddGraph`
+  - **Does** (medium): Adds a graph shown for the given object.
+    Params: RefObj = target; Script Name; Numbers: title page, title id, group page, group id, subgroup 0-7
+    Effects: ScriptGraphMenu.AddGraph(object, ...)
 - **1613** `<RefObj> -> remove object graph: script=<Script Name> group pageid=<Var/Number> group textid=<Var/Number>`
   params: %0 RefObj, %1 Script Name, %2 Var/Number, %3 Var/Number; used 7× (Graph.pl.station.data); calls: `C2330.RemoveGraph`
+  - **Does** (medium): Removes a graph registered for the object.
+    Params: RefObj; Script Name; Numbers: group page, group id
+    Effects: ScriptGraphMenu.RemoveGraph
 - **1598** `add script options: script=<Script Name> pageid=<Var/Number> textid=<Var/Number>`
   params: %0 Script Name, %1 Var/Number, %2 Var/Number; used 1× (!plugin.gz.missile.def.mk3.menu); calls: `C2259.AddScriptOptions`
+  - **Does** (medium): Adds a script option entry (text page/id) to the script options menu.
+    Params: Script Name; Numbers: text page, text id
+    Effects: MenuOptions.AddScriptOptions
 - **1599** `remove script options: script=<Script Name>`
   params: %0 Script Name; calls: `C2259.RemoveScriptOptions`
+  - **Does** (medium): Removes the script options of a script.
+    Params: Script Name
+    Effects: MenuOptions.RemoveScriptOptions
 - **1616** `$ret = get race id for race: <Var/Race>`
   params: %0 RetVar, %1 Var/Race; used 20× (!config.rrf)
+  - **Does** (high): Returns the race id of a race operand (copies the cell value).
+    Returns: int (4): the race id
+    Params: Var/Race
+    Edge: No validation: any cell value is copied.
 - **1619** `$ret = get player ship usage time: <Var/Ship Type>`
   params: %0 RetVar, %1 Var/Ship Type; used 1× (Graph.pl.ship.usage); calls: `C150.GetShipUseTime`
+  - **Does** (medium): Returns how long the player used a ship type.
+    Returns: int (4): time from Client.shipUseTimes[subtype]; null if the operand is not a ship type (type byte 7)
+    Params: Var/Ship Type = ship type ware (458752|index); the unit of the time is not stated in the code
 - **1620** `$ret = get player object killed count: <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; used 2× (Graph.get.data); calls: `.GetKilledObjectTypes`
+  - **Does** (medium): Returns how many objects of a type the player has killed.
+    Returns: int (4)
+    Params: Var/Ware = type key into the player's killed-type table (the full cell value is used as the key)
+    Edge: Unknown key reads an empty slot (0 if the table is a plain array/table lookup).
 
 ## Not in the editor menu
 
 - **2** *(no editor text: cannot be written as text)*
+  - **Does** (high): Not in the editor menu; no handler.
+    Edge: No case in __runScript.
 - **3** `*`
+  - **Does** (high): Not in the editor menu; no handler (the '*' placeholder).
+    Edge: No case in __runScript.
 - **112** `hidden goto label <Label>`
   params: %0 Label; hidden; used 3401× (!config.add.wares.few.one)
+  - **Does** (high): Hidden goto label: jumps to the given label (identical to 100).
+    Params: Label = target program counter
+    Effects: Sets pc to the label
 - **1138** `$ret = get missile range of <Var/Ware>`
   params: %0 RetVar, %1 Var/Ware; calls: `SA_GetMissileTypeRange`
+  - **Does** (medium): Returns the range of a missile ware.
+    Returns: int (4) from SA_GetMissileTypeRange(subtype)
+    Params: Var/Ware = missile ware (low 16 bits used as subtype)
+    Edge: Type bits are not checked; any ware yields some value.

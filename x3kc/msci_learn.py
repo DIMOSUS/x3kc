@@ -1,6 +1,10 @@
 """Editor texts the game data lacks, learned from the <sourceplaintext> of the installed scripts.
 
-    x3kc msci learn <db.json> <dir of *.xml> [-o learned.json]     (msci-setup runs it on its own)
+    x3kc msci learn <db.json> <dir of *.xml> [-o learned.json] [--xscript x3fl.xml] [--no-synthetic]
+                                                                 (msci-setup runs it on its own)
+
+Commands still without a text afterwards get a synthetic one from their signature (`fl.<id>`, or XScriptCompiler's
+function name with --xscript), so they can be written; see synthesize().
 
 Farnham's Legacy adds ~1 700 MSCI commands and many constants (page 2002), object classes and commands whose editor
 texts are not in its text files: the shipped scripts were saved by an editor that had them. Every saved script still
@@ -211,13 +215,57 @@ def learn(db, files):
     return names, cmds, sorted(unknown - set(cmds))
 
 
+RESULT_TYPES = (15, 25, 26, 28)
+
+
+def xscript_names(path):
+    """{command id: function name} from XScriptCompiler's x3fl.xml (the user's own copy; read with regular
+    expressions, the file is not well-formed XML everywhere)."""
+    raw = open(path, encoding='utf-8', errors='replace').read()
+    return {int(i): n for i, n in re.findall(r'<Function id="(\d+)" name="([\w.]+)"', raw)}
+
+
+def synthesize(db, names=None):
+    """A text for every command that still has none, from its signature: `<result><refobj> <name>: <p>, <p>`, the
+    name `fl.<id>` or, with `names`, XScriptCompiler's function name. Such a text is not the game editor's, but
+    `dis` prints it and `asm`/`new` read it, so the command can be written. Returns the ids given a text."""
+    have = set(db['text'].get('2003', {})) | set(db['text'].get('2004', {}))
+    page = db['text'].setdefault('2003', {})
+    done = []
+    for k, (pars, _) in sorted(db['cmds'].items(), key=lambda kv: int(kv[0])):
+        cid = int(k)
+        if k in have or cid <= 7 or cid in (102, 104):
+            continue
+        pars = pars or []
+        res = [i for i, p in enumerate(pars) if p in RESULT_TYPES]
+        ref = [i for i, p in enumerate(pars) if p == 20]
+        rest = [i for i in range(len(pars)) if i not in res and i not in ref]
+        name = (names or {}).get(cid) or 'fl.%d' % cid
+        text = ''.join('%%%d' % i for i in res[:1]) + ''.join('%%%d ' % i for i in ref[:1]) + name
+        if rest:
+            text += ': ' + ', '.join('%%%d' % i for i in rest)
+        page[k] = text
+        done.append(cid)
+    if done:
+        db.setdefault('learned', {})['synthetic'] = done
+    return done
+
+
 def main():
     argv = sys.argv[1:]
-    out = None
+    out = xscript = None
+    synthetic = True
     if '-o' in argv:
         i = argv.index('-o')
         out = argv[i + 1]
         del argv[i:i + 2]
+    if '--xscript' in argv:
+        i = argv.index('--xscript')
+        xscript = argv[i + 1]
+        del argv[i:i + 2]
+    if '--no-synthetic' in argv:
+        argv.remove('--no-synthetic')
+        synthetic = False
     dbp, d = argv[0], argv[1]
     db = json.load(open(dbp, encoding='utf-8'))
     names, cmds, unknown = learn(db, sorted(glob.glob(os.path.join(d, '*.xml'))))
@@ -227,6 +275,9 @@ def main():
     print('learned: names %s, command texts %d (%d corrected); used but not learned %s; '
           '%d commands still without a text' % (dict(by_page), len(cmds),
                                                 sum(1 for p in cmds.values() if p == '2004'), unknown, len(left)))
+    if synthetic and left:
+        done = synthesize(db, xscript_names(xscript) if xscript else None)
+        print('synthetic texts (signature%s): %d' % (' + ' + os.path.basename(xscript) if xscript else '', len(done)))
     with open(out or dbp, 'w', encoding='utf-8') as f:
         json.dump(db, f, ensure_ascii=False)
     return 0

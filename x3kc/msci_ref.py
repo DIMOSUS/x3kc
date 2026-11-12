@@ -105,6 +105,7 @@ def main():
     ap.add_argument('--other')
     ap.add_argument('--other-name', default='the other game')
     ap.add_argument('--json', help='the same as JSON: {game, groups: menu tree with command ids, commands: [...]}')
+    ap.add_argument('--semantics', help='what each command does (default: data/msci_semantics_<ap|fl>.json by --game)')
     a = ap.parse_args()
     db = json.load(open(a.db, encoding='utf-8'))
     r = Ref(db, a.game)
@@ -113,6 +114,15 @@ def main():
     notes = {int(k): v for k, v in json.load(open(notes_file(), encoding='utf-8')).items() if k.isdigit()}
     other = json.load(open(a.other, encoding='utf-8'))['cmds'] if a.other else None
     game_word = a.game.split()[0] if a.game else ''
+    semp = a.semantics or os.path.join(os.path.dirname(notes_file()), 'msci_semantics_%s.json' % game_word.lower())
+    sem = {int(k): v for k, v in json.load(open(semp, encoding='utf-8')).items()} if os.path.exists(semp) else {}
+    # FL describes only its new and changed commands: the others behave as in AP
+    basep = os.path.join(os.path.dirname(notes_file()), 'msci_semantics_ap.json')
+    if game_word == 'FL' and other is not None and os.path.exists(basep):
+        for k, v in json.load(open(basep, encoding='utf-8')).items():
+            o = other.get(k)
+            if int(k) not in sem and o is not None and (o[0] or []) == (db['cmds'].get(k, [None])[0] or []):
+                sem[int(k)] = v
 
     order = r.walk(db['menu'], [], set(), []) if db.get('menu') else []
     listed = {c for _, c in order}
@@ -162,7 +172,9 @@ def main():
             tags.append('hidden')
         if any(p in COND for p in pars):
             tags.append('condition')
-        if str(cid) in r.learned.get('2003', ()) or str(cid) in r.learned.get('2004', ()):
+        if str(cid) in r.learned.get('synthetic', ()):
+            tags.append('synthetic text')
+        elif str(cid) in r.learned.get('2003', ()) or str(cid) in r.learned.get('2004', ()):
             tags.append('text learned')
         if other is not None:
             o = other.get(str(cid))
@@ -186,10 +198,23 @@ def main():
             sub.append('calls: ' + ', '.join('`%s`' % c for c in calls[cid] if c != 'C702.ScriptGetConst'))
         if sub:
             body.append('  ' + '; '.join(s for s in sub if s and s != 'calls: '))
+        s = sem.get(cid)
+        if s and s.get('summary'):
+            body.append('  - **Does** (%s): %s' % (s['confidence'], s['summary']))
+            for label, key in (('Returns', 'returns'), ('Params', 'params'), ('Effects', 'effects'),
+                               ('Edge', 'edge')):
+                v = (s.get(key) or '').strip()
+                if key == 'edge':
+                    # the general rule (manual: Errors) said once per command is noise
+                    v = re.sub(r'^Null/destroyed object: VM answers 0, so result is null\.?\s*', '', v)
+                if v and not (key == 'effects' and v.startswith('none')):
+                    body.append('    %s: %s' % (label, v))
         n = notes.get(cid)
         bug = n if n and (not game_word or game_word in n['games'].split()) else None
         if bug:
             body.append('  - **Engine bug (%s, %s):** %s' % (n['ref'], n['games'], n['note']))
+        elif s and s.get('bug'):
+            body.append('  - Suspected (not verified): %s' % s['bug'])
         records.append({
             'id': cid, 'group': list(path), 'syntax': syn.strip() if syn else None,
             'text': r.pr.cmdtext(cid) if syn else None,
@@ -197,11 +222,12 @@ def main():
             'result': any(r.pr.pf.get(p + 1, 0) & RESULT and p in (15, 25, 26, 28) for p in pars),
             'condition': any(p in COND for p in pars), 'interruptible': bool(flags & TYPED),
             'hidden': bool(flags & RESULT), 'not_in_text': unshown,
-            'learned': 'text learned' in tags, 'new': 'new' in tags,
+            'learned': 'text learned' in tags, 'synthetic': 'synthetic text' in tags, 'new': 'new' in tags,
             'changed_from_other': next((t[5:] for t in tags if t.startswith('sig: ')), None),
             'used': count.get(cid, 0), 'example_script': where.get(cid),
             'calls': [c for c in calls.get(cid, []) if c != 'C702.ScriptGetConst'],
-            'bug': {'ref': bug['ref'], 'note': bug['note']} if bug else None})
+            'bug': {'ref': bug['ref'], 'note': bug['note']} if bug else None,
+            'semantics': {k: v for k, v in s.items() if k != 'evidence'} if s else None})
     with open(a.out, 'w', encoding='utf-8', newline='\n') as f:
         f.write('\n'.join(head + body) + '\n')
     if a.json:

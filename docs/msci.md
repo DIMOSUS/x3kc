@@ -7,8 +7,8 @@ neither machine code nor KC. They are data: XML with a `<codearray>` that an int
 
 Everything below was read from the decompiled KC and checked with `x3kc msci`: the decoder reproduces the
 `<sourceplaintext>` the game saved itself in **99.6 %** of 43 247 lines of all AP scripts; the assembler rebuilds
-the `<codearray>` of 527 of 697 scripts exactly. Farnham's Legacy (`--addon addon2`): 99.7 % of the lines and
-704 of 1 021 scripts, after `msci learn` (below).
+the `<codearray>` of 568 of 697 scripts exactly. Farnham's Legacy (`--addon addon2`): 99.7 % of the lines and
+775 of 1 021 scripts, after `msci learn` (below).
 
 **Writing scripts:** [msci_manual.md](msci_manual.md) — the language as the interpreter runs it, a worked example,
 pitfalls, a checklist; command reference for [AP](msci_commands_ap.md) and [FL](msci_commands_fl.md).

@@ -105,6 +105,13 @@ def build_db(objp, textsp, outp, waresp=None):
         if isinstance(v, list) and len(v) > 1 and v[0] == 0 and isinstance(v[1], list) and v[1][:1] == [100]:
             db['menu'] = v
             break
+    # the data type ids with their flags in the high 16 bits (65544 = sector, shown as Var/Sector = 2013:8): a
+    # `datatype[]` comparison needs the full value
+    for k in sorted(mem):
+        v = mem[k]
+        if isinstance(v, list) and all(isinstance(x, int) for x in v) and {131074, 65542, 65544, 5} <= set(v):
+            db['datatypes'] = v
+            break
     texts = load_texts(textsp)
     db['text'] = {str(p): {str(i): v for (pp, i), v in texts.items() if pp == p}
                   for p in (2000, 2001, 2002, 2003, 2004, 2005, 2006, 1266, 35, 2007, 2008, 2009, 2013, 2028, 1999,

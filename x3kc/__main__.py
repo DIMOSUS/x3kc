@@ -29,12 +29,12 @@ Checking a build without the game
                                         static scan for typical bug patterns (candidates to review by hand)
 
 MSCI scripts (addon/scripts/*.pck|xml)
-  msci-setup <game dir> <work dir> [--addon addon2] [--lang 044]
+  msci-setup <game dir> <work dir> [--addon addon2] [--lang 044] [--xscript x3fl.xml]
                                         texts, ware names, command database, unpacked scripts;
                                         --addon addon2: Farnham's Legacy (X3FL.exe)
-  msci learn <db.json> <dir> [-o out.json]
-                                        editor texts the game files lack, from the scripts' saved text
-                                        (msci-setup runs it)
+  msci learn <db.json> <dir> [-o out.json] [--xscript x3fl.xml] [--no-synthetic]
+                                        editor texts the game files lack, from the scripts' saved text; the
+                                        rest get synthetic texts from the signature (msci-setup runs it)
   msci ref <db.json> <out.md> [--game NAME] [--map map.json] [--scripts DIR] [--other db.json --other-name N]
            [--json out.json]            command reference by the editor's menu: syntax, parameter types, flags,
                                         KC handler, use in the shipped scripts, engine bugs

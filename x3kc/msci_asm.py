@@ -64,8 +64,9 @@ class Assembler:
         for page, typ in ((2008, 18), (2009, 19), (2028, 25)):
             for i, s in T.get(page, {}).items():
                 add(s, (typ, i))
+        full = {t & 65535: t for t in db.get('datatypes', [])}
         for i, s in T.get(2013, {}).items():
-            add(s, (20, i))
+            add(s, (20, full.get(i, i)))
         for i, s in T.get(2000, {}).items():
             add(s, (24, i))
         self.consts = {s: i for i, s in T.get(2002, {}).items()}
@@ -141,8 +142,23 @@ class Assembler:
 
     def pick(self, cands, partype):
         want = self.PREFER.get(partype)
+        wares = [c for c in cands if c[0] == 9]
+        if len(wares) > 1:
+            # one name, several wares: a ship or station type parameter takes the type (main 5..7); otherwise the
+            # stock scripts mostly use the ware of the higher main type (ore 15.x over 14.x, beacon 16.x over 7.x);
+            # within one main type the lower sub type (docks 5.25 over 5.33)
+            types = [c for c in wares if (c[1] >> 16) in (5, 6, 7)]
+            if partype in (17, 19, 27) and types:
+                wares = types
+            top = max(wares, key=lambda c: (c[1] >> 16, -(c[1] & 65535)))
+            cands = [c for c in cands if c[0] != 9 or c is top]
         for c in cands:
             if c[0] == want:
+                return c
+        # no hint from the parameter type: a name shared by an object class and a ware ("Fighter", "Drone",
+        # "Asteroid") is the class in the stock scripts
+        for c in cands:
+            if c[0] == 12:
                 return c
         return cands[0]
 
@@ -298,8 +314,13 @@ class Assembler:
             except AsmError as x:
                 err = x
                 continue
-            if best is None or weight > best[2]:
-                best = (line, form, weight, self.vars)
+            # equal literal text: the template that leaves no shown parameter empty (628 `%1%0 get average price`
+            # with an empty object vs 629 `%0get average price`)
+            empty = sum(1 for k, g in zip(order, m.groups()) if not g.strip()
+                        and not self.pf.get(self.p.pars(cid)[k] + 1, 0) & 131072) if order else 0
+            key = (weight, -empty)
+            if best is None or key > best[2]:
+                best = (line, form, key, self.vars)
         self.vars = best[3] if best else saved
         if best is None:
             # expression line: <result> <expression>

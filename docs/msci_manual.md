@@ -178,11 +178,13 @@ assert (r.type, r.value) == (5, '1,234,567')       # 5 = string
   text with the other game's database. The FL reference marks them `sig: AP had …`.
 - **FL editor texts.** FL ships editor texts for only ~800 of its 2 507 commands. `msci-setup` learns the rest from
   the text the shipped FL scripts saved (`msci learn`): 681 commands, 270 constant, class and command names; the
-  decoder then matches 99.7 % of the lines FL saved, the assembler rebuilds 704 of 1 021 FL scripts byte for byte.
-  The 1 000 FL commands no shipped script uses have no text and cannot be written in the text form; for them use
-  [XScriptCompiler](https://github.com/Cycrowuk/XScriptCompiler) (a C-like source language for FL with its own
-  command list, `x3fl.xml`) or add a text to your database by hand (`db['text']['2003'][id]`, `%0…%9` = parameters
-  in signature order).
+  decoder then matches 99.7 % of the lines FL saved, the assembler rebuilds 775 of 1 021 FL scripts byte for byte.
+- **Synthetic texts.** The 1 000 FL commands no shipped script uses get a text made from their signature:
+  result, object, then `fl.<id>` and the parameters, e.g. `$x = $hq -> fl.1789: $type`. They are not the game
+  editor's texts, but `dis` prints them and `new`/`asm` read them, so every FL command can be written. With
+  `msci-setup … --xscript x3fl.xml` (your copy of [XScriptCompiler](https://github.com/Cycrowuk/XScriptCompiler)'s
+  command list) the name is XScriptCompiler's function name instead (`$hq -> hqObjRemoveBlueprint: $type`). The
+  reference tags them `synthetic`; what each one does is in its `Does` line.
 
 ## Files and loading
 **File.** XML with the script array in `<codearray>`; see [msci.md](msci.md) for every cell. What matters when
@@ -549,10 +551,17 @@ ref` from the command database, the editor's command menu, the interpreter and t
 - `used N× (script)` — how many lines of the shipped scripts use it, and one script to read as an example
   (`x3kc msci dis work/msci_db.json work/scripts/<script>.xml`);
 - `calls` — KC methods (`.Name`) and natives (`SE_…`) the interpreter calls: a hint of what it really does;
-- `Engine bug (S…)` — the handler does not do what the text says (from our reading of the interpreter;
-  [x3kc/data/msci_notes.json](../x3kc/data/msci_notes.json));
+- `Does (confidence)` and the lines under it — what the command does, its result (`Returns`), parameter notes,
+  effects on the game and edge cases, from reading its handler ([x3kc/data/msci_semantics_ap.json],
+  `…_fl.json`); `high` = the called methods were read too, `medium` = the handler only, `low` = inferred. A
+  command that is the same in FL and AP shows the AP description in the FL reference;
+- `Engine bug (S…)` — the handler does not do what the text says, checked by hand
+  ([x3kc/data/msci_notes.json](../x3kc/data/msci_notes.json)); `Suspected (not verified)` — a possible bug the
+  reading wave noted, not checked;
 - FL only: `new` (not in AP), `sig: AP had […]` (parameters changed), `text learned` (syntax recovered from the
-  shipped scripts), `no editor text` (cannot be written as text).
+  shipped scripts), `synthetic text` (a text made from the signature: `fl.<id>`).
+
+[x3kc/data/msci_semantics_ap.json]: ../x3kc/data/msci_semantics_ap.json
 
 **Finding a command** (for agents and people). The hierarchy is the in-game editor's command menu: groups and
 subgroups (`General Commands / Arrays`, `Fly Commands / Wings`, `Trade Commands / for Stations` …), listed with
@@ -661,22 +670,26 @@ What is not known or not done — read before relying on the manual:
 - **Not run in the game.** The worked example and every claim marked (code) were checked in the emulator with the
   game's interpreter, not in the running game. No script built by `x3kc msci new`/`asm` has been loaded by the
   game yet.
-- **Commands are known by signature, text and handler, not by effect.** For most of the ~830 AP and 2 507 FL
-  commands the reference gives syntax, types and what KC code they call; what the game then does (AI behaviour,
-  economy, UI) is not described. The `calls` line and a stock script that uses the command are the best guide.
-- **Assembler gaps.** `asm`/`new` rebuild 527 of 697 AP and 704 of 1 021 FL stock scripts byte for byte. The rest
-  differ in: hidden trailing parameters the text does not show (command 1185: `0,0` vs `4,100`); names shared by
-  a ware and a class (`709`) or by several wares; wares from mods' T files missing from the database; colour codes
-  `\x1b…` in strings; editor-only line positions (100 AP scripts). A script you write yourself avoids most of these
-  (use variables or constants for ambiguous values). Starting from `dis` output instead of the game's saved text,
-  `dis` → `new` rebuilds 385 of 697 AP scripts exactly (headers and arguments of all): the decoder's text still
-  differs from the game's in a few lines.
-- **FL:** 1 000 commands have no editor text (not used by any shipped script); some FL names print wrongly
-  (`COMMAND_AGENT_*` and `role=` values share one text); FL's new menu subgroups have no names in the texts
-  (`Group 107` …); FL's own bugs S48–S51 are in the reference.
+- **What each command does** (the reference's `Does` lines) comes from a reading wave over every command's
+  handler (AP 828, FL 1 740 new or changed): confidence high where the called methods were read, medium where only
+  the handler was (most), low where inferred. Two of the suspected bugs were confirmed by hand and recorded (S52,
+  S53); the others are shown as "Suspected (not verified)". Effects deep inside the engine (AI, economy) are
+  summarised, not traced.
+- **Assembler gaps.** `asm`/`new` rebuild 568 of 697 AP and 775 of 1 021 FL stock scripts byte for byte. The rest
+  differ in: two commands with the same text (106 `random value from 0 to N` vs 110 with a lower bound 0); hidden
+  cells the stock line has beyond the signature (1185); names shared by several wares where the stock scripts are
+  not consistent; ware ids whose saved names do not match the current ware table (stale text in a few stock
+  scripts); wares from mods' T files; colour codes `\x1b…` in strings; editor-only line positions (100 AP
+  scripts). A script you write yourself avoids most of these (use variables or constants for ambiguous values).
+  Starting from `dis` output instead of the game's saved text, `dis` → `new` rebuilds 385 of 697 AP scripts
+  exactly (headers and arguments of all).
+- **FL:** commands with synthetic texts are written in a form the game's own editor would not show; some FL names
+  print wrongly (`COMMAND_AGENT_*` and `role=` values share one text); FL's new menu subgroups have no names in the
+  texts (`Group 107` …); FL's own bugs S48–S51, S54, S55 are in the reference.
 - **TC** is not covered by a generated reference (the tools work on a TC directory as well).
-- Commands, signals, task slots, hotkeys and the AL engine were read in the KC code (a code-reading pass with the
-  key places re-checked by hand), not run in the emulator or the game. What a save keeps of a running script is
-  inferred from the code and the VM's save format, not checked with a savegame. The in-game editor's own behaviour
-  is not covered.
+- Commands, signals, task slots, hotkeys and the AL engine were read in the KC code; hotkeys (AP), task slots,
+  interrupt priorities, waits cut short across slots, AL events and the command lookup also run through the
+  game's KC in the emulator (`tests/test_msci_engine.py`). Signal delivery from the engine (attacks, docking) and
+  the console menus are read only. What a save keeps of a running script is inferred from the code and the VM's
+  save format, not checked with a savegame. The in-game editor's own behaviour is not covered.
 - `<signature>` cannot be produced: the game's signature check is not reproduced.

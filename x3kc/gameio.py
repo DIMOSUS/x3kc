@@ -53,7 +53,7 @@ def extract(game, outdir, addon='addon'):
         print('%-16s %8d bytes  from %s' % (name, len(b), src))
 
 
-def msci_setup(game, work, lang='044', addon='addon'):
+def msci_setup(game, work, lang='044', addon='addon', xscript=None):
     """texts_L<lang>.tsv, wares_L<lang>.json, msci_db.json and scripts/ (unpacked addon/scripts) in work."""
     from . import msci, texts_tsv, wares
     os.makedirs(work, exist_ok=True)
@@ -75,7 +75,7 @@ def msci_setup(game, work, lang='044', addon='addon'):
         run(unpck.main, [sd, os.path.join(work, 'scripts')])
         # editor texts the text files lack (most new commands of FL), from the scripts' saved source text
         from . import msci_learn
-        run(msci_learn.main, [db, os.path.join(work, 'scripts')])
+        run(msci_learn.main, [db, os.path.join(work, 'scripts')] + (['--xscript', xscript] if xscript else []))
     print('database: %s; scripts: %s' % (db, os.path.join(work, 'scripts')))
 
 
@@ -105,6 +105,7 @@ def main_msci_setup():
     ap.add_argument('work')
     ap.add_argument('--lang', default='044', help='language id of the text files (044 = English)')
     ap.add_argument('--addon', default='addon', help="addon dir: addon (Albion Prelude), addon2 (Farnham's Legacy)")
+    ap.add_argument('--xscript', help="XScriptCompiler's x3fl.xml: its function names for FL commands without a text")
     a = ap.parse_args()
-    msci_setup(a.game, a.work, a.lang, a.addon)
+    msci_setup(a.game, a.work, a.lang, a.addon, a.xscript)
     return 0
