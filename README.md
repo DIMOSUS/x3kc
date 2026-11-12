@@ -15,7 +15,9 @@ fields and functions, plus a decoder and assembler for ordinary **MSCI** scripts
   loading: new build id, stamps for added fields, address maps for the savegame loader, and a refusal when a
   change would break savegames.
 - **MSCI.** `msci dis` prints a script as the in-game editor shows it (99.6 % of lines identical to the game's own
-  text), `msci asm` turns edited text back into a script XML, `msci new` builds a new script from text alone.
+  text), `msci asm` turns edited text back into a script XML, `msci new` builds a new script from text alone;
+  `dis` → `new` rebuilds the code of every stock script (AP 697 of 697, FL 1 020 of 1 020), so scripts can be
+  kept as text.
   Albion Prelude and Farnham's Legacy (`--addon addon2`). A [manual for writing scripts](docs/msci_manual.md)
   and a command reference generated from the game's tables ([AP](docs/msci_commands_ap.md),
   [FL](docs/msci_commands_fl.md)).

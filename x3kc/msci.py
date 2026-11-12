@@ -322,6 +322,97 @@ def norm(s):
     return s.replace('skip if not', 'do if')       # the shipped source text predates the rename
 
 
+def dis_lines(pr, code, A=None):
+    """A script as text: the `//` header (name, description, version, engine, script command, arguments), then the
+    editor lines indented by block. `msci new` / `asm` read it back to the same codearray."""
+    out = ['// %s  (%s)' % (code[0], code[2]), '// version: %s' % code[3], '// engine: %s' % code[1]]
+    if len(code) > 9 and code[9]:
+        # script[9], the script command (`get script command`): a number or a quoted name
+        out.append('// command: %s' % (code[9] if isinstance(code[9], int) else "'%s'" % code[9]))
+    for k, a in enumerate(code[7] or []):
+        out.append('//   $%s: %s  "%s"' % (code[5][k], pr.db['text']['2000'].get(str(a[0]), a[0]), a[1]))
+    depth, once = 0, False
+    for l in pr.script(code):
+        s = l.strip()
+        if l.lstrip().startswith('* '):
+            s = l.lstrip()          # a comment keeps its trailing spaces: they are part of the text
+        t = s[1:].strip() if s.startswith('@') else s       # '@ if ...': interruptible condition
+        w = t.split(' ')[0]
+        if t == 'end' or t == 'else' or t.startswith('else if'):
+            depth -= 1
+        out.append('  ' * (max(depth, 0) + once) + s)
+        once = False
+        if w in ('if', 'while', 'else') or t.startswith('else if'):
+            depth += 1
+        elif t.startswith('skip if') or t.startswith('do if'):
+            once = True
+    if A is not None:
+        pin(out, code, A)
+        if not reads_back(out, code, A):
+            out = raw_text(pr, out, code)
+    return out
+
+
+def reads_back(out, code, A):
+    from . import msci_asm
+    body = [l for l in out if not l.startswith('//')]
+    args = code[5][:len(code[7] or [])] if isinstance(code[5], list) else []
+    try:
+        names, mine, extra = A.script(body, args, exact=True)
+    except msci_asm.AsmError:
+        return False
+    return names == (code[5] or []) and mine == code[6] and extra == (code[8] or [])
+
+
+def raw_text(pr_, out, code):
+    """`// layout: raw`: for a script whose block structure the editor could not have made (a jump the editor
+    always writes is missing): every code line, the hidden jumps too, as `<text>  //= 0: [values]`; editor lines
+    as they are; the variable names in order."""
+    head = [l for l in out if l.startswith('//')]
+    extra = {}
+    for e in code[8] or []:
+        if e[1] == 3 and len(e) > 2:
+            extra.setdefault(e[0], []).append('*' + pr_.line(code, e[2:], interruptable=False))
+        else:
+            extra.setdefault(e[0], []).append(pr_.fill(pr_.cmdtext(e[1]), e[2:]))
+    body = []
+    for i, l in enumerate(code[6]):
+        body += extra.get(i, [])
+        text = '(hidden)' if pr_.flags(l[0]) & 131072 else pr_.line(code, l).strip()
+        body.append('%s  //= 0: %s' % (text, json.dumps(l, ensure_ascii=False)))
+    for i in sorted(extra):
+        if i >= len(code[6]):
+            body += extra[i]
+    return head + ['// layout: raw', '// vars: ' + ' '.join(code[5] or [])] + body
+
+
+def pin(out, code, A):
+    """Where the text alone does not give the game's line back (a name shared by two values, parameters the text
+    does not show, a value without a text), append `//= k: [values]`: the line's values from position k on."""
+    from . import msci_asm
+    head = next((k for k, l in enumerate(out) if not l.startswith('//')), len(out))
+    body = out[head:]
+    args = code[5][:len(code[7] or [])] if isinstance(code[5], list) else []
+    try:
+        _, mine, extra = A.script(body, args, exact=True, ref=code)
+    except msci_asm.AsmError:
+        return
+    game_extra = code[8] or []
+    for o in A.origin:
+        if o[1] is not None:
+            a, b = mine[o[1]], code[6][o[1]] if o[1] < len(code[6]) else None
+        else:
+            a, b = extra[o[2]][2:], game_extra[o[2]][2:] if o[2] < len(game_extra) and len(extra) == len(
+                game_extra) and game_extra[o[2]][1] == 3 else None
+        if (o[1] if o[1] is not None else ('extra', o[2])) in A.borrowed:
+            out[head + o[0]] += '  //= 0: %s' % json.dumps(b, ensure_ascii=False)
+            continue
+        if b is None or a == b:
+            continue
+        k = next((i for i, (x, y) in enumerate(zip(a, b)) if x != y), min(len(a), len(b)))
+        out[head + o[0]] += '  //= %d: %s' % (k, json.dumps(b[k:], ensure_ascii=False))
+
+
 def main():
     cmd = sys.argv[1]
     if cmd == 'db':
@@ -338,26 +429,13 @@ def main():
                 c, _ = read_script(g)
                 if c:
                     pr.scriptargs[c[0]] = [a[1] for a in (c[7] or [])]
+        from . import msci_asm
+        A = msci_asm.Assembler(db)      # checks that the text reads back; pins what it cannot (`//=`)
+        A.scriptargs = pr.scriptargs
         for f in sys.argv[3:]:
             code, plain = read_script(f)
-            print('// %s  (%s)' % (code[0], code[2]))
-            print('// version: %s' % code[3])
-            print('// engine: %s' % code[1])
-            for k, a in enumerate(code[7] or []):
-                print('//   $%s: %s  "%s"' % (code[5][k], db['text']['2000'].get(str(a[0]), a[0]), a[1]))
-            depth, once = 0, False
-            for l in pr.script(code):
-                s = l.strip()
-                t = s[1:].strip() if s.startswith('@') else s       # '@ if ...': interruptible condition
-                w = t.split(' ')[0]
-                if t == 'end' or t == 'else' or t.startswith('else if'):
-                    depth -= 1
-                print('  ' * (max(depth, 0) + once) + s)
-                once = False
-                if w in ('if', 'while', 'else') or t.startswith('else if'):
-                    depth += 1
-                elif t.startswith('skip if') or t.startswith('do if'):
-                    once = True
+            for line in dis_lines(pr, code, A):
+                print(line)
         return
     if cmd == 'check':
         import glob

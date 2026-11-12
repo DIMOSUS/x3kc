@@ -7,8 +7,9 @@ neither machine code nor KC. They are data: XML with a `<codearray>` that an int
 
 Everything below was read from the decompiled KC and checked with `x3kc msci`: the decoder reproduces the
 `<sourceplaintext>` the game saved itself in **99.6 %** of 43 247 lines of all AP scripts; the assembler rebuilds
-the `<codearray>` of 568 of 697 scripts exactly. Farnham's Legacy (`--addon addon2`): 99.7 % of the lines and
-775 of 1 021 scripts, after `msci learn` (below).
+the `<codearray>` of 653 of 697 scripts exactly from that saved text. Farnham's Legacy (`--addon addon2`): 99.7 %
+of the lines and 853 of 1 020 scripts, after `msci learn` (below). From `dis` output (the text form for keeping
+scripts as source) `new` rebuilds 697 of 697 AP and 1 020 of 1 020 FL scripts (see «Round trip» below).
 
 **Writing scripts:** [msci_manual.md](msci_manual.md) — the language as the interpreter runs it, a worked example,
 pitfalls, a checklist; command reference for [AP](msci_commands_ap.md) and [FL](msci_commands_fl.md).
@@ -46,7 +47,7 @@ Nested `<sval type="array|int|string">`; empty arrays are written as `int 0`.
 | 6 | **code lines** |
 | 7 | arguments `[[type (text page 2000), description], …]` |
 | 8 | editor-only lines `[code line index, id, parameters…]`: 1 comment `* text`, 2 empty line, 3 commented-out command or keyword, 4 `end`, 5 `else`, 6 `continue`, 7 `break` |
-| 9 | 0 |
+| 9 | script command: 0, a command id or a command name (`COMMAND_RETURN_HOME`); `C702` copies it into the task at start (`get script command` reads it) |
 
 ## A code line
 `[command id, parameters…]`.
@@ -133,9 +134,26 @@ block; `else if` after `else`; `break`/`continue` outside `while`; a jump to an 
 ending in an operator (the game editor lets it through, the VM then runs short of operands); a variable name
 with characters other than letters, digits, `.` and `_`; an unterminated string; `]]>` in the text.
 
-What the assembler cannot reproduce: hidden trailing parameters the text does not show (1185: `0,0` vs
-`4,100`); a ware and a class with the same name (`709`); wares from T files of mods that are not in the
-database; colour control codes `\x1b…` in texts. **A script built by `asm` has not been run in the game yet.**
+**Round trip.** `dis` → `new` (or `asm`) rebuilds the `<codearray>` of every stock script: AP 697 of 697,
+FL 1 020 of 1 020. What makes that possible:
+- `dis` prints `// command: N` (or `'NAME'`) for `script[9]`; empty editor lines at the start and end of a text
+  file and trailing spaces of `*` comments are kept;
+- a commented-out command (`*<command>`) is stored the game's way: variables by name, an expression as its
+  tokens in written order, a condition without a jump target;
+- where the text alone does not give the stock line back, `dis` appends a **pin** `//= k: [values]`: the line's
+  values from position k on, as JSON. Causes: a name shared by two values (the ware `Debris` and the class
+  `Debris`, `role=Drone`, `COMMAND_AGENT_*`), cells the text does not show (1185 `delayed command`: `0,0` or
+  `4,100`; FL 203 `send incoming message` saved with fewer cells than its signature), two commands with one text
+  (106/110 `random value`), values without a text (`{race 23}`, `{30:0}`, `{35:458755}`, ware names with trailing
+  spaces), `call script` of a script that is not in the set. `//= 0: [...]` gives the whole line. `asm`/`new`
+  build the line from the text, then replace its values from k on. A pin is only right for the line as `dis`
+  printed it: **when you change a pinned line, delete its pin** (without the pin the line is read from the text).
+- `// layout: raw` (with `// vars: …`, the variable names in order): for a script whose block structure the
+  editor cannot have written (FL `!lib.repair.target.is.stationary`: an `else if not` without the jump the editor
+  puts before it). Every code line, hidden jumps as `(hidden)` included, carries `//= 0: [...]`; `if`/`end`
+  build nothing. `dis` falls back to it only when the pinned text does not read back.
+
+**A script built by `asm` or `new` has not been run in the game yet.**
 
 ## Farnham's Legacy and `msci learn`
 FL ships editor texts (pages 2003/2004) for about 800 of its 2 507 commands, and lacks many constant, class and

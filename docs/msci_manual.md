@@ -178,7 +178,7 @@ assert (r.type, r.value) == (5, '1,234,567')       # 5 = string
   text with the other game's database. The FL reference marks them `sig: AP had …`.
 - **FL editor texts.** FL ships editor texts for only ~800 of its 2 507 commands. `msci-setup` learns the rest from
   the text the shipped FL scripts saved (`msci learn`): 681 commands, 270 constant, class and command names; the
-  decoder then matches 99.7 % of the lines FL saved, the assembler rebuilds 775 of 1 021 FL scripts byte for byte.
+  decoder then matches 99.7 % of the lines FL saved, the assembler rebuilds 853 of 1 020 FL scripts from that text (all 1 020 from `dis` output).
 - **Synthetic texts.** The 1 000 FL commands no shipped script uses get a text made from their signature:
   result, object, then `fl.<id>` and the parameters, e.g. `$x = $hq -> fl.1789: $type`. They are not the game
   editor's texts, but `dis` prints them and `new`/`asm` read them, so every FL command can be written. With
@@ -242,7 +242,8 @@ x3kc reads and writes the text the in-game editor shows (`<sourceplaintext>`): o
 - **Comments:** `* text` is a comment line; `*` before a command is a commented-out command (kept, not run).
   An empty line is kept as an empty editor line.
 - **Header** (`//` lines, read by `msci new`, skipped by `msci asm`):
-  `// <name>  (<description>)`, `// version: N`, `// engine: N`, and one `//   $<arg>: <type>  "<description>"`
+  `// <name>  (<description>)`, `// version: N`, `// engine: N`, `// command: N` (the script command, a
+  number or a quoted name; optional), and one `//   $<arg>: <type>  "<description>"`
   per argument, in order. Types are names from text page 2000: `Var/Number`, `Var/String`, `Var/Ship`,
   `Var/Station`, `Var/Ship/Station`, `Var/Sector`, `Var/Ware`, `Var/Race`, `Var/Class`, `Var/Array`, `Var/Boolean`,
   `Value` (anything) … The description is what `call script` lines show (`Value=$money`).
@@ -675,14 +676,12 @@ What is not known or not done — read before relying on the manual:
   the handler was (most), low where inferred. Two of the suspected bugs were confirmed by hand and recorded (S52,
   S53); the others are shown as "Suspected (not verified)". Effects deep inside the engine (AI, economy) are
   summarised, not traced.
-- **Assembler gaps.** `asm`/`new` rebuild 568 of 697 AP and 775 of 1 021 FL stock scripts byte for byte. The rest
-  differ in: two commands with the same text (106 `random value from 0 to N` vs 110 with a lower bound 0); hidden
-  cells the stock line has beyond the signature (1185); names shared by several wares where the stock scripts are
-  not consistent; ware ids whose saved names do not match the current ware table (stale text in a few stock
-  scripts); wares from mods' T files; colour codes `\x1b…` in strings; editor-only line positions (100 AP
-  scripts). A script you write yourself avoids most of these (use variables or constants for ambiguous values).
-  Starting from `dis` output instead of the game's saved text, `dis` → `new` rebuilds 385 of 697 AP scripts
-  exactly (headers and arguments of all).
+- **Round trip.** `dis` → `new` rebuilds the `<codearray>` of 697 of 697 AP and 1 020 of 1 020 FL stock scripts.
+  Where the text alone is ambiguous (106/110 `random value`, a ware and a class with one name, cells the text
+  does not show such as 1185's, values without a text) `dis` appends a pin `//= k: [values]` (docs/msci.md,
+  «Round trip»); delete the pin when you change that line. From the game's own saved text (`asm` / `msci
+  verify`, no pins) 653 of 697 AP and 853 of 1 020 FL scripts rebuild. A script you write yourself avoids the
+  ambiguities (use variables or constants for ambiguous values).
 - **FL:** commands with synthetic texts are written in a form the game's own editor would not show; some FL names
   print wrongly (`COMMAND_AGENT_*` and `role=` values share one text); FL's new menu subgroups have no names in the
   texts (`Group 107` …); FL's own bugs S48–S51, S54, S55 are in the reference.

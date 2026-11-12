@@ -24,6 +24,7 @@ OPS = {'==': 0, '!=': 1, '>': 2, '<': 3, '>=': 4, '<=': 5, '&': 6, '|': 7, '^': 
        '-': 12, '*': 13, '/': 14, 'mod': 15, '(': 16, ')': 17, '~': 65554, '!': 65556}
 OP_TOKENS = sorted(OPS, key=len, reverse=True)
 VAR_RX = r'\$[\w.]+'
+PIN_RX = re.compile(r'\s*//=\s*(\d+):\s*(\[.*\])\s*$')     # `//= k: [values]` after a line (see Assembler.line)
 RESULT_RX = r'((?:\$\S+\s*=|=|START|while not|while|skip if not|skip if|do if|else if not|else if|if not|if)?)'
 
 
@@ -112,7 +113,13 @@ class Assembler:
         self.scriptargs = {}
 
     # ---- values ------------------------------------------------------------------------------------------------
+    commented = False       # inside a commented-out line: the game keeps variables there by name
+    ref = None              # script() with ref (dis): the script the text was printed from
+    raw = False
+
     def var(self, name):
+        if self.commented:
+            return name
         if name not in self.vars:
             self.vars[name] = len(self.vars)
         return self.vars[name]
@@ -222,6 +229,9 @@ class Assembler:
 
     def expression(self, s):
         toks = self.tokens(s)
+        if self.commented:
+            # a commented-out expression keeps only the tokens as written (infix), no operand/operator lists
+            return [len(toks) // 2] + toks
         if not toks or (toks[-2] == 15 and toks[-1] != 17):
             # the editor's parser accepts a trailing operator; the VM would then run short of operands
             raise AsmError('expression %r is empty or ends with an operator' % s)
@@ -404,24 +414,55 @@ class Assembler:
         return out
 
     # ---- whole script ------------------------------------------------------------------------------------------
-    def script(self, lines, argnames):
+    def taken(self, s, ln):
+        """A whole code line given as values (`//= 0: [...]`) for the text s: its variables are numbered in the
+        order the text shows them; a condition keyword gives the form and its slot in the line."""
+        for v in re.findall(VAR_RX, s):
+            self.var(v[1:])
+        m = re.match(r'(while not|while|skip if not|skip if|do if|else if not|else if|if not|if)\b', s)
+        if not m:
+            return ln, None
+        form = FORMS[m.group(1)]
+        slot = next((k for k, v in enumerate(ln) if k and isinstance(v, int) and v < 0 and v & 0x20000000
+                     and v & 255 == form), None)
+        if slot is None:
+            raise AsmError('%s: no condition form in the given values' % m.group(1))
+        return ln, (form, slot)
+
+    def script(self, lines, argnames, exact=False, ref=None, raw_vars=None):
+        """exact: every line is an editor line (a text file: empty lines at the start and end count); otherwise
+        (a <sourceplaintext>) empty lines at both ends are the CDATA line breaks. ref (dis only): the script the
+        text was printed from; a plain command line the assembler cannot read takes its line from there.
+        self.origin maps text lines to the code / editor lines they made."""
         self.vars = {}
         for a in argnames:
             self.var(a)
+        self.raw = raw_vars is not None     # `// layout: raw` with `// vars: ...`: see line()
+        for a in raw_vars or []:
+            self.var(a)
         code, extra, stack, labels = [], [], [], {}
         lines = list(lines)
-        while lines and lines[0] == '':         # the CDATA line breaks, not empty editor lines
-            lines.pop(0)
-        while lines and lines[-1] == '':
-            lines.pop()
+        if not exact:
+            while lines and lines[0] == '':         # the CDATA line breaks, not empty editor lines
+                lines.pop(0)
+            while lines and lines[-1] == '':
+                lines.pop()
 
         def here():
             return len(code)
-        for raw in lines:
+        self.origin = []            # (text line, code line it made) / (text line, None, editor line it made)
+        self.borrowed = set()       # code lines taken from ref
+        self.ref = ref
+        for i, raw in enumerate(lines):
+            self.last = self.last_extra = None
             try:
                 self.line(raw, code, extra, stack, labels, here)
             except AsmError as x:
                 raise AsmError('%s  [line: %s]' % (x, raw.strip()))
+            if self.last is not None:
+                self.origin.append((i, self.last))
+            elif self.last_extra is not None:
+                self.origin.append((i, None, self.last_extra))
         if stack:
             raise AsmError('%s without end' % stack[-1]['kind'])
 
@@ -446,22 +487,68 @@ class Assembler:
     def line(self, raw, code, extra, stack, labels, here):
         """One editor line -> code lines and editor-only lines; checks that blocks nest like the editor's."""
         s = raw.strip()
+        pin = None
+        m = PIN_RX.search(s) if '//=' in s else None
+        if m and not s.startswith('* '):
+            # `//= k: [values]`: the line's values from position k on, as the game has them (dis writes it where the
+            # text alone is ambiguous or does not show them)
+            try:
+                pin = (int(m.group(1)), json.loads(m.group(2)))
+            except ValueError:
+                raise AsmError('bad //= part %r' % m.group())
+            s = s[:m.start()].rstrip()
+            raw = raw[:raw.rindex('//=')]
         if s.startswith('@'):
             s = s[1:].strip()
         if not s:
             extra.append([here(), 2])
             return
         if s.startswith('* ') or s == '*':
-            extra.append([here(), 1, s[2:]])
+            # the comment text as written, trailing spaces included
+            extra.append([here(), 1, raw.lstrip()[2:] if raw.lstrip().startswith('* ') else s[2:]])
             return
         if s[1:] in ('end', 'else', 'continue', 'break') and s.startswith('*'):
             extra.append([here(), 3, {'end': 4, 'else': 5, 'continue': 6, 'break': 7}[s[1:]]])
             return
         if s.startswith('*'):
+            # a commented-out command: the game stores its variables by name, an expression as its tokens, a
+            # condition form without a jump target
             saved = dict(self.vars)
-            ln, _ = self.command(s[1:])
-            self.vars = saved
+            self.commented = True
+            try:
+                if pin and pin[0] == 0:
+                    ln, form = list(pin[1]), None
+                else:
+                    ln, form = self.command(s[1:])
+            except AsmError:
+                old = self.ref[8][len(extra)] if self.ref and len(self.ref[8] or []) > len(extra) else None
+                if old is None or old[1] != 3:
+                    raise
+                ln, form = list(old[2:]), None         # dis: taken from the game, pinned with `//= 0:`
+                self.borrowed.add(('extra', len(extra)))
+            finally:
+                self.commented = False
+                self.vars = saved
+            if form is not None:
+                ln[form[1]] = form_value(form[0], 0)
+            if pin and pin[0]:
+                ln = ln[:pin[0]] + pin[1]
+            self.last_extra = len(extra)
             extra.append([here(), 3] + ln)
+            return
+        if self.raw:
+            # `// layout: raw`: no block structure; every code line, hidden jumps included, is given as values
+            kw = {'end': 4, 'else': 5, 'continue': 6, 'break': 7}
+            if s in kw:
+                extra.append([here(), kw[s]])
+                return
+            if not (pin and pin[0] == 0):
+                raise AsmError('layout raw: every code line needs `//= 0: [values]`')
+            ln = list(pin[1])
+            if ln and ln[0] == 101:
+                labels[ln[1]] = here()
+            self.last = here()
+            code.append(ln)
             return
         if s == 'end':
             if not stack:
@@ -499,8 +586,21 @@ class Assembler:
                 code.append([112, loop['line']])
             extra.append([here(), 7 if s == 'break' else 6])
             return
-        ln, form = self.command(s)
+        if pin and pin[0] == 0:
+            ln, form = self.taken(s, list(pin[1]))
+        else:
+            try:
+                ln, form = self.command(s)
+            except AsmError:
+                if self.ref is None or here() >= len(self.ref[6]):
+                    raise
+                # dis: a line the assembler cannot read takes the game's line (dis pins it with `//= 0: [...]`)
+                ln, form = self.taken(s, list(self.ref[6][here()]))
+                self.borrowed.add(here())
+            if pin:
+                ln = ln[:pin[0]] + pin[1]
         idx = here()
+        self.last = idx
         code.append(ln)
         if ln[0] == 101:
             if ln[1] in labels:
@@ -545,11 +645,14 @@ def write_script(path_xml, path_txt, A):
     raw = open(path_xml, encoding='utf-8', errors='replace').read()
     code, _ = msci.read_script(path_xml)
     lines = open(path_txt, encoding='utf-8-sig').read().replace('\r', '').split('\n')
+    raw_vars = raw_layout(lines)
     lines = [l for l in lines if not l.lstrip().startswith('//')]       # the header `msci.py dis` prints
     if any(']]>' in l for l in lines):
         raise AsmError(']]> cannot stand in the script text (it would end the CDATA section)')
     args = code[5][:len(code[7] or [])] if isinstance(code[5], list) else []
-    names, body, extra = A.script(lines, args)
+    if lines and lines[-1] == '':       # the file's last line break
+        lines.pop()
+    names, body, extra = A.script(lines, args, exact=True, raw_vars=raw_vars)
     # the game writes empty arrays as int 0
     new = [code[0], code[1], code[2], code[3], code[4], names or 0, body, code[7] or 0, extra or 0,
            code[9] if len(code) > 9 else 0]
@@ -561,17 +664,29 @@ def write_script(path_xml, path_txt, A):
 
 HEAD_RX = re.compile(r'^//\s*(\S+)\s+\((.*)\)\s*$')               # // name  (description)   as `dis` prints it
 ARG_RX = re.compile(r'^//\s+\$([\w.]+):\s*(.*?)\s+"(.*)"\s*$')      # //   $name: Type  "description"
-OPT_RX = re.compile(r'^//\s*(version|engine):\s*(\d+)\s*$')
+OPT_RX = re.compile(r"^//\s*(version|engine|command):\s*(-?\d+|'[^']*')\s*$")
+
+
+def raw_layout(lines):
+    """`// layout: raw` + `// vars: a b c` (dis writes them for a script whose block structure the editor could not
+    have made): the variable names in order, else None."""
+    if not any(l.strip() == '// layout: raw' for l in lines):
+        return None
+    for l in lines:
+        m = re.match(r'^\s*//\s*vars:(.*)$', l)
+        if m:
+            return m.group(1).split()
+    raise AsmError('layout raw needs a `// vars: ...` line')
 
 
 def new_script(A, db, path_txt, engine=40):
     """A whole script XML from text alone: the `//` header `dis` prints gives name, description and arguments
-    (`// version: N` and `// engine: N` are optional), the rest is the script. Written like the game's SaveScript,
-    without a signature."""
+    (`// version: N`, `// engine: N` and `// command: N` - the script command, script[9] - are optional), the rest
+    is the script. Written like the game's SaveScript, without a signature."""
     text = open(path_txt, encoding='utf-8-sig').read().replace('\r', '')
     lines = text.split('\n')
     name = desc = None
-    version = 0
+    version = command = 0
     args = []
     types = {v: int(k) for k, v in db['text'].get('2000', {}).items()}
     for l in lines:
@@ -582,11 +697,15 @@ def new_script(A, db, path_txt, engine=40):
         if m:
             if m.group(1) == 'version':
                 version = int(m.group(2))
+            elif m.group(1) == 'command':
+                command = m.group(2)[1:-1] if m.group(2).startswith("'") else int(m.group(2))
             else:
                 engine = int(m.group(2))
             continue
         m = ARG_RX.match(s)
         if m:
+            if re.fullmatch(r'\d+', m.group(2)):        # a type without a text on page 2000: dis prints its id
+                types.setdefault(m.group(2), int(m.group(2)))
             if m.group(2) not in types:
                 raise AsmError('unknown argument type %r (text page 2000: Var/Number, Var/Ship, Value ...)' % m.group(2))
             args.append((m.group(1), m.group(2), m.group(3)))
@@ -603,8 +722,10 @@ def new_script(A, db, path_txt, engine=40):
     body = [l for l in lines if not l.lstrip().startswith('//')]
     if any(']]>' in l for l in body):
         raise AsmError(']]> cannot stand in the script text (it would end the CDATA section)')
-    names, code, extra = A.script(body, [a[0] for a in args])
-    arr = [name, engine, desc, version, 0, names or 0, code, [[types[t], d] for _, t, d in args] or 0, extra or 0, 0]
+    if body and body[-1] == '':         # the file's last line break
+        body.pop()
+    names, code, extra = A.script(body, [a[0] for a in args], exact=True, raw_vars=raw_layout(lines))
+    arr = [name, engine, desc, version, 0, names or 0, code, [[types[t], d] for _, t, d in args] or 0, extra or 0, command]
     esc = msci.html.escape
     out = ['<?xml version="1.0" standalone="yes" ?>', '<?xml-stylesheet href="x2script.xsl" type="text/xsl" ?>',
            '<script>', '<name>%s</name>' % esc(name), '<version>%d</version>' % version,
