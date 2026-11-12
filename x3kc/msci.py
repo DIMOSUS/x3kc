@@ -98,9 +98,17 @@ def build_db(objp, textsp, outp, waresp=None):
             except ValueError:
                 pass
     db = {'cmds': mem[0], 'parflags': mem[3], 'consts': mem[4]}
+    # the editor's command picker: {0, {group text id (page 2005), command ids and subgroups...}, ...}; AP keeps it
+    # in member 11, FL in 13, so it is found by its shape
+    for k in sorted(mem):
+        v = mem[k]
+        if isinstance(v, list) and len(v) > 1 and v[0] == 0 and isinstance(v[1], list) and v[1][:1] == [100]:
+            db['menu'] = v
+            break
     texts = load_texts(textsp)
     db['text'] = {str(p): {str(i): v for (pp, i), v in texts.items() if pp == p}
-                  for p in (2000, 2001, 2002, 2003, 2004, 2006, 1266, 35, 2007, 2008, 2009, 2013, 2028, 1999, 12, 1265)}
+                  for p in (2000, 2001, 2002, 2003, 2004, 2005, 2006, 1266, 35, 2007, 2008, 2009, 2013, 2028, 1999,
+                            12, 1265)}
     import os
     wp = waresp or os.path.join(os.path.dirname(outp), 'wares_L044.json')
     if os.path.exists(wp):
@@ -326,6 +334,8 @@ def main():
         for f in sys.argv[3:]:
             code, plain = read_script(f)
             print('// %s  (%s)' % (code[0], code[2]))
+            print('// version: %s' % code[3])
+            print('// engine: %s' % code[1])
             for k, a in enumerate(code[7] or []):
                 print('//   $%s: %s  "%s"' % (code[5][k], db['text']['2000'].get(str(a[0]), a[0]), a[1]))
             depth, once = 0, False

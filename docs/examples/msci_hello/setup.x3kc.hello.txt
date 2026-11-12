@@ -1,0 +1,6 @@
+// setup.x3kc.hello  (x3kc example: registers the hotkey, runs on every new game and every load)
+// version: 1
+* Registering the same script again reuses its hotkey id, so this is safe on every load.
+$hotkey = register hotkey: page=8870 id=1, to call script plugin.x3kc.hello
+set global variable: name='x3kc.hello.hotkey' value=$hotkey
+return null

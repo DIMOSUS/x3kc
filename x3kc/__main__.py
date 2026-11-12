@@ -6,7 +6,8 @@ from . import __version__
 USAGE = """x3kc %s - X3: Terran Conflict / Albion Prelude KC script tools
 
 KC objects (l/*.obj: x3story, x3galedit, x3intro, x3config)
-  extract <game dir> <out dir>          copy the objects the game loads out of its catalogues
+  extract <game dir> <out dir> [--addon addon2]
+                                        copy the objects the game loads out of its catalogues
   decompile <obj> <out dir> [--names auto|FILE] [--pcs] [--asm-all]
                                         object -> source project (.kc + .pool + .ptch)
   compile <file.kc> -o <out.obj> [--check ORIG] [--base OBJ [--build N] [--force]]
@@ -28,10 +29,21 @@ Checking a build without the game
                                         static scan for typical bug patterns (candidates to review by hand)
 
 MSCI scripts (addon/scripts/*.pck|xml)
-  msci-setup <game dir> <work dir>      texts, ware names, command database, unpacked scripts
+  msci-setup <game dir> <work dir> [--addon addon2] [--lang 044]
+                                        texts, ware names, command database, unpacked scripts;
+                                        --addon addon2: Farnham's Legacy (X3FL.exe)
+  msci learn <db.json> <dir> [-o out.json]
+                                        editor texts the game files lack, from the scripts' saved text
+                                        (msci-setup runs it)
+  msci ref <db.json> <out.md> [--game NAME] [--map map.json] [--scripts DIR] [--other db.json --other-name N]
+           [--json out.json]            command reference by the editor's menu: syntax, parameter types, flags,
+                                        KC handler, use in the shipped scripts, engine bugs
   msci dis <db.json> <script.xml>...    script as the game's editor shows it
   msci asm <db.json> <script.xml> <edited.txt> > new.xml
                                         edited text -> script XML (header/arguments from script.xml)
+  msci new <db.json> <script.txt> [-o name.xml] [--scripts DIR] [--engine N]
+                                        a new script XML from text alone: the `//` header (as `dis` prints it)
+                                        gives name, description and arguments
   msci check <db.json> <dir>            decoder vs the <sourceplaintext> of every script
   msci verify <db.json> <dir>           assembler vs the <codearray> of every script
   msci map <x3story.kc> <texts.tsv> <out.md> [--json F]
@@ -63,8 +75,10 @@ def main(argv=None):
             return 2
         sub, rest = rest[0], rest[1:]
         table = {'dis': ('msci', 'dis'), 'check': ('msci', 'check'), 'asm': ('msci_asm', 'asm'),
+                 'new': ('msci_asm', 'new'),
                  'verify': ('msci_asm', 'check'), 'map': ('msci_map', None),
-                 'cost': ('msci_cost', None), 'usage': ('msci_usage', None)}
+                 'cost': ('msci_cost', None), 'usage': ('msci_usage', None), 'learn': ('msci_learn', None),
+                 'ref': ('msci_ref', None)}
         if sub not in table:
             print('unknown msci command %r' % sub)
             return 2

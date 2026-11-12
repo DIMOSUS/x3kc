@@ -1,0 +1,16 @@
+// plugin.x3kc.hello  (x3kc example: the hotkey target, greets the player)
+// version: 1
+* Runs as a global script when the hotkey is pressed.
+$name = get player name
+$money = get player money
+$money.text = [THIS] -> call script lib.x3kc.hello.thousands :  Value=$money
+$ship = get player ship
+$count = 0
+$sector = $ship -> get sector
+if $sector -> exists
+  $ships = $sector -> get ship array from sector/ship/station
+  $count = size of array $ships
+end
+$text = sprintf: pageid=8870 textid=2, $name, $money.text, $count, null, null
+display subtitle text: text=$text duration=5000 ms
+return null

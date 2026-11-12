@@ -7,7 +7,11 @@ neither machine code nor KC. They are data: XML with a `<codearray>` that an int
 
 Everything below was read from the decompiled KC and checked with `x3kc msci`: the decoder reproduces the
 `<sourceplaintext>` the game saved itself in **99.6 %** of 43 247 lines of all AP scripts; the assembler rebuilds
-the `<codearray>` of 526 of 697 scripts exactly.
+the `<codearray>` of 527 of 697 scripts exactly. Farnham's Legacy (`--addon addon2`): 99.7 % of the lines and
+704 of 1 021 scripts, after `msci learn` (below).
+
+**Writing scripts:** [msci_manual.md](msci_manual.md) — the language as the interpreter runs it, a worked example,
+pitfalls, a checklist; command reference for [AP](msci_commands_ap.md) and [FL](msci_commands_fl.md).
 
 ## File
 ```
@@ -22,8 +26,10 @@ the `<codearray>` of 526 of 697 scripts exactly.
 ```
 - **Loading** (`C700::LoadScript`): reads `addon/scripts/<name>.xml` (pck is unpacked before), takes only
   `<codearray>`, checks the signature (`VerifyDataXML("signature")`), requires `engineversion ≥ 40`.
-- **Signature.** A script without a valid signature loads. When its name starts with `!` (a "required" Egosoft
-  script), the game marks itself "modified" (`Client::SetModifiedByFile`); a missing or broken `!` script too.
+- **Signature.** A script without a valid signature loads only if the game is already "modified"
+  (`Client::GetModified`); otherwise it is skipped — unless its name starts with `!` (a "required" Egosoft script):
+  then it loads and the game marks itself modified (`Client::SetModifiedByFile`); a missing or broken `!` script
+  marks it too. The name inside must equal the file name, flag 1 of `[4]` must be clear.
 - **Saving** (`C700::SaveScript`) writes `<nosignature>NNNN</nosignature>` with a random number.
 
 ## The script array (`<codearray>`)
@@ -109,9 +115,12 @@ command calls.
 
 ## Tools
 ```
-x3kc msci-setup "<game>" work                          texts, ware names, msci_db.json, work/scripts
+x3kc msci-setup "<game>" work [--addon addon2]         texts, ware names, msci_db.json, work/scripts
 x3kc msci dis work/msci_db.json work/scripts/X.xml     script text as the editor shows it
 x3kc msci asm work/msci_db.json work/scripts/X.xml edited.txt > X.xml
+x3kc msci new work/msci_db.json X.txt -o X.xml          a new script from text alone (header from `//` lines)
+x3kc msci learn work/msci_db.json work/scripts         editor texts the text files lack (msci-setup runs it)
+x3kc msci ref work/msci_db.json out.md [--map M --scripts DIR --other DB]   command reference
 x3kc msci check work/msci_db.json work/scripts         decoder vs <sourceplaintext>
 x3kc msci verify work/msci_db.json work/scripts        assembler vs <codearray>
 ```
@@ -127,3 +136,13 @@ with characters other than letters, digits, `.` and `_`; an unterminated string;
 What the assembler cannot reproduce: hidden trailing parameters the text does not show (1185: `0,0` vs
 `4,100`); a ware and a class with the same name (`709`); wares from T files of mods that are not in the
 database; colour control codes `\x1b…` in texts. **A script built by `asm` has not been run in the game yet.**
+
+## Farnham's Legacy and `msci learn`
+FL ships editor texts (pages 2003/2004) for about 800 of its 2 507 commands, and lacks many constant, class and
+object command names. Its scripts still carry the text FL's own editor printed (`<sourceplaintext>`), so
+`msci learn` (run by `msci-setup`) recovers them: for every line the decoder cannot print, the decoded parameter
+strings are matched against the saved line; the template that prints the most uses wins, other templates of the
+same command go to `db['alt']` (scripts saved by other editor versions), old commands whose text leaves out
+parameters FL added get a page 2004 text. FL 1.3 (`addon2/06.cat` of 2026-11-06): 681 command texts and 270 names
+learned; commands no shipped script uses (1 000) stay without a text. The command menu of the editor
+(`db['menu']`, group names from page 2005) is stored in the database as well and orders `msci ref`.

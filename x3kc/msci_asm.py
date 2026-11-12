@@ -72,10 +72,10 @@ class Assembler:
         self.name_list = sorted(self.names, key=len, reverse=True)
         # command templates
         self.templates = []
-        for cid in self.cmds:
+        alt = db.get('alt', {})          # more texts of a command (msci_learn: scripts saved by other editor versions)
+        for cid, fmt in [(c, self.p.cmdtext(c)) for c in self.cmds] + [(int(c), f) for c, fs in alt.items() for f in fs]:
             if cid <= 7:
                 continue
-            fmt = self.p.cmdtext(cid)
             if not fmt or fmt.startswith('<cmd'):
                 continue
             parts = re.split(r'(%\d)', fmt)
@@ -538,10 +538,97 @@ def write_script(path_xml, path_txt, A):
     sys.stdout.buffer.write(out.replace('\n', '\r\n').encode('utf-8'))
 
 
+HEAD_RX = re.compile(r'^//\s*(\S+)\s+\((.*)\)\s*$')               # // name  (description)   as `dis` prints it
+ARG_RX = re.compile(r'^//\s+\$([\w.]+):\s*(.*?)\s+"(.*)"\s*$')      # //   $name: Type  "description"
+OPT_RX = re.compile(r'^//\s*(version|engine):\s*(\d+)\s*$')
+
+
+def new_script(A, db, path_txt, engine=40):
+    """A whole script XML from text alone: the `//` header `dis` prints gives name, description and arguments
+    (`// version: N` and `// engine: N` are optional), the rest is the script. Written like the game's SaveScript,
+    without a signature."""
+    text = open(path_txt, encoding='utf-8-sig').read().replace('\r', '')
+    lines = text.split('\n')
+    name = desc = None
+    version = 0
+    args = []
+    types = {v: int(k) for k, v in db['text'].get('2000', {}).items()}
+    for l in lines:
+        s = l.strip()
+        if not s.startswith('//'):
+            continue
+        m = OPT_RX.match(s)
+        if m:
+            if m.group(1) == 'version':
+                version = int(m.group(2))
+            else:
+                engine = int(m.group(2))
+            continue
+        m = ARG_RX.match(s)
+        if m:
+            if m.group(2) not in types:
+                raise AsmError('unknown argument type %r (text page 2000: Var/Number, Var/Ship, Value ...)' % m.group(2))
+            args.append((m.group(1), m.group(2), m.group(3)))
+            continue
+        m = HEAD_RX.match(s)
+        if m and name is None:
+            name, desc = m.group(1), m.group(2)
+    if not name:
+        raise AsmError('no header: the first line must be `// <script name>  (<description>)`')
+    if not re.fullmatch(r'[\w.!\-]+', name):
+        raise AsmError('script name %r: use letters, digits, ".", "_", "-" (the file name must be the same)' % name)
+    if engine < 40:
+        raise AsmError('engine version %d: the game loads only scripts with engine version >= 40' % engine)
+    body = [l for l in lines if not l.lstrip().startswith('//')]
+    if any(']]>' in l for l in body):
+        raise AsmError(']]> cannot stand in the script text (it would end the CDATA section)')
+    names, code, extra = A.script(body, [a[0] for a in args])
+    arr = [name, engine, desc, version, 0, names or 0, code, [[types[t], d] for _, t, d in args] or 0, extra or 0, 0]
+    esc = msci.html.escape
+    out = ['<?xml version="1.0" standalone="yes" ?>', '<?xml-stylesheet href="x2script.xsl" type="text/xsl" ?>',
+           '<script>', '<name>%s</name>' % esc(name), '<version>%d</version>' % version,
+           '<engineversion>%d</engineversion>' % engine, '<description>%s</description>' % esc(desc), '<arguments>']
+    for k, (n, t, d) in enumerate(args):
+        out.append('<argument index="%d" name="%s" type="%s" desc="%s" />' % (k + 1, esc(n), esc(t), esc(d)))
+    out += ['</arguments>', '<sourceplaintext>', '<![CDATA[', '\n'.join(body).strip('\n'), ']]>', '</sourceplaintext>',
+            '<codearray>']
+    return '\n'.join(out) + '\n' + sval_xml(arr, 0) + '</codearray>\n</script>\n'
+
+
 def main():
     cmd = sys.argv[1]
     db = json.load(open(sys.argv[2], encoding='utf-8'))
     A = Assembler(db)
+    if cmd == 'new':
+        import argparse
+        import glob
+        import os
+        ap = argparse.ArgumentParser(prog='x3kc msci new')
+        ap.add_argument('text')
+        ap.add_argument('-o', dest='out')
+        ap.add_argument('--scripts', help='dir of *.xml whose argument names `call script` lines may use')
+        ap.add_argument('--engine', type=int, default=40)
+        a = ap.parse_args(sys.argv[3:])
+        dirs = [a.scripts] if a.scripts else []
+        dirs.append(os.path.dirname(os.path.abspath(a.out)) if a.out else '.')
+        for d in dirs:
+            for f in glob.glob(os.path.join(d, '*.xml')):
+                c, _ = msci.read_script(f)
+                if c:
+                    raw = open(f, encoding='utf-8', errors='replace').read()
+                    A.scriptargs[c[0]] = [msci.html.unescape(x) for x in re.findall(r'<argument [^>]*desc="([^"]*)"', raw)]
+        try:
+            xml = new_script(A, db, a.text, a.engine)
+        except AsmError as x:
+            print('error:', x, file=sys.stderr)
+            return 1
+        data = xml.replace('\n', '\r\n').encode('utf-8')
+        if a.out:
+            with open(a.out, 'wb') as f:
+                f.write(data)
+        else:
+            sys.stdout.buffer.write(data)
+        return 0
     if cmd == 'asm':
         import glob
         import os

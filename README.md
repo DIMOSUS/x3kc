@@ -15,7 +15,10 @@ fields and functions, plus a decoder and assembler for ordinary **MSCI** scripts
   loading: new build id, stamps for added fields, address maps for the savegame loader, and a refusal when a
   change would break savegames.
 - **MSCI.** `msci dis` prints a script as the in-game editor shows it (99.6 % of lines identical to the game's own
-  text), `msci asm` turns edited text back into a script XML.
+  text), `msci asm` turns edited text back into a script XML, `msci new` builds a new script from text alone.
+  Albion Prelude and Farnham's Legacy (`--addon addon2`). A [manual for writing scripts](docs/msci_manual.md)
+  and a command reference generated from the game's tables ([AP](docs/msci_commands_ap.md),
+  [FL](docs/msci_commands_fl.md)).
 - **Checked before the game.** Every build passes a bytecode verifier, and an emulator of the game's script VM
   runs the object's own code — natives as the exe implements them, MSCI scripts through the game's own
   interpreter, savegames moved to a new build — so a mod can be tested without starting the game.
@@ -49,7 +52,9 @@ x3kc msci-setup "C:/Games/X3 Terran Conflict" work           texts, ware names, 
 x3kc msci dis work/msci_db.json work/scripts/plugin.foo.xml > foo.txt
 # edit foo.txt
 x3kc msci asm work/msci_db.json work/scripts/plugin.foo.xml foo.txt > plugin.foo.xml
+x3kc msci new work/msci_db.json my.script.txt -o my.script.xml       a new script: header from `//` lines
 ```
+Farnham's Legacy: `x3kc msci-setup "<TC dir>" work-fl --addon addon2` (and `extract … --addon addon2`).
 
 `x3kc help` lists all commands.
 
@@ -154,6 +159,11 @@ pixel coordinates, what does not work — is in [docs/screen.md](docs/screen.md)
 ## Documentation
 - [docs/kc.md](docs/kc.md) — the KC language, how Egosoft's compiler generated code, the `STOR` object format,
   mods and savegames, annotations.
+- [docs/msci_manual.md](docs/msci_manual.md) — **writing MSCI scripts**: files and loading, the text form, the
+  language as the interpreter runs it (expressions, calls, waiting, interrupts, errors), texts, hotkeys and
+  commands, pitfalls, testing without the game, a checklist, a worked example
+  ([docs/examples/msci_hello](docs/examples/msci_hello)); command reference for [AP](docs/msci_commands_ap.md) and
+  [FL](docs/msci_commands_fl.md).
 - [docs/msci.md](docs/msci.md) — MSCI script format, command and condition encoding, the interpreter.
 - [docs/checking.md](docs/checking.md) — checking a mod without the game: the verifier, the emulator, savegame
   checks, what the tests cover.
@@ -177,12 +187,14 @@ agents from the code and the game texts and have not been proof-read by a human.
 ```
 python -m unittest discover tests                      no game files needed
 X3_GAME="C:/Games/X3 Terran Conflict" python -m unittest discover tests   also the game's objects: round trips, emulator
+X3_FL_GAME="C:/Games/X3 Terran Conflict" ...           Farnham's Legacy (addon2) for the MSCI example tests
 ```
 
 ## Legal
 X3: Terran Conflict and X3: Albion Prelude are © Egosoft. This repository contains no game files and no
 decompiled game code; it reads them from your own installation. The bundled annotations (names, descriptions,
 comments), the list of native function names and the descriptions of native behaviour (`docs/natives`) are
-original work describing the game's interfaces.
+original work describing the game's interfaces. The MSCI command references (`docs/msci_commands_*.md`) are
+generated from the games' command tables and list each command's editor syntax line, as an interface description.
 
 Licensed under the MIT license, see [LICENSE](LICENSE).

@@ -14,7 +14,10 @@
 - **Для модов.** `compile --base` сохраняет загрузку сейвов исходного объекта (и прошлых версий вашего мода):
   новый build, метки добавленных полей, карты адресов для загрузчика сейвов и отказ, если правка сломает сейвы.
 - **MSCI.** `msci dis` печатает скрипт так, как его показывает игровой редактор (99,6 % строк совпадают с
-  текстом самой игры), `msci asm` собирает отредактированный текст обратно в XML скрипта.
+  текстом самой игры), `msci asm` собирает отредактированный текст обратно в XML скрипта, `msci new` — новый
+  скрипт по одному тексту. AP и Farnham's Legacy (`--addon addon2`). [Руководство по написанию
+  скриптов](docs/ru/msci_manual.md) и справочник команд, сгенерированный из базы игры ([AP](docs/msci_commands_ap.md),
+  [FL](docs/msci_commands_fl.md)).
 - **Проверено до игры.** Каждая сборка проходит верификатор байткода, а эмулятор скриптовой VM игры исполняет
   код самого объекта — нативы как в exe, MSCI-скрипты через интерпретатор игры, перенос сейвов на новую
   сборку, — так что мод можно проверить, не запуская игру.
@@ -45,7 +48,9 @@ x3kc msci-setup "C:/Games/X3 Terran Conflict" work           тексты, им�
 x3kc msci dis work/msci_db.json work/scripts/plugin.foo.xml > foo.txt
 # правим foo.txt
 x3kc msci asm work/msci_db.json work/scripts/plugin.foo.xml foo.txt > plugin.foo.xml
+x3kc msci new work/msci_db.json my.script.txt -o my.script.xml       новый скрипт: шапка из строк `//`
 ```
+Farnham's Legacy: `x3kc msci-setup "<папка TC>" work-fl --addon addon2` (и `extract … --addon addon2`).
 
 `x3kc help` — список всех команд.
 
@@ -150,6 +155,11 @@ class FpsCounter = 9500 {
 ## Документация
 - [docs/ru/kc.md](docs/ru/kc.md) — язык KC, как компилировал Egosoft, формат объекта `STOR`, моды и сейвы,
   аннотации.
+- [docs/ru/msci_manual.md](docs/ru/msci_manual.md) — **как писать MSCI-скрипты**: файлы и загрузка, текстовая
+  форма, язык так, как его исполняет интерпретатор (выражения, вызовы, ожидание, прерывания, ошибки), тексты,
+  горячие клавиши и команды, ловушки, проверка без игры, чек-лист, сквозной пример
+  ([docs/examples/msci_hello](docs/examples/msci_hello)); справочник команд [AP](docs/msci_commands_ap.md),
+  [FL](docs/msci_commands_fl.md).
 - [docs/ru/msci.md](docs/ru/msci.md) — формат MSCI-скриптов, кодирование команд и условий, интерпретатор.
 - [docs/ru/checking.md](docs/ru/checking.md) — проверка мода без игры: верификатор, эмулятор, проверка сейвов,
   что покрывают тесты.
@@ -173,11 +183,14 @@ class FpsCounter = 9500 {
 ```
 python -m unittest discover tests                      без файлов игры
 X3_GAME="C:/Games/X3 Terran Conflict" python -m unittest discover tests   плюс объекты игры: полный круг, эмулятор
+X3_FL_GAME="C:/Games/X3 Terran Conflict" ...           Farnham's Legacy (addon2) для тестов примера MSCI
 ```
 
 ## Права
 X3: Terran Conflict и X3: Albion Prelude — © Egosoft. В репозитории нет файлов игры и декомпилированного кода
 игры: всё читается из вашей установки. Встроенные аннотации (имена, описания, комментарии), список имён нативов
-и описания поведения нативов (`docs/natives`) — собственная работа, описывающая интерфейсы игры.
+и описания поведения нативов (`docs/natives`) — собственная работа, описывающая интерфейсы игры. Справочники
+команд MSCI (`docs/msci_commands_*.md`) сгенерированы из таблиц команд игр и приводят строку синтаксиса редактора
+каждой команды как описание интерфейса.
 
 Лицензия MIT, см. [LICENSE](LICENSE).

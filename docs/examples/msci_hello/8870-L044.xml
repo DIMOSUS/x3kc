@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<language id="44">
+<page id="8870" title="x3kc MSCI example" descr="texts of the x3kc hello example">
+<t id="1">x3kc: Hello</t>
+<t id="2">Hello, %s! You have %s credits; %s ships are in this sector. \(x3kc example\)</t>
+</page>
+</language>

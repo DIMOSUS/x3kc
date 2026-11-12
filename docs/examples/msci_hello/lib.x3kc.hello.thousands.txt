@@ -1,0 +1,38 @@
+// lib.x3kc.hello.thousands  (x3kc example: a number with thousands separators, 1234567 -> '1,234,567')
+// version: 1
+//   $value: Var/Number  "Value"
+* Library script: no [THIS], no waiting, returns a string.
+$neg = $value < 0
+if $neg
+  $value = -$value
+end
+$out = ''
+$first = [TRUE]
+while $first OR $value > 0
+  $first = [FALSE]
+  $part = $value mod 1000
+  $value = $value / 1000
+  if $value > 0
+    gosub pad3
+  else
+    $part.text = convert number $part to string
+  end
+  if $out == ''
+    $out = $part.text
+  else
+    $out = $part.text + ',' + $out
+  end
+end
+if $neg
+  $out = '-' + $out
+end
+return $out
+
+* $part.text = $part as three digits
+pad3:
+$part.text = convert number $part to string
+skip if $part >= 100
+  $part.text = '0' + $part.text
+skip if $part >= 10
+  $part.text = '0' + $part.text
+endsub

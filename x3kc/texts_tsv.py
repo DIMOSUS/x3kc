@@ -1,9 +1,9 @@
 """All game texts of one language as `page:id<TAB>text`, with page ids as the game sees them.
 
-    x3kc texts <game dir> <lang 044> <out.tsv>
+    x3kc texts <game dir> <lang 044> <out.tsv> [--addon addon2]
 
 Sources, later ones override earlier ones: base catalogues (13.cat ... t/0001), addon catalogues (addon/NN.cat
-addon/t/*), loose addon/t/*.pck|xml. Pages 300001-349999, 350000-379999, 380000-399999 are renumbered to their
+addon/t/*), loose addon/t/*.pck|xml. `--addon addon2` reads Farnham's Legacy (X3FL.exe loads addon2/ instead of addon/). Pages 300001-349999, 350000-379999, 380000-399999 are renumbered to their
 range start like SE_XMLImportText does (301903 -> 1903); the raw id is kept too.
 """
 import glob
@@ -36,17 +36,29 @@ def wanted(name, data, lang):
     return bool(lid) and int(lid.group(1)) == int(lang)
 
 
+def addon_arg(argv):
+    """argv without `--addon NAME`, and NAME (default addon: Albion Prelude; addon2: Farnham's Legacy)."""
+    argv = list(argv)
+    addon = 'addon'
+    if '--addon' in argv:
+        i = argv.index('--addon')
+        addon = argv[i + 1]
+        del argv[i:i + 2]
+    return argv, addon
+
+
 def main():
-    game, lang, out = sys.argv[1], sys.argv[2], sys.argv[3]
+    argv, addon = addon_arg(sys.argv[1:])
+    game, lang, out = argv[0], argv[1], argv[2]
     docs = []
-    for c in sorted(glob.glob(os.path.join(game, '[0-9][0-9].cat'))) + sorted(glob.glob(os.path.join(game, 'addon', '[0-9][0-9].cat'))):
+    for c in sorted(glob.glob(os.path.join(game, '[0-9][0-9].cat'))) + sorted(glob.glob(os.path.join(game, addon, '[0-9][0-9].cat'))):
         for p, _, _ in catx.read_index(c):
             if '/t/' in '/' + p and p.lower().endswith(('.pck', '.xml')) and wanted(p, None, lang):
                 b = catx.read_member(c, p)
                 b = unpck.unpack(b) if p.lower().endswith('.pck') else b
                 if wanted(p, b, lang):
                     docs.append((c + ':' + p, b))
-    for f in sorted(glob.glob(os.path.join(game, 'addon', 't', '*.*'))):
+    for f in sorted(glob.glob(os.path.join(game, addon, 't', '*.*'))):
         if not f.lower().endswith(('.pck', '.xml')) or not wanted(f, None, lang):
             continue
         b = open(f, 'rb').read()
