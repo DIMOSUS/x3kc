@@ -76,6 +76,8 @@ class Printer:
         self.local_names = {}
         self.used = set()
         self.unplaced = []           # comments whose offset starts no statement: "cid::name @pc"
+        self.record = {}             # (cid, method): (param names, {local declaration pc: name}) as printed
+        self.carry = None
 
     # ---- expressions -------------------------------------------------------------------------
     def ex(self, e, prec=0):
@@ -270,7 +272,19 @@ class Printer:
             self.out(d, self.ex_stmt(s.e) + ';')
         elif t is A.VarDecl:
             self.nloc += 1
-            name = self.local_names.get('v%d' % self.nloc, 'v%d' % self.nloc)
+            pc = self.stmt_pc.get(id(s))
+            if self.carry is not None:          # --names-from: the previous build's name of this local, or a new one
+                name = self.carry[0].get(pc)
+                if name is None:
+                    used = set(self.carry[0].values())
+                    while 'v%d' % self.fresh in used:
+                        self.fresh += 1
+                    name = 'v%d' % self.fresh
+                    self.fresh += 1
+            else:
+                name = self.local_names.get('v%d' % self.nloc, 'v%d' % self.nloc)
+            if pc is not None:
+                self.loc_rec[pc] = name
             init = self.ex(s.init, P_ASSIGN) if s.init is not None else None
             self.names[s.var] = name
             self.out(d, 'var %s%s;' % (name, '' if init is None else ' = ' + init))
@@ -368,6 +382,9 @@ class Printer:
         self.names = {}
         self.nloc = 0
         self.local_names = ann.get('locals') or {}
+        self.carry = ann.get('carry')
+        self.fresh = self.carry[1] if self.carry else 0
+        self.loc_rec = {}
         self.comments = ann.get('comments') or {}
         self.used = set()
         self.stmt_pc = fn.stmt_pc or {}
@@ -390,6 +407,7 @@ class Printer:
             raise
         for pc in sorted(set(self.comments) - self.used):
             self.unplaced.append('%d::%s @%06x' % (cid, name, pc))
+        self.record[cid, name] = ([p.name for p in fn.params], self.loc_rec)
 
     def asm_function(self, name, params, frame, entry, items, d):
         self.out(d, 'function %s(%s) frame %d asm {%s' % (name, ', '.join(params), frame, self.entry_tail(entry)))

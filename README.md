@@ -47,7 +47,12 @@ hullDamage, directHullDamage, hitter) { … } }`, with a comment above most clas
 without it, like `class C2016 : C702 { … function Hit(arg1, arg2, arg3, arg4) { … } }`.
 Keeping the source in git? `decompile --no-offsets` leaves out the method's code offset (`// 131f2b`) after each
 `function` line: otherwise any inserted code shifts the offsets of every later method and bloats the diff.
-`compile` does not care either way.
+`compile` does not care either way. `decompile new.obj src --names auto --no-offsets --names-from old.obj` also
+keeps the identifiers the previous build decompiles with — real names and numbered ones (`v12`, `m5`, `g7`) alike —
+on the locals, fields and globals whose code still aligns (methods by name, instructions in order; fields and
+globals by type and initial value); only new ones get new numbers, above the previous build's. Without it one
+inserted local or global renumbers everything after it (Farnham's Legacy's community patch: 131 000 diff lines in
+x3story with renumbering, 22 000 without).
 
 MSCI:
 ```

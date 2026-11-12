@@ -118,6 +118,31 @@ class RoundTrip(Base):
             self.assertEqual(x[:-len('  // 000000')], y)
         self.assertEqual(cli(['compile', os.path.join(b, 't.kc'), '--check', obj]), 0)
 
+    def test_names_from_previous_build(self):
+        old = self.compile(SOURCE)
+        new = self.compile(SOURCE.replace('var gCount = 0;', 'var gNew = 5;\nvar gCount = 0;')
+                           .replace('        var total = 0;\n', '        var extra = n * 3;\n        var total = 0;\n'),
+                           'n.kc')
+        a, b = os.path.join(self.dir, 'a.obj'), os.path.join(self.dir, 'b.obj')
+        for p, o in ((a, old), (b, new)):
+            with open(p, 'wb') as f:
+                f.write(o.serialize())
+        da, db, dn = (os.path.join(self.dir, x) for x in ('da', 'db', 'dn'))
+        self.assertEqual(cli(['decompile', a, da, '--name', 't']), 0)
+        self.assertEqual(cli(['decompile', b, db, '--name', 't']), 0)
+        self.assertEqual(cli(['decompile', b, dn, '--name', 't', '--names-from', a]), 0)
+        src_a = open(os.path.join(da, 't.kc'), encoding='latin1').read()
+        src_b = open(os.path.join(db, 't.kc'), encoding='latin1').read()
+        src_n = open(os.path.join(dn, 't.kc'), encoding='latin1').read()
+        self.assertIn('var g0 = 0;\nvar g1 = "player";', src_a)
+        self.assertIn('var g0 = 5;\nvar g1 = 0;', src_b)                  # without: every global renumbered
+        self.assertIn('var g3 = 5;\nvar g0 = 0;\nvar g1 = "player";', src_n)  # with: the old ones stay, new above
+        sum_a = src_a[src_a.index('function Sum'):]
+        sum_n = src_n[src_n.index('function Sum'):]
+        self.assertIn('var v1 = 0;', sum_a)
+        self.assertIn('var v3 = arg1 * 3;\n        var v1 = 0;\n        var v2 = 0;', sum_n)  # the new local is v3
+        self.assertEqual(cli(['compile', os.path.join(dn, 't.kc'), '--check', b]), 0)
+
     def test_names_do_not_change_bytes(self):
         o = self.compile(SOURCE)
         obj = os.path.join(self.dir, 'a.obj')
