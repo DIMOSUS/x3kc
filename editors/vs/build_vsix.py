@@ -181,7 +181,10 @@ def zip_bytes(out):
     b = io.BytesIO()
     with zipfile.ZipFile(b, 'w', zipfile.ZIP_DEFLATED) as z:
         for n in ['[Content_Types].xml'] + sorted(k for k in out if k != '[Content_Types].xml'):
-            z.writestr(zipfile.ZipInfo(n, (2026, 1, 1, 0, 0, 0)), out[n], zipfile.ZIP_DEFLATED)
+            # catalog.json is stored, not deflated: only the digits of its payload size then change the zip's
+            # length, so the size fixed point is reached in at most two more rounds (one per added digit)
+            z.writestr(zipfile.ZipInfo(n, (2026, 1, 1, 0, 0, 0)), out[n],
+                       zipfile.ZIP_STORED if n == 'catalog.json' else zipfile.ZIP_DEFLATED)
     return b.getvalue()
 
 
