@@ -37,6 +37,7 @@ class Symbols:
     def __init__(self):
         self.classes = {}       # id -> Klass (0 included)
         self.by_name = {}       # class name -> id
+        self.consts = None      # kcconst.Table once the project's constants are resolved
 
     def add(self, k):
         self.classes[k.id] = k

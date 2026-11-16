@@ -58,7 +58,7 @@ def declarations(text):
             if k == 'dir':
                 out.append(('dir', t[1:].split(None, 1)[0] if t[1:].split() else '', '', s, e))
                 continue
-            if k == 'id' and t in ('var', 'function', 'class'):
+            if k == 'id' and t in ('var', 'function', 'class', 'const', 'enum'):
                 cur = [t, None, '', s, e, 0]
                 continue
             # anything else at the top level (a syntax error for the parser) stays with the previous declaration
@@ -80,11 +80,11 @@ def declarations(text):
                 cur[5] = 1
             elif t == '}':
                 depth -= 1
-                if depth <= 0 and cur[0] != 'var':
+                if depth <= 0 and cur[0] not in ('var', 'const'):
                     depth = 0
                     out.append(tuple(cur[:5]))
                     cur = None
-            elif t == ';' and cur[0] == 'var' and depth == 0:
+            elif t == ';' and cur[0] in ('var', 'const') and depth == 0:
                 out.append(tuple(cur[:5]))
                 cur = None
     if cur is not None:         # unterminated: runs to the end of the file
@@ -134,7 +134,7 @@ def split_text(text):
         prev = d
     if not groups:
         groups.append([0, 'dir', '', ''])
-    if groups[0][1] in ('dir', 'var', 'junk'):
+    if groups[0][1] in ('dir', 'var', 'junk', 'const', 'enum'):
         groups[0][1:3] = ['header', '']
     seen = set()
     count = {}

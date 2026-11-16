@@ -35,6 +35,12 @@
       "include": "#var-decl"
     },
     {
+      "include": "#const-decl"
+    },
+    {
+      "include": "#enum-decl"
+    },
+    {
       "include": "#stamp"
     },
     {
@@ -244,6 +250,28 @@
         },
         "2": {
           "name": "variable.other.declaration.kc"
+        }
+      }
+    },
+    "const-decl": {
+      "match": "\\b(const)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": {
+          "name": "storage.type.const.kc"
+        },
+        "2": {
+          "name": "variable.other.constant.declaration.kc"
+        }
+      }
+    },
+    "enum-decl": {
+      "match": "\\b(enum)\\s+([A-Za-z_][A-Za-z0-9_]*)",
+      "captures": {
+        "1": {
+          "name": "storage.type.enum.kc"
+        },
+        "2": {
+          "name": "entity.name.type.enum.kc"
         }
       }
     },
@@ -497,6 +525,10 @@
         {
           "name": "variable.other.global.kc",
           "match": "\\bg[0-9]+\\b"
+        },
+        {
+          "name": "variable.other.constant.kc",
+          "match": "\\b[A-Z][A-Z0-9_]*\\b"
         },
         {
           "name": "variable.other.kc",

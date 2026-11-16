@@ -124,6 +124,13 @@ def grammar():
     repo['var-decl'] = {
         'match': r'\b(var)\s+(' + ID + r')',
         'captures': {'1': {'name': 'storage.type.var.kc'}, '2': {'name': 'variable.other.declaration.kc'}}}
+    # const NAME = expr;   enum Name { A = 1, B }   (compile-time constants, kcconst)
+    repo['const-decl'] = {
+        'match': r'\b(const)\s+(' + ID + r')',
+        'captures': {'1': {'name': 'storage.type.const.kc'}, '2': {'name': 'variable.other.constant.declaration.kc'}}}
+    repo['enum-decl'] = {
+        'match': r'\b(enum)\s+(' + ID + r')',
+        'captures': {'1': {'name': 'storage.type.enum.kc'}, '2': {'name': 'entity.name.type.enum.kc'}}}
     # switch (e) : dense(lo, hi) | : sparse
     repo['switch-mode'] = {
         'match': r'(?<=\))\s*(:)\s*(dense|sparse)\b',
@@ -199,6 +206,8 @@ def grammar():
         {'name': 'variable.other.local.kc', 'match': r'\bv[0-9]+\b'},
         {'name': 'variable.other.member.kc', 'match': r'\bm[0-9]+\b'},
         {'name': 'variable.other.global.kc', 'match': r'\bg[0-9]+\b'},
+        # ALL_CAPS names: constants by convention (the language server knows the real ones)
+        {'name': 'variable.other.constant.kc', 'match': r'\b[A-Z][A-Z0-9_]*\b'},
         {'name': 'variable.other.kc', 'match': ID},
     ]}
     repo['operators'] = {'patterns': [
@@ -222,7 +231,7 @@ def grammar():
         {'name': 'invalid.illegal.character.kc', 'match': r'[^\sA-Za-z0-9_"#/*+\-%&|^!~<>=?:;,.(){}\[\]@]'},
     ]}
     order = ['comments', 'directive', 'strings', 'class-decl', 'function-decl', 'asm-body', 'frame', 'switch-mode',
-             'var-decl', 'stamp', 'numbers', 'qualified', 'keywords', 'names', 'operators']
+             'var-decl', 'const-decl', 'enum-decl', 'stamp', 'numbers', 'qualified', 'keywords', 'names', 'operators']
     g = {
         '$schema': 'https://raw.githubusercontent.com/martinring/tmlanguage/master/tmlanguage.json',
         'name': 'KC',

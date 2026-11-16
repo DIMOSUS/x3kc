@@ -205,6 +205,69 @@ class Diagnostics(Base):
         self.assertNotIn(bytes.fromhex('0b0000000083'), o.code)  # "" never at pool offset 0
 
 
+class Constants(Base):
+    NAMED = '''#object 801 100
+const BIG = 0x12345 + LATER;
+var gInit = BIG * 2 @ 5;
+const LATER = 1;
+const NEG = -(3 << 4);
+const NAME = "player";
+enum Kind { KA = 1, KB, KC = 10, KD }
+class Thing = 10 {
+    const MAXT = KD + 1;
+    enum Mode { M0, M1, M2 }
+    var m0 = MAXT;
+    var m1 = NAME;
+    function Create(a) {
+        m0 = a + MAXT * 2 + Kind.KB + Thing.MAXT + M2 + Mode.M1;
+        switch (a) { case KA: return -NEG; case -NEG: return {1: MAXT, NAME: BIG}; case Mode.M2: return -Sub; }
+        return -MAXT + ~LATER + 300000;
+    }
+}
+class Sub = 11 : Thing {
+    function F() { return MAXT + M1 + Sub.MAXT + 300 + 100000 + 0x7FFFFFFF; }
+}
+'''
+    PLAIN = '''#object 801 100
+var gInit = 149132 @ 5;
+class Thing = 10 {
+    var m0 = 12;
+    var m1 = "player";
+    function Create(a) {
+        m0 = a + 12 * 2 + 2 + 12 + 2 + 1;
+        switch (a) { case 1: return 48; case 48: return {1: 12, "player": 74566}; case 2: return -11; }
+        return -12 + ~1 + 300000;
+    }
+}
+class Sub = 11 : Thing {
+    function F() { return 12 + 1 + 12 + 300 + 100000 + 2147483647; }
+}
+'''
+
+    def test_same_bytes_as_literals(self):
+        # literals of every push width (pushN / pushb / pushw / pushi), negative, string, case, field, table
+        a = self.compile(self.NAMED, 'a.kc').serialize()
+        b = self.compile(self.PLAIN, 'b.kc').serialize()
+        self.assertEqual(a, b)
+
+    def fails(self, text, msg):
+        with self.assertRaises((kcc.CompileError, kcparse.ParseError)) as cm:
+            self.compile('#object 801 100\nvar gv = 0;\n' + text)
+        self.assertIn(msg, str(cm.exception))
+
+    def test_errors(self):
+        k = 'class K = 10 {\n var fld = 0;\n function f(p) { %s }\n}\n'
+        self.fails('const A = 1;\nconst A = 2;\n', 't.kc:4: constant A defined twice (first at t.kc:3)')
+        self.fails('const gv = 1;\n', 'name of a global variable')
+        self.fails('const fld = 1;\n' + k % 'return 0;', 'name of the field K.fld')
+        self.fails('const L = 1;\n' + k % 'var L = 2; return L;', 'local variable L has the name of the constant')
+        self.fails('const p = 1;\n' + k % 'return p;', 'parameter p has the name of the constant')
+        self.fails('const A = 1;\n' + k % 'A = 2; return 0;', 'assignment to the constant A')
+        self.fails('const A = gv + 1;\n', 'not a constant expression: gv is a global variable')
+        self.fails('const A = B;\nconst B = A;\n', 'cyclic constant definition')
+        self.fails('enum E { X }\n' + k % 'return E.Y;', 'enum E has no member Y')
+
+
 class SaveCompat(Base):
     def test_base_insert_and_added_local(self):
         # Describe waits (TI_Delay), so its calls are savegame return sites and its frame must not change

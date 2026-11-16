@@ -21,7 +21,8 @@ from . import kcsplit
 
 FIRST_FREE_ID = 9500
 KEYWORDS = {'var', 'function', 'class', 'if', 'else', 'while', 'for', 'do', 'switch', 'case', 'default', 'return',
-            'break', 'continue', 'fork', 'new', 'delete', 'this', 'native', 'frame', 'asm', 'dense', 'sparse'}
+            'break', 'continue', 'fork', 'new', 'delete', 'this', 'native', 'frame', 'asm', 'dense', 'sparse',
+            'const', 'enum'}
 
 
 class AddError(Exception):

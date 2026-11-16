@@ -129,6 +129,9 @@ class Unit:
         self.syms.add(self.globals)
         self.class_parent_names = {}
         self.funcs = []
+        self.consts = []            # [kcconst.ConstDef] in source order (enum members included)
+        self.enums = []             # [kcconst.EnumDef]
+        self.const_fields = []      # [(Field, class id, value tokens)]: initialisers that are constant expressions
 
 
 class Parser:
@@ -208,6 +211,10 @@ class Parser:
                 u.items.append(('func', f))
             elif self.at('class'):
                 u.items.append(('class', self.klass()))
+            elif self.at('const'):
+                self.const_decl(0)
+            elif self.at('enum'):
+                self.enum_decl(0)
             else:
                 raise self.err('declaration expected, found %r' % t.text)
         if not resolve:
@@ -220,17 +227,88 @@ class Parser:
                 if pname not in u.syms.by_name:
                     raise ParseError('%s: unknown parent class %s' % (self.loc(line), pname))
                 k.parent = u.syms.by_name[pname]
+        self.resolve_consts(u)
         return u
+
+    def resolve_consts(self, u):
+        """Evaluate the constants (any order: declarations may come later or in another part)."""
+        from . import kcconst
+        try:
+            kcconst.resolve(u.syms, u.consts, u.enums, lambda t: self.loc(t.line), u.const_fields)
+        except kcconst.ConstError as x:
+            e = ParseError(str(x))
+            if x.tok is not None:
+                e.tok, e.line, e.col = x.tok, x.tok.line, x.tok.col
+            raise e
+
+    # ---- constants -------------------------------------------------------------------------------------------
+    def value_tokens(self, stops, what):
+        """The tokens of a constant expression up to one of `stops` (an operator outside parentheses)."""
+        out = []
+        depth = 0
+        while True:
+            t = self.peek()
+            if t.kind == 'eof' or (t.kind == 'op' and t.text in ('{', '}', ';') and t.text not in stops):
+                raise self.err('%s: expected %s' % (what, ' or '.join(repr(s) for s in stops)), t)
+            if depth == 0 and t.kind == 'op' and t.text in stops:
+                break
+            if t.kind == 'op' and t.text == '(':
+                depth += 1
+            elif t.kind == 'op' and t.text == ')':
+                depth -= 1
+            out.append(self.next())
+        if not out:
+            raise self.err('%s: value expected' % what)
+        return out
+
+    def const_decl(self, cid):
+        """const NAME = <constant expression>;"""
+        from . import kcconst
+        self.expect('const')
+        t = self.peek()
+        name = self.ident()
+        self.expect('=')
+        d = kcconst.ConstDef(name, t, cid, self.value_tokens((';',), 'constant %s' % name))
+        d.loc = self.loc(t.line)
+        self.expect(';')
+        self.u.consts.append(d)
+        return d
+
+    def enum_decl(self, cid):
+        """enum Name { A = <constant expression>, B, ... } - B is A + 1; the first one without a value is 0."""
+        from . import kcconst
+        self.expect('enum')
+        t = self.peek()
+        e = kcconst.EnumDef(self.ident(), t, cid)
+        e.loc = self.loc(t.line)
+        self.expect('{')
+        prev = None
+        while not self.accept('}'):
+            mt = self.peek()
+            name = self.ident()
+            toks = self.value_tokens((',', '}'), 'enum member %s' % name) if self.accept('=') else None
+            d = kcconst.ConstDef(name, mt, cid, toks, e.name, prev)
+            d.loc = self.loc(mt.line)
+            e.members.append(d)
+            self.u.consts.append(d)
+            prev = d
+            if not self.accept(','):
+                self.expect('}')
+                break
+        self.accept(';')
+        self.u.enums.append(e)
+        return e
 
     def stamp(self):
         if self.accept('@'):
             return self.number()
         return None
 
-    def field(self):
+    def field(self, cid=0):
         self.expect('var')
         name = self.ident()
         typ, val = 0, 0
+        deferred = None
         if self.accept('='):
             if self.at('{'):
                 self.next()
@@ -246,15 +324,22 @@ class Parser:
                 self.expect(',')
                 val = self.number()
                 self.expect(')')
-            elif self.peek().kind == 'str':
+            elif self.peek().kind == 'str' and (self.at(';', 1) or self.at('@', 1)):
                 typ, val = 2, unescape(self.next().text)
-            else:
+            elif (self.peek().kind == 'num' and (self.at(';', 1) or self.at('@', 1))) or \
+                    (self.at('-') and self.peek(1).kind == 'num' and (self.at(';', 2) or self.at('@', 2))):
                 typ, val = 1, self.number()
                 if isinstance(val, float):
                     raise self.err('float field initialiser')
+            else:       # a constant expression: evaluated with the project's constants (resolve_consts)
+                deferred = self.value_tokens(('@', ';'), 'initialiser of %s' % name)
+                typ = 1
         st = self.stamp()
         self.expect(';')
-        return Field(name, typ, val, st)
+        f = Field(name, typ, val, st)
+        if deferred is not None:
+            self.u.const_fields.append((f, cid, deferred))
+        return f
 
     def klass(self):
         line = self.expect('class').line
@@ -280,10 +365,14 @@ class Parser:
         self.expect('{')
         while not self.accept('}'):
             if self.at('var'):
-                k.fields.append(self.unique(k.fields, self.field(), 'field'))
+                k.fields.append(self.unique(k.fields, self.field(cid), 'field'))
             elif self.at('function'):
                 f = self.func_header(cid)
                 k.methods.append(self.unique(k.methods, Method(f.name, len(f.params), f.frame, f), 'function'))
+            elif self.at('const'):
+                self.const_decl(cid)
+            elif self.at('enum'):
+                self.enum_decl(cid)
             else:
                 raise self.err('field or function expected in class %s' % name)
         return k
@@ -339,9 +428,37 @@ class BodyParser(Parser):
         self.loc = loc or self.default_loc
         self.cls = decl.cls
         self.p = decl.start
+        from . import kcconst
+        self.ctab = syms.consts if syms.consts is not None else kcconst.Table(syms)
+        self.const_nodes = {}       # id(node) -> (constant name, node): literals that came from a constant
+
+    # ---- constants -------------------------------------------------------------------------------------------
+    def const_node(self, d):
+        """A use of constant d: the literal its value is (the code is the typed number's / string's)."""
+        e = A.Str(d.value) if isinstance(d.value, str) else A.Int(d.value)
+        self.const_nodes[id(e)] = (d.name, e)
+        return e
+
+    def is_local(self, w):
+        return any(w in sc for sc in self.scopes)
+
+    def no_const_clash(self, name, what, t):
+        d = self.ctab.find(self.cls, name)
+        if d is not None:
+            raise self.err('%s %s has the name of the constant defined at %s' % (what, name, d.loc), t)
+        e = self.ctab.find_enum(self.cls, name)
+        if e is not None:
+            raise self.err('%s %s has the name of the enum defined at %s' % (what, name, e.loc), t)
+
+    def not_const(self, e, op):
+        c = self.const_nodes.get(id(e))
+        if c is not None and c[1] is e:
+            raise self.err(('assignment to the constant %s' if op == '=' else op + ' on the constant %s') % c[0])
 
     def function(self):
         d = self.decl
+        for n in d.params:
+            self.no_const_clash(n, 'parameter', Tok('id', n, d.line))
         self.params = [A.Var('param', n, i + 1) for i, n in enumerate(d.params)]
         self.extra = {}
         self.scopes = [{p.name: p for p in self.params}]
@@ -376,7 +493,9 @@ class BodyParser(Parser):
             w = t.text
             if w == 'var':
                 self.next()
+                nt = self.peek()
                 name = self.ident()
+                self.no_const_clash(name, 'local variable', nt)
                 init = None
                 if self.accept('='):
                     init = self.expr()
@@ -510,6 +629,7 @@ class BodyParser(Parser):
         e = self.cond()
         if self.at('=') or (self.peek().kind == 'op' and self.peek().text in self.COMPOUND):
             op = self.next().text
+            self.not_const(e, op)
             v = self.expr()
             if op != '=':
                 if type(e) not in (A.Ref, A.Mem, A.Glob):
@@ -528,6 +648,7 @@ class BodyParser(Parser):
 
     def incdec(self, op, e, post):
         """++x is x = x + 1 (the new value); x++ is (x = x + 1) - 1 (the old value), as the compiler emitted."""
+        self.not_const(e, op)
         if type(e) not in (A.Ref, A.Mem, A.Glob):
             raise self.err('%s needs a variable, a field or a global' % op)
         a = A.Assign(e, A.Bin(op[0], e, A.Int(1)))
@@ -572,6 +693,17 @@ class BodyParser(Parser):
             if t.text == '-' and self.peek().kind == 'num':
                 v = parse_number(self.next().text)
                 return self.postfix(A.Dbl(struct.pack('>d', -v)) if isinstance(v, float) else A.Int(wrap32(-v)))
+            if t.text == '-' and self.peek().kind == 'id' and self.peek().text not in ('new', 'delete'):
+                e = self.primary()
+                c = self.const_nodes.get(id(e))
+                if c is not None and c[1] is e and type(e) is A.Int:
+                    # -NAME is the negative literal, as -5 is (not a negation of 5)
+                    e = A.Int(wrap32(-e.v))
+                    self.const_nodes[id(e)] = (c[0], e)
+                    return self.postfix(e)
+                if type(e) is ClassConst and not self.at('.'):
+                    return self.postfix(A.Int(wrap32(-e.id)))        # -Ship is the literal -2004 as well
+                return A.Un('-', self.postfix(e))
             return A.Un(t.text, self.unary())
         if t.kind == 'id' and t.text == 'new':
             self.next()
@@ -690,6 +822,18 @@ class BodyParser(Parser):
             if self.syms.global_function(w):
                 return A.Call('g', (0, w), args)
             return A.Native(w, args)
+        if self.at('.') and self.peek(1).kind == 'id' and not (self.at('(', 2) or self.at('::', 2)) \
+                and not self.is_local(w):
+            from .kcconst import ConstDef
+            mt = self.peek(1)
+            d = self.ctab.qualified(self.cls, w, mt.text)
+            if isinstance(d, ConstDef):
+                self.p += 2
+                return self.const_node(d)
+            if d == 'noenum':
+                raise self.err('enum %s has no member %s' % (w, mt.text), mt)
+            if d == 'noclass':
+                raise self.err('class %s has no constant %s (a method call needs its arguments)' % (w, mt.text), mt)
         return self.name_value(w, t)
 
     def builtin(self, w):
@@ -756,6 +900,11 @@ class BodyParser(Parser):
         k = self.syms.glob_by_name(w)
         if k is not None:
             return A.Glob(k)
+        d = self.ctab.find(self.cls, w)
+        if d is not None:
+            return self.const_node(d)
+        if self.ctab.find_enum(self.cls, w) is not None:
+            raise self.err('enum %s is not a value: name a member (%s.<member> or the member alone)' % (w, w), t)
         if w in self.syms.by_name or re.fullmatch(r'C\d+', w):
             return ClassConst(self.class_id(w))
         raise self.err('unknown name %s' % w, t)

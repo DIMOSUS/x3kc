@@ -73,6 +73,49 @@ Calls by name (`callo`, `calln`) pad missing arguments with zeros.
   20 × the number of cases, else 0x79. `: dense`, `: sparse` and `: dense(lo, hi)` select the table explicitly.
   Duplicate cases are an error.
 
+**Constants** (compiler only, `x3kc/kcconst.py`; the decompiler never writes them). Nothing of a constant reaches
+the object: a use compiles to exactly the code of the number or string typed in its place.
+
+```
+const MAX_SECTORS = 24 * 22;             // top level: project-global, every part sees it, in any order
+const NONE = -1;
+const NAME = "player";                   // a string: a literal alone, no operators
+enum MainType { MT_SECTOR = 1, MT_SHIP = 7, MT_LASER, MT_SHIELD }   // 1, 7, 8, 9; first without value: 0
+class Ship = 2004 : ScriptObject {
+    const LASER_KEY_BASE = 1;            // class-scoped: bare in Ship and its subclasses, Ship.LASER_KEY_BASE elsewhere
+    enum Reason { R_KILLED, R_DOCKED }   // members are class constants too: R_DOCKED, Ship.R_DOCKED, Reason.R_DOCKED
+    var m5 = LASER_KEY_BASE << 2;        // field initialiser: any constant expression
+    ...
+}
+```
+
+- **Value:** integer literals (decimal, hex), strings (alone), other constants (bare or `Q.NAME`), class names (a
+  class name is its id: `Ship` is 2004, `C9002` is 9002), unary `- ~ +`, `* / % + - << >> & ^ |` with the
+  expression precedence above, parentheses. 32-bit cells: results wrap; `/` and `%` round towards zero (the VM's
+  rule), division by zero and shifts outside 0..31 are errors. A constant may use one declared later or in another
+  part; a cycle is an error.
+- **Scope:** top level = global. In a class body = that class: the bare name in its methods and those of its
+  subclasses, `Class.NAME` from anywhere (also `Sub.NAME` for an inherited one). Enum members are constants of the
+  enum's scope, used bare (`MT_SHIP`, like a C enum or `#define`) or qualified by the enum name (`MainType.MT_SHIP`)
+  where the enum name is visible; the enum name itself is not a value. `Q.NAME` without `(` is a constant,
+  `Q.NAME(...)` stays the static call it always was.
+- **Use:** wherever an expression goes, including `case` labels, table / array literals and suspendable methods.
+  `-NAME` is the negative literal (as `-5` is, not `-(5)`); `-Ship` likewise. `~NAME`, `NAME + 1` are the same
+  expressions as `~5`, `5 + 1`.
+- **Errors** (`part.kc:line: ...`): a name defined twice in one scope; a constant or enum named like a class, global
+  variable, global function, or a field or method visible where it is (for a global constant: of any class; for a
+  class constant: of its class chain or a subclass); a global and a class constant sharing a name, or two classes of
+  one chain doing so (unrelated classes may reuse a name); a
+  local or parameter named like a visible constant; assignment, `op=`, `++`/`--` on a constant; a value that is not
+  a constant expression; a cycle.
+- **Not usable** (a literal number is still required): class ids `class X = N`, stamps `@N`, `frame N`, `__m(N)` /
+  `__g(N)` / `__init(t, v)`, `switch : dense(lo, hi)`, asm operands, directives; a `case` label must still be a
+  single literal or constant (`case A + 1:` is refused, as `case 5 + 1:` is).
+- **Cache:** the constants' scopes, names and values are part of the global signature of the compile cache
+  (`kccache.signature`): a changed value re-parses every body, whichever part it is in.
+- `split` keeps top-level constants and enums in `@header.kc` (or a `@globals.<NAME>.kc` part after a class or
+  function, like a late `var`).
+
 **Fallback form** — `function F(arg1) frame N asm { … }` with labels `L0012:` and the mnemonics of `kcisa.py`.
 `x3kc decompile --asm-all` writes every method this way. It was never needed for the stock objects.
 

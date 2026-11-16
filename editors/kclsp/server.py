@@ -398,6 +398,9 @@ class Server:
                 return {'contents': {'kind': 'markdown', 'value': text_hover(part.path, *tr)}}
             i = part.tok_at(pos['line'] + 1, pos['character'])
             if i is not None:
+                ch = pr.const_hover(part, i)
+                if ch:
+                    return {'contents': {'kind': 'markdown', 'value': ch}}
                 tgt = part.refs.get(i)
                 name = part.toks[i].text
                 if (tgt and tgt[0] == 'native') or (name in pr.known and part.toks[i + 1].text == '('):

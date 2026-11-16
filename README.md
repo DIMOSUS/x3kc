@@ -189,9 +189,16 @@ Build it with `x3kc compile src/x3story.kc -o x3story.obj --base objs/x3story.ob
 `addon/05.cat`; the stock savegames keep loading. Why every line is there — scenes, bodies, writable textures,
 pixel coordinates, what does not work — is in [docs/screen.md](docs/screen.md).
 
+## Constants
+Hand-written sources can name their numbers: `const MAX_SECTORS = 24 * 22;` and `enum MainType { MT_SHIP = 7,
+MT_LASER }` at the top level (project-global) or in a class body (`Ship.NAME` from outside, bare inside the class
+and its subclasses). A use compiles to exactly the code of the typed literal; the object does not change. Rules,
+errors and where a literal is still required: [docs/kc.md](docs/kc.md) "Constants". The decompiler never writes
+constants.
+
 ## Documentation
-- [docs/kc.md](docs/kc.md) — the KC language, how Egosoft's compiler generated code, the `STOR` object format,
-  mods and savegames, annotations.
+- [docs/kc.md](docs/kc.md) — the KC language (constants and enums included), how Egosoft's compiler generated
+  code, the `STOR` object format, mods and savegames, annotations.
 - [docs/msci_manual.md](docs/msci_manual.md) — **writing MSCI scripts**: files and loading, the text form, the
   language as the interpreter runs it (expressions, calls, waiting, interrupts, errors), texts, hotkeys and
   commands, pitfalls, testing without the game, a checklist, a worked example

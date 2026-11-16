@@ -53,9 +53,9 @@ class DeclParser(kcparse.Parser):
         self.decl_end = {}          # id(obj) -> last token (closing brace or ';')
         self.param_toks = {}        # id(FuncDecl) -> [param name tokens]
 
-    def field(self):
+    def field(self, cid=0):
         t = self.toks[self.p + 1]
-        f = super().field()
+        f = super().field(cid)
         self.decl_tok[id(f)] = t
         self.decl_end[id(f)] = self.toks[self.p - 1]
         return f
@@ -91,6 +91,11 @@ class RefParser(kcparse.BodyParser):
     def __init__(self, toks, syms, decl, name, refs, var_tok, calls):
         super().__init__(toks, syms, decl, name)
         self.refs, self.var_tok, self.calls = refs, var_tok, calls
+
+    def const_node(self, d):
+        # called right after the constant's name token (bare NAME, or the member of Q.NAME)
+        self.refs[self.p - 1] = ('const', d)
+        return super().const_node(d)
 
     def stmt(self):
         t = self.peek()
@@ -241,6 +246,9 @@ def signature(u):
             out.append(('c', x.id, x.name, u.class_parent_names.get(x.id, (None,))[0],
                         tuple(f.name for f in x.fields), tuple((m.name, m.nparams) for m in x.methods)))
     out.append(('g', tuple(f.name for f in u.globals.fields), tuple((m.name, m.nparams) for m in u.globals.methods)))
+    # constants: their values reach every body that uses them
+    out.append(('k', tuple((d.cid, d.name, d.enum, tuple(t.text for t in d.toks or ())) for d in u.consts),
+                tuple((f.name, cid, tuple(t.text for t in toks)) for f, cid, toks in u.const_fields)))
     return tuple(out)
 
 
@@ -259,6 +267,7 @@ class Project:
         self.gen = 0                # symbols generation
         self.syms = None
         self.owner = {}             # class id / ('f', name) / ('g', name) -> (Part, object)
+        self.const_owner = {}       # id(kcconst.ConstDef / EnumDef) -> Part
         self.merge_diags = {}       # part key -> [Diag]
         self.known = kcc.known_natives() or set()
         self.natives_doc = native_docs()
@@ -337,6 +346,35 @@ class Project:
                     t = p.dp.decl_tok.get(id(k))
                     md.setdefault(p.key, []).append(Diag(line, 0, 200, 'unknown parent class %s' % pname)
                                                     if t is None else tok_diag(t, 'unknown parent class %s' % pname))
+        # constants of every part, evaluated together (kcconst.resolve, as compile does)
+        from x3kc import kcconst
+        consts, enums, cfields, tok_part = [], [], [], {}
+        self.const_owner = {}       # id(ConstDef / EnumDef) -> Part
+        for p in self.parts:
+            u = p.unit
+            if u is None:
+                continue
+            consts += u.consts
+            enums += u.enums
+            cfields += u.const_fields
+            for d in u.consts:
+                self.const_owner[id(d)] = p
+            for e in u.enums:
+                self.const_owner[id(e)] = p
+            for t in p.toks:
+                tok_part[id(t)] = p
+        for d in consts:
+            d.state, d.value = 0, None
+        try:
+            kcconst.resolve(S, consts, enums, lambda t: '%s:%d' % (tok_part[id(t)].name() if id(t) in tok_part
+                                                                    else '?', t.line), cfields)
+        except kcconst.ConstError as x:
+            p = tok_part.get(id(x.tok)) if x.tok is not None else None
+            if p is not None:
+                md.setdefault(p.key, []).append(tok_diag(x.tok, strip_loc(str(x))))
+            for d in consts:            # the rest still resolve to something: the bodies get checked
+                if d.state != 2:
+                    d.state, d.value = 2, 0
         self.syms, self.owner, self.merge_diags = S, owner, md
 
     # -- pass 2 --
@@ -425,6 +463,10 @@ class Project:
         if i is None:
             return []
         t = part.toks[i]
+        d = self.const_at(part, i)
+        if d is not None:
+            p = self.const_owner.get(id(d))
+            return [(p.path, d.tok.line, d.tok.col, len(d.tok.text))] if p else []
         tgt = part.refs.get(i)
         if tgt is None:
             if part.dp and any(dt is t for dt in part.dp.decl_tok.values()):
@@ -438,6 +480,38 @@ class Project:
             if tgt is None:
                 return []
         return self.locate(part, tgt)
+
+    def const_at(self, part, i):
+        """The constant (kcconst.ConstDef) the token i of a part names or declares, or None."""
+        tgt = part.refs.get(i)
+        if tgt and tgt[0] == 'const':
+            return tgt[1]
+        t = part.toks[i]
+        if t.kind != 'id' or part.unit is None:
+            return None
+        for d in part.unit.consts:
+            if d.tok is t:
+                return d
+        T = self.syms.consts if self.syms is not None else None
+        if T is not None and tgt is None:       # outside a body: a field initialiser
+            return T.find(0, t.text)
+        return None
+
+    def const_hover(self, part, i):
+        d = self.const_at(part, i)
+        if d is None:
+            return None
+        v = d.value
+        if isinstance(v, int):
+            val = '%d' % v + (' (0x%X)' % (v & 0xFFFFFFFF) if not -10 < v < 10 else '')
+        else:
+            val = '"%s"' % v
+        where = []
+        if d.enum:
+            where.append('enum %s' % d.enum)
+        if d.cid:
+            where.append('class %s' % self.syms.class_name(d.cid))
+        return '```kc\nconst %s = %s\n```\n%s' % (d.name, val, ', '.join(where) or 'global')
 
     def decl_loc(self, part, obj):
         t = part.dp.decl_tok.get(id(obj)) if part.dp else None
