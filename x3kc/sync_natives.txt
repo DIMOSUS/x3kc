@@ -322,6 +322,7 @@ SA_GetBody
 SA_GetBulletTypeAmmunition
 SA_GetBulletTypeEnergyConsumption
 SA_GetBulletTypeFlyFX
+SA_GetBulletTypeHalfZ
 SA_GetBulletTypeHullDamage
 SA_GetBulletTypeOfLaserType
 SA_GetBulletTypeSectorHullDamage
