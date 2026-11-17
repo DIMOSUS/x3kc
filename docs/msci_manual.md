@@ -455,8 +455,17 @@ my.xms:12:1: warning: Var/Ship parameter of `get warearray for` gets $s, which h
   `Var/Station/Carrier`), `Var/Sector`, `Var/Array` (an FL table too), `Var/Ware` (a number too), `Var/Race`,
   `Var/Class`, and `RefObj` (`$x ->`) against numbers, wares, races and classes. `Value`, `Var`, `Var/String`,
   `Var/Boolean` and the other types are not checked.
-- On the 697 AP stock scripts this gives 14 warnings, all mismatches by the declared types (a `Var/Sector`
-  argument passed to `is in same sector as`, a race to `-> exists`, `START $x -> call script` on a number).
+- Some parameters take more than their type says (`PARAM_ACCEPT` in `x3kc/msci_sugar.py`, from the command
+  semantics and the stock scripts that rely on it), so these do not warn: a class as the object of `is of class`, a
+  race as the object of `get notoriety title to race` and `get notority percentage to race`; on FL also a string as
+  `type=` of `convert gate`, numbers in `add large number arrays`, arrays as `filterclass=` and `racemask=` of
+  `create input` (the user input forms) and a table of races as `owner=` of `find a random sector`.
+- On the 697 AP stock scripts this gives 13 warnings, on the 1 020 FL stock scripts 18 (each of them, built from
+  its `dis` text, gives the same XML as `msci new`). All are mismatches by the declared types: a `Var/Sector`
+  argument passed to `is in same sector as` or a station to `find ship: sector=`, a race to `-> exists`,
+  `-> get owner race` and `is … a enemy`, `START $x -> call script` on a number (AP), a station as `race=` of
+  `add notoriety` (FL `!agent.cmd.stealstation`), `-> exists` on the number `is in home sector` or `fire missile`
+  gives (FL).
   `--no-types` turns them off.
 
 ### Editor support
@@ -469,7 +478,7 @@ completion and go-to-definition are those of `.msci`; the grammar does not colou
   `if` / `while` (use `… end`). Function locals are not reset between calls.
 - Recursion compiles but shares variables (warning). `foreach` reads the size once.
 - Type inference is flow-insensitive (one type per variable for the whole script) and per script: the result of
-  `call script` is unknown. Only checked on AP; FL uses its own semantics file for its new commands.
+  `call script` is unknown. FL uses its own semantics file for its new and changed commands, AP's for the rest.
 
 ## Language
 

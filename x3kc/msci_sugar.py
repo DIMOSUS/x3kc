@@ -847,6 +847,20 @@ ACCEPT = {
     # an object: FL also calls table and string commands on `$x ->`; only plainly non-object values warn
     'RefObj': {'ship', 'station', 'sector', 'array', 'table', 'string'},
 }
+# (command id, parameter index) -> (more kinds the parameter takes than its type says, addons); from the command
+# semantics and the stock scripts that rely on it
+PARAM_ACCEPT = {
+    (705, 0): ({'class'}, 'ap fl'),         # $class -> is of class: a class operand is tested with SE_IsClass
+    (1472, 0): ({'race'}, 'ap fl'),         # $race -> get notoriety title to race: the RefObj is a race
+    (1473, 0): ({'race'}, 'ap fl'),         # $race -> get notority percentage to race
+    (2593, 2): ({'string'}, 'fl'),          # convert gate: type= takes a number or a string ('terran')
+    (2231, 1): ({'number'}, 'fl'), (2231, 2): ({'number'}, 'fl'), (2231, 3): ({'number'}, 'fl'),
+    (2231, 4): ({'number'}, 'fl'), (2231, 5): ({'number'}, 'fl'),  # add large number arrays: ints are split first
+    (1647, 6): ({'array'}, 'fl'), (1647, 7): ({'array'}, 'fl'),     # create input: filterclass= and racemask= take
+    (1648, 6): ({'array'}, 'fl'), (1648, 7): ({'array'}, 'fl'),     # arrays of classes and races
+    (2959, 6): ({'array'}, 'fl'), (2959, 7): ({'array'}, 'fl'),
+    (810, 3): ({'table'}, 'fl'),            # find a random sector: owner= a table of races (!lib.activate.xenonhub)
+}
 CONST_KIND = {'TRUE': 'number', 'FALSE': 'number', 'PLAYERSHIP': 'ship', 'SECTOR': 'sector', 'MAX': 'number'}
 CMP_OPS = {0, 1, 2, 3, 4, 5, 9, 10, 65556}
 NUM_OPS = {6, 7, 8, 12, 13, 14, 15, 65554, 65555}
@@ -1007,13 +1021,16 @@ def typecheck(A, names, code, arg_types, addon, where):
     for idx, ops in enumerate(decoded):
         if not ops:
             continue
-        for p, kind, v in ops:
+        for i, (p, kind, v) in enumerate(ops):
             if kind != 'pair':
                 continue
             pt = T.t(2000, p, '')
             acc = ACCEPT.get(pt)
             if acc is None:
                 continue
+            more = PARAM_ACCEPT.get((code[idx][0], i))
+            if more and addon in more[1].split():
+                acc = acc | more[0]
             k = pair_kind(v, kinds)
             if k is None or k == 'null' or k in acc:
                 continue

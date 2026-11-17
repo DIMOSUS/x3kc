@@ -370,8 +370,16 @@ my.xms:12:1: warning: Var/Ship parameter of `get warearray for` gets $s, which h
   `Var/Station/Carrier`), `Var/Sector`, `Var/Array` (и таблица FL), `Var/Ware` (и число), `Var/Race`, `Var/Class`, а
   также `RefObj` (`$x ->`) против чисел, товаров, рас и классов. `Value`, `Var`, `Var/String`, `Var/Boolean` и прочие
   не проверяются.
-- На 697 скриптах AP это 14 предупреждений, все — расхождения с объявленными типами (аргумент `Var/Sector` в
-  `is in same sector as`, раса в `-> exists`, `START $x -> call script` на числе). `--no-types` их отключает.
+- Некоторые параметры принимают больше, чем говорит их тип (`PARAM_ACCEPT` в `x3kc/msci_sugar.py`, по семантике
+  команд и стоковым скриптам, которые на это опираются), и здесь предупреждений нет: класс как объект `is of class`,
+  раса как объект `get notoriety title to race` и `get notority percentage to race`; в FL ещё строка в `type=`
+  у `convert gate`, числа в `add large number arrays`, массивы в `filterclass=` и `racemask=` у `create input`
+  (формы ввода) и таблица рас в `owner=` у `find a random sector`.
+- На 697 стоковых скриптах AP это 13 предупреждений, на 1 020 скриптах FL — 18 (каждый из них, собранный из текста
+  `dis`, даёт тот же XML, что `msci new`). Все — расхождения с объявленными типами: аргумент `Var/Sector` в
+  `is in same sector as` или станция в `find ship: sector=`, раса в `-> exists`, `-> get owner race` и `is … a enemy`,
+  `START $x -> call script` на числе (AP), станция в `race=` у `add notoriety` (FL `!agent.cmd.stealstation`),
+  `-> exists` на числе, которое дают `is in home sector` и `fire missile` (FL). `--no-types` их отключает.
 
 ### Поддержка в редакторе
 Языковой сервер (`editors/kclsp`) обрабатывает `.xms` как `.msci`: сообщения препроцессора, опускания, сборщика и
@@ -383,7 +391,8 @@ my.xms:12:1: warning: Var/Ship parameter of `get warearray for` gets $s, which h
   `{ }` для `if` / `while` (пишите `… end`). Локальные переменные функций между вызовами не сбрасываются.
 - Рекурсия собирается, но переменные общие (предупреждение). `foreach` читает размер один раз.
 - Вывод типов не учитывает порядок исполнения (один тип на переменную на весь скрипт) и работает в пределах
-  скрипта: результат `call script` неизвестен. Проверено только на AP; для новых команд FL берётся свой файл семантики.
+  скрипта: результат `call script` неизвестен. Для новых и изменённых команд FL берётся свой файл семантики, для
+  остальных — файл AP.
 
 ## Язык
 

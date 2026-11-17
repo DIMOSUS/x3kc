@@ -1,8 +1,9 @@
 """MSCI sugar (.xms, x3kc/msci_sugar.py): preprocessor, functions, subs, foreach, compound assignments, type warnings.
 
-The preprocessor and lowering tests need nothing. The build tests need an AP command database: X3KC_MSCI_DB
-(default: the x3_src work copy) with x3story.obj and scripts/ beside it (`x3kc msci-setup`); they run the built
-scripts through the game's own interpreter in the emulator and spot-check that stock text builds identically.
+The preprocessor and lowering tests need nothing. The build tests need a command database with x3story.obj and
+scripts/ beside it (`x3kc msci-setup`): X3KC_MSCI_DB for Albion Prelude, X3KC_MSCI_DB_FL for Farnham's Legacy
+(defaults: the x3_src work copies); they run the built scripts through the game's own interpreter in the emulator
+and spot-check that stock text builds identically.
 """
 import contextlib
 import io
@@ -16,6 +17,7 @@ import unittest
 from x3kc import msci, msci_asm, msci_sugar as S
 
 MSCI_DB = os.environ.get('X3KC_MSCI_DB', 'D:/GAMES/x3_src/build/tmp/queue/msci/ap/msci_db.json')
+MSCI_DB_FL = os.environ.get('X3KC_MSCI_DB_FL', 'D:/GAMES/x3_src/build/msci/fl/msci_db.json')
 HEAD = '// lib.sugar.test  (sugar test)\n// version: 1\n'
 
 
@@ -182,14 +184,15 @@ class Lowering(Files, unittest.TestCase):
         self.assertEqual(lines, src.rstrip('\n').split('\n'))
 
 
-@unittest.skipUnless(os.path.isfile(MSCI_DB), 'set X3KC_MSCI_DB to an AP msci_db.json')
-class Build(Files, unittest.TestCase):
+class Build(Files):
     @classmethod
     def setUpClass(cls):
-        with open(MSCI_DB, encoding='utf-8') as f:
+        if not os.path.isfile(cls.db_path):
+            raise unittest.SkipTest('set %s to an %s msci_db.json' % (cls.env, cls.addon.upper()))
+        with open(cls.db_path, encoding='utf-8') as f:
             cls.db = json.load(f)
         cls.A = msci_asm.Assembler(cls.db)
-        cls.work = os.path.dirname(MSCI_DB)
+        cls.work = os.path.dirname(cls.db_path)
 
     def build(self, text, **kw):
         return S.build(self.write('lib.sugar.test.xms', HEAD + text), self.db, self.A, **kw)
@@ -198,9 +201,10 @@ class Build(Files, unittest.TestCase):
         from x3kc import kcmsci, kcobj, kcvm
         r = self.build(text)
         self.assertEqual(r.errors, [], r.text)
-        if not hasattr(Build, 'vm'):
-            Build.vm = kcvm.VM(kcobj.load(os.path.join(self.work, 'x3story.obj')))
-        return kcmsci.Msci(Build.vm, self.db).run(r.code)
+        cls = type(self)
+        if 'vm' not in cls.__dict__:
+            cls.vm = kcvm.VM(kcobj.load(os.path.join(self.work, 'x3story.obj')))
+        return kcmsci.Msci(cls.vm, self.db).run(r.code)
 
     def test_functions_run(self):
         res = self.run_script('$r = max(3, 8)\n$q = max(9, 2)\n$s = sum3(1, 2, 3)\n$t = $r * 100 + $q * 10 + $s\n'
@@ -251,6 +255,19 @@ class Build(Files, unittest.TestCase):
         self.assertEqual(self.build('$s = [PLAYERSHIP] -> get sector\n$w = get warearray for $s\n',
                                     types=False).diags, [])
 
+    def test_parameters_that_take_more_than_their_type(self):
+        src = '$c = Fighter\n$r = $c -> is of class Moveable Ship\n'
+        if self.addon == 'fl':
+            src += ("$t = 'terran'\n$g = convert gate: gate=null, type=$t, allow oos=[FALSE], build ship=null, "
+                    "disabled cutscene=[FALSE]\n$a = create new array, arguments=Dock, Shipyard, null, null, null\n"
+                    "$i = create input: id='s', user input=Var/Station, refobj=[PLAYERSHIP], description=null, "
+                    "without sector=[FALSE], filterclass=$a, racemask=$a, flags=null, default=null\n"
+                    "$n = add large number arrays: $a, 5, null, null, null\n")
+        src += '$s = [PLAYERSHIP] -> get sector\n$w = get warearray for $s\n'      # still warns
+        r = self.build(src)
+        self.assertEqual(r.errors, [], r.diags)
+        self.assertEqual([d.line for d in r.diags if d.severity == 'warning'], [src.count('\n') + 2], r.diags)
+
     def test_stock_scripts_build_identically(self):
         scripts = os.path.join(self.work, 'scripts')
         names = ['!config.add.wares.few.one', '!fight.attack.object.bomber', '!lib.msg.found.enemies',
@@ -279,7 +296,7 @@ class Build(Files, unittest.TestCase):
         from kclsp import msci_ls
         from unittest import mock
         doc = msci_ls.Doc(self.write('lib.sugar.test.xms', ''))
-        with mock.patch.dict(os.environ, {'KCLSP_MSCI_DB': MSCI_DB}):
+        with mock.patch.dict(os.environ, {'KCLSP_MSCI_DB': self.db_path}):
             doc.set_text(HEAD + '$s = [PLAYERSHIP] -> get sector\n$w = get warearray for $s\nforeach $v in $a {\n')
             ds = [(d.line, d.severity, d.msg) for d in msci_ls.diagnostics(doc)]
             self.assertEqual([(l, s) for l, s, _ in ds], [(5, 1)], ds)     # a lowering error stops the build
@@ -292,8 +309,8 @@ class Build(Files, unittest.TestCase):
         src = self.write('lib.sugar.test.xms', HEAD + '$x = 1\n$x += 2\nreturn $x\n')
         out = os.path.join(self.dir, 'lib.sugar.test.xml')
         with contextlib.redirect_stderr(io.StringIO()):
-            self.assertEqual(cli(['msci', 'build', MSCI_DB, src, '-o', out]), 0)
-            self.assertEqual(cli(['msci', 'build', MSCI_DB, src, '--text', '-o', out + '.txt']), 0)
+            self.assertEqual(cli(['msci', 'build', self.db_path, src, '-o', out]), 0)
+            self.assertEqual(cli(['msci', 'build', self.db_path, src, '--text', '-o', out + '.txt']), 0)
         code, _ = msci.read_script(out)
         self.assertEqual(code[0], 'lib.sugar.test')
         with open(out + '.txt', encoding='utf-8') as f:
@@ -301,8 +318,16 @@ class Build(Files, unittest.TestCase):
         bad = self.write('bad.xms', HEAD + 'foreach $v in $a {\n')
         err = io.StringIO()
         with contextlib.redirect_stderr(err):
-            self.assertEqual(cli(['msci', 'build', MSCI_DB, bad, '-o', out]), 1)
+            self.assertEqual(cli(['msci', 'build', self.db_path, bad, '-o', out]), 1)
         self.assertRegex(err.getvalue(), r'bad\.xms:3:1: foreach without \}')
+
+
+class BuildAP(Build, unittest.TestCase):
+    db_path, env, addon = MSCI_DB, 'X3KC_MSCI_DB', 'ap'
+
+
+class BuildFL(Build, unittest.TestCase):
+    db_path, env, addon = MSCI_DB_FL, 'X3KC_MSCI_DB_FL', 'fl'
 
 
 if __name__ == '__main__':
