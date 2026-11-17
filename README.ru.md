@@ -23,6 +23,10 @@
   `#include`), функции с собственными переменными, блоки `sub`, `foreach`, `+=` / `++` и предупреждения о типах;
   всё опускается до обычного текста редактора, так что результат выполняет игра без правок, а текст игры
   собирается без изменений.
+- **Mission Director.** `md dis` превращает director-XML в компактный C-подобный текст (`.xmd`: `cue X {
+  condition {...} action { if (...) {...} else {...} } }`, `N = V;`, `$var`, `@param`), `md asm` собирает обратно;
+  байт в байт для каждого штатного файла (AP 88/88, FL 85/85), символов примерно в 1,5 раза меньше; неизвестные
+  элементы и атрибуты, скобки и ссылки на cue проверяются с file:line. [docs/ru/md.md](docs/ru/md.md).
 - **Проверено до игры.** Каждая сборка проходит верификатор байткода, а эмулятор скриптовой VM игры исполняет
   код самого объекта — нативы как в exe, MSCI-скрипты через интерпретатор игры, перенос сейвов на новую
   сборку, — так что мод можно проверить, не запуская игру.
@@ -88,6 +92,14 @@ x3kc msci new work/msci_db.json my.script.txt -o my.script.xml       новый 
 x3kc msci build work/msci_db.json my.script.xms -o my.script.xml     то же из MSCI sugar (--text: опущенный текст)
 ```
 Farnham's Legacy: `x3kc msci-setup "<папка TC>" work-fl --addon addon2` (и `extract … --addon addon2`).
+
+Mission Director:
+```
+x3kc md dis "addon/director/2.183 Dual Convoy.xml" -o dc.xmd     XML -> текст
+# правим dc.xmd
+x3kc md asm dc.xmd -o "2.183 Dual Convoy.xml"                    текст -> XML
+x3kc md check addon/director                                     круг для всей папки: N/N identical
+```
 
 `x3kc help` — список всех команд.
 
@@ -215,6 +227,8 @@ foreach идёт по снимку массива (ключей таблицы),
   ([docs/examples/msci_hello](docs/examples/msci_hello)); справочник команд [AP](docs/msci_commands_ap.md),
   [FL](docs/msci_commands_fl.md).
 - [docs/ru/msci.md](docs/ru/msci.md) — формат MSCI-скриптов, кодирование команд и условий, интерпретатор.
+- [docs/ru/md.md](docs/ru/md.md) — текстовая форма Mission Director (`md dis` / `md asm`): синтаксис, сахар,
+  пометки раскладки, проверки, подпись.
 - [docs/ru/checking.md](docs/ru/checking.md) — проверка мода без игры: верификатор, эмулятор, проверка сейвов,
   что покрывают тесты.
 - [docs/ru/screen.md](docs/ru/screen.md) — вывод на экран из KC: сцены, тела, рисуемые текстуры, пиксельные
@@ -238,6 +252,8 @@ foreach идёт по снимку массива (ключей таблицы),
 python -m unittest discover tests                      без файлов игры
 X3_GAME="C:/Games/X3 Terran Conflict" python -m unittest discover tests   плюс объекты игры: полный круг, эмулятор
 X3_FL_GAME="C:/Games/X3 Terran Conflict" ...           Farnham's Legacy (addon2) для тестов примера MSCI
+X3KC_MD_AP=<dir> X3KC_MD_FL=<dir> ...                  штатные папки director для круга md (по умолчанию
+                                                       game/ap/addon/director, game/fl/addon2/director из x3_src)
 ```
 
 ## Права

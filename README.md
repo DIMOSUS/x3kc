@@ -24,6 +24,10 @@ fields and functions, plus a decoder and assembler for ordinary **MSCI** scripts
   sugar](docs/msci_manual.md#msci-sugar-xms)): a preprocessor (`#define`, `#ifdef`, `#include`), functions with
   private variables, `sub` blocks, `foreach`, `+=` / `++`, and type warnings; it lowers to plain editor text, so the
   stock game runs the result and stock text builds unchanged.
+- **Mission Director.** `md dis` turns a director XML into a compact C-like text (`.xmd`: `cue X { condition {...}
+  action { if (...) {...} else {...} } }`, `N = V;`, `$var`, `@param`), `md asm` builds it back; byte-identical
+  for every stock file (AP 88/88, FL 85/85), about 1.5x fewer characters; unknown elements and attributes, braces
+  and cue references are checked with file:line. [docs/md.md](docs/md.md).
 - **Checked before the game.** Every build passes a bytecode verifier, and an emulator of the game's script VM
   runs the object's own code — natives as the exe implements them, MSCI scripts through the game's own
   interpreter, savegames moved to a new build — so a mod can be tested without starting the game.
@@ -93,6 +97,14 @@ x3kc msci new work/msci_db.json my.script.txt -o my.script.xml       a new scrip
 x3kc msci build work/msci_db.json my.script.xms -o my.script.xml     the same from MSCI sugar (--text: lowered text)
 ```
 Farnham's Legacy: `x3kc msci-setup "<TC dir>" work-fl --addon addon2` (and `extract … --addon addon2`).
+
+Mission Director:
+```
+x3kc md dis "addon/director/2.183 Dual Convoy.xml" -o dc.xmd     XML -> text
+# edit dc.xmd
+x3kc md asm dc.xmd -o "2.183 Dual Convoy.xml"                    text -> XML
+x3kc md check addon/director                                     round trip of a whole folder: N/N identical
+```
 
 `x3kc help` lists all commands.
 
@@ -226,6 +238,8 @@ in the hinted class chain, the argument count does not fit, or a value of anothe
   ([docs/examples/msci_hello](docs/examples/msci_hello)); command reference for [AP](docs/msci_commands_ap.md) and
   [FL](docs/msci_commands_fl.md).
 - [docs/msci.md](docs/msci.md) — MSCI script format, command and condition encoding, the interpreter.
+- [docs/md.md](docs/md.md) — the Mission Director text form (`md dis` / `md asm`): syntax, sugar, layout marks,
+  checks, the signature.
 - [docs/checking.md](docs/checking.md) — checking a mod without the game: the verifier, the emulator, savegame
   checks, what the tests cover.
 - [docs/screen.md](docs/screen.md) — drawing on screen from KC: scenes, bodies, writable textures, pixel
@@ -249,6 +263,8 @@ agents from the code and the game texts and have not been proof-read by a human.
 python -m unittest discover tests                      no game files needed
 X3_GAME="C:/Games/X3 Terran Conflict" python -m unittest discover tests   also the game's objects: round trips, emulator
 X3_FL_GAME="C:/Games/X3 Terran Conflict" ...           Farnham's Legacy (addon2) for the MSCI example tests
+X3KC_MD_AP=<dir> X3KC_MD_FL=<dir> ...                  stock director folders for the md round trip (default: the
+                                                       x3_src game/ap/addon/director, game/fl/addon2/director)
 ```
 
 ## Legal

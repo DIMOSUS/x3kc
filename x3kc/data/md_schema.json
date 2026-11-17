@@ -1,0 +1,5364 @@
+{
+"elements": {
+"abandon_ship": {
+"attrs": [
+"chance",
+"comment",
+"downgrade",
+"group",
+"leader",
+"name",
+"object",
+"task",
+"weight"
+],
+"pos": [
+"object"
+]
+},
+"access_point_activated": {
+"attrs": [
+"chance",
+"comment",
+"negate"
+],
+"pos": []
+},
+"access_point_found": {
+"attrs": [
+"chance",
+"comment",
+"negate"
+],
+"pos": []
+},
+"action": {
+"attrs": [
+"comment",
+"ref"
+],
+"pos": []
+},
+"activate_job": {
+"attrs": [
+"chance",
+"comment",
+"job",
+"task"
+],
+"pos": [
+"job"
+]
+},
+"add_blueprints_to_headquarters": {
+"attrs": [
+"chance",
+"comment",
+"task",
+"typename"
+],
+"pos": [
+"typename"
+]
+},
+"add_cargo": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": []
+},
+"add_equipment": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"add_help_page": {
+"attrs": [
+"name",
+"pageid",
+"textid",
+"titleid"
+],
+"pos": []
+},
+"add_inventory": {
+"attrs": [
+"chance",
+"comment",
+"pageid",
+"task",
+"textid",
+"typename"
+],
+"pos": [
+"typename"
+]
+},
+"add_manual_page": {
+"attrs": [
+"displayorder",
+"group_page_id",
+"group_text_id",
+"name",
+"notify",
+"pageid",
+"textid",
+"titleid"
+],
+"pos": []
+},
+"add_map": {
+"attrs": [
+"chance",
+"comment",
+"task"
+],
+"pos": []
+},
+"add_object_to_group": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"object",
+"task",
+"weight"
+],
+"pos": []
+},
+"add_products": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"add_resources": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": []
+},
+"add_secondary_resources": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": []
+},
+"add_tradables": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"add_wing_to_group": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"task",
+"weight",
+"wing"
+],
+"pos": []
+},
+"agent_command_finished": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"agent_command_started": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"all_objects_are_docked": {
+"attrs": [
+"chance",
+"comment",
+"dockobject",
+"group",
+"negate"
+],
+"pos": []
+},
+"all_objects_are_known": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate"
+],
+"pos": []
+},
+"all_objects_destroyed": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": [
+"group"
+]
+},
+"all_objects_exist": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate"
+],
+"pos": []
+},
+"all_objects_hull": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"group",
+"list",
+"max",
+"min",
+"negate"
+],
+"pos": []
+},
+"all_objects_position": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"group",
+"list",
+"max",
+"min",
+"negate"
+],
+"pos": []
+},
+"all_objects_sector": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"group",
+"list",
+"max",
+"min",
+"negate"
+],
+"pos": [
+"group"
+]
+},
+"all_objects_shields": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"group",
+"list",
+"max",
+"min",
+"negate"
+],
+"pos": []
+},
+"alter_sector": {
+"attrs": [
+"background",
+"music",
+"object",
+"population",
+"reset",
+"sector",
+"security",
+"size",
+"x",
+"y"
+],
+"pos": []
+},
+"any_agent_command_finished": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": []
+},
+"any_agent_command_started": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": []
+},
+"any_cluster_decoupled": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": []
+},
+"any_object_attacked": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": [
+"group"
+]
+},
+"any_object_attacked_by_player": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": [
+"group"
+]
+},
+"any_object_boarded": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": []
+},
+"any_object_captured": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": [
+"group"
+]
+},
+"any_object_changed_sector": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": [
+"group"
+]
+},
+"any_object_claimed": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": [
+"group"
+]
+},
+"any_object_collected": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": []
+},
+"any_object_destroyed": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": [
+"group"
+]
+},
+"any_object_destroyed_by_player": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": [
+"group"
+]
+},
+"any_object_docked": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": [
+"group"
+]
+},
+"any_object_ejected": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": []
+},
+"any_object_exists": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate"
+],
+"pos": [
+"group"
+]
+},
+"any_object_finished": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": [
+"group"
+]
+},
+"any_object_hull": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"group",
+"list",
+"max",
+"min",
+"negate"
+],
+"pos": []
+},
+"any_object_is_docked": {
+"attrs": [
+"chance",
+"comment",
+"dockobject",
+"group",
+"negate"
+],
+"pos": [
+"group"
+]
+},
+"any_object_is_known": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate"
+],
+"pos": []
+},
+"any_object_position": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"group",
+"list",
+"max",
+"min",
+"negate"
+],
+"pos": [
+"group"
+]
+},
+"any_object_repaired": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": []
+},
+"any_object_repaired_by_player": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": []
+},
+"any_object_scanned": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": []
+},
+"any_object_sector": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"group",
+"list",
+"max",
+"min",
+"negate"
+],
+"pos": []
+},
+"any_object_shields": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"group",
+"list",
+"max",
+"min",
+"negate"
+],
+"pos": [
+"group"
+]
+},
+"any_object_targeted": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": []
+},
+"any_object_undocked": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"param",
+"param2"
+],
+"pos": []
+},
+"ask_question": {
+"attrs": [
+"author",
+"chance",
+"comment",
+"log",
+"name",
+"popup",
+"task",
+"temporary",
+"text"
+],
+"pos": []
+},
+"author": {
+"attrs": [
+"alias",
+"contact",
+"name"
+],
+"pos": [
+"name"
+]
+},
+"briefing": {
+"attrs": [
+"comment",
+"cue",
+"instantiate",
+"step"
+],
+"pos": [
+"cue"
+]
+},
+"briefing_closed": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"negate"
+],
+"pos": []
+},
+"briefing_viewed": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"negate"
+],
+"pos": []
+},
+"build": {
+"attrs": [
+"comment"
+],
+"pos": []
+},
+"buy": {
+"attrs": [
+"comment"
+],
+"pos": []
+},
+"cancel_cue": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"instantiate",
+"task"
+],
+"pos": [
+"cue"
+]
+},
+"cancel_timer": {
+"attrs": [
+"chance",
+"comment",
+"name",
+"task"
+],
+"pos": [
+"name"
+]
+},
+"cargo": {
+"attrs": [
+"comment"
+],
+"pos": []
+},
+"change": {
+"attrs": [
+"author",
+"date",
+"description"
+],
+"pos": [
+"date"
+]
+},
+"change_player_ship": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task",
+"teleport",
+"turret"
+],
+"pos": []
+},
+"change_player_turret": {
+"attrs": [
+"chance",
+"comment",
+"task",
+"turret"
+],
+"pos": []
+},
+"check_age": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"negate",
+"value"
+],
+"pos": []
+},
+"check_all": {
+"attrs": [
+"chance",
+"comment",
+"counter",
+"exact",
+"list",
+"max",
+"min",
+"negate",
+"profile",
+"scale"
+],
+"pos": []
+},
+"check_any": {
+"attrs": [
+"chance",
+"comment",
+"counter",
+"exact",
+"list",
+"max",
+"min",
+"negate",
+"profile",
+"scale"
+],
+"pos": []
+},
+"check_distance": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"negate",
+"value"
+],
+"pos": [
+"value"
+]
+},
+"check_inventory": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"pageid",
+"textid",
+"typename"
+],
+"pos": [
+"typename"
+]
+},
+"check_quota": {
+"attrs": [
+"chance",
+"comment",
+"discipline",
+"negate"
+],
+"pos": []
+},
+"check_time": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"negate",
+"value"
+],
+"pos": [
+"value"
+]
+},
+"check_value": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"negate",
+"value"
+],
+"pos": [
+"value"
+]
+},
+"clear_actor_location": {
+"attrs": [
+"actor",
+"chance",
+"comment",
+"task"
+],
+"pos": [
+"actor"
+]
+},
+"clear_diplomacy_tutorial": {
+"attrs": [],
+"pos": []
+},
+"cluster_decoupled": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"command": {
+"attrs": [
+"command",
+"commandobject",
+"comment",
+"distance"
+],
+"pos": [
+"command"
+]
+},
+"complete_cue": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"instantiate",
+"task"
+],
+"pos": []
+},
+"condition": {
+"attrs": [
+"comment",
+"ref"
+],
+"pos": []
+},
+"content": {
+"attrs": [
+"description",
+"name",
+"reference",
+"type"
+],
+"pos": []
+},
+"conversation_completed": {
+"attrs": [
+"actor",
+"answer",
+"chance",
+"comment",
+"conversation",
+"negate"
+],
+"pos": []
+},
+"convert_gate": {
+"attrs": [
+"gate",
+"gatetype",
+"group",
+"name",
+"typename"
+],
+"pos": [
+"gatetype"
+]
+},
+"copy_group": {
+"attrs": [
+"group",
+"name"
+],
+"pos": []
+},
+"count": {
+"attrs": [
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale"
+],
+"pos": []
+},
+"count_asteroids": {
+"attrs": [
+"chance",
+"comment",
+"enemy",
+"exact",
+"findobject",
+"friend",
+"known",
+"list",
+"max",
+"min",
+"multiple",
+"nearest",
+"negate",
+"neutral",
+"scanned",
+"silent",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"count_crates": {
+"attrs": [
+"category",
+"chance",
+"comment",
+"enemy",
+"exact",
+"findobject",
+"friend",
+"illegal",
+"known",
+"list",
+"max",
+"min",
+"multiple",
+"nearest",
+"negate",
+"neutral",
+"silent",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"count_debris": {
+"attrs": [
+"chance",
+"collect",
+"comment",
+"enemy",
+"exact",
+"findobject",
+"friend",
+"known",
+"list",
+"max",
+"min",
+"multiple",
+"nearest",
+"negate",
+"neutral",
+"scanned",
+"silent",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"count_gates": {
+"attrs": [
+"chance",
+"comment",
+"enemy",
+"exact",
+"findobject",
+"friend",
+"gate",
+"known",
+"list",
+"max",
+"min",
+"multiple",
+"nearest",
+"negate",
+"neutral",
+"silent",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"count_objects": {
+"attrs": [
+"category",
+"chance",
+"class",
+"comment",
+"enemy",
+"exact",
+"findobject",
+"friend",
+"known",
+"list",
+"max",
+"min",
+"multiple",
+"nearest",
+"negate",
+"neutral",
+"race",
+"silent",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"count_sectors": {
+"attrs": [
+"border",
+"chance",
+"comment",
+"core",
+"exact",
+"known",
+"list",
+"max",
+"min",
+"nearest",
+"negate",
+"race",
+"sector",
+"x",
+"y"
+],
+"pos": [
+"race"
+]
+},
+"count_ships": {
+"attrs": [
+"chance",
+"class",
+"comment",
+"covered",
+"dockingallowed",
+"enemy",
+"exact",
+"findobject",
+"friend",
+"includedocked",
+"known",
+"list",
+"maker",
+"max",
+"min",
+"multiple",
+"nearest",
+"negate",
+"neutral",
+"race",
+"racelogic",
+"silent",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"count_stations": {
+"attrs": [
+"category",
+"chance",
+"class",
+"comment",
+"dockingallowed",
+"enemy",
+"exact",
+"findobject",
+"friend",
+"known",
+"list",
+"maker",
+"max",
+"min",
+"multiple",
+"nearest",
+"negate",
+"neutral",
+"race",
+"resource",
+"silent",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"count_wrecks": {
+"attrs": [
+"category",
+"chance",
+"comment",
+"enemy",
+"exact",
+"findobject",
+"friend",
+"known",
+"list",
+"max",
+"min",
+"multiple",
+"nearest",
+"negate",
+"neutral",
+"silent",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"create_actor": {
+"attrs": [
+"chance",
+"character",
+"comment",
+"face",
+"gender",
+"invincible",
+"location",
+"name",
+"object",
+"price",
+"race",
+"subrace",
+"task",
+"voice",
+"voiceflags"
+],
+"pos": [
+"name"
+]
+},
+"create_agent": {
+"attrs": [
+"character",
+"gender",
+"homebase",
+"name",
+"race",
+"tasks"
+],
+"pos": []
+},
+"create_asteroid": {
+"attrs": [
+"chance",
+"comment",
+"discoverable",
+"discoverypoints",
+"distance",
+"group",
+"invincible",
+"ismission",
+"known",
+"minable",
+"name",
+"safety",
+"scanned",
+"task",
+"textid",
+"typename"
+],
+"pos": []
+},
+"create_astronaut": {
+"attrs": [
+"chance",
+"comment",
+"discoverypoints",
+"dockobject",
+"group",
+"highlight",
+"invincible",
+"known",
+"leader",
+"name",
+"race",
+"racelogic",
+"task",
+"textid",
+"typename"
+],
+"pos": [
+"name"
+]
+},
+"create_briefing": {
+"attrs": [
+"background",
+"chance",
+"chapter",
+"comment",
+"cue",
+"hint",
+"instantiate",
+"race",
+"story",
+"targetrace",
+"task",
+"text",
+"title"
+],
+"pos": [
+"cue"
+]
+},
+"create_crate": {
+"attrs": [
+"blueprint",
+"chance",
+"comment",
+"discoverable",
+"discoverypoints",
+"distance",
+"group",
+"hidden",
+"invincible",
+"known",
+"name",
+"safety",
+"secret",
+"task"
+],
+"pos": [
+"name"
+]
+},
+"create_debris": {
+"attrs": [
+"chance",
+"comment",
+"discoverable",
+"distance",
+"group",
+"hidden",
+"invincible",
+"known",
+"name",
+"safety",
+"scanned",
+"task",
+"textid",
+"typename"
+],
+"pos": []
+},
+"create_drone": {
+"attrs": [
+"chance",
+"class",
+"comment",
+"group",
+"highlight",
+"invincible",
+"known",
+"name",
+"race",
+"racelogic",
+"task",
+"textid",
+"typename"
+],
+"pos": [
+"name"
+]
+},
+"create_gate": {
+"attrs": [
+"chance",
+"comment",
+"discoverable",
+"distance",
+"gate",
+"group",
+"known",
+"name",
+"race",
+"safety",
+"task",
+"textid",
+"typename"
+],
+"pos": []
+},
+"create_object": {
+"attrs": [
+"chance",
+"class",
+"comment",
+"discoverypoints",
+"group",
+"known",
+"name",
+"task",
+"textid",
+"typename"
+],
+"pos": [
+"name"
+]
+},
+"create_offer": {
+"attrs": [
+"actor",
+"chance",
+"comment",
+"conversation",
+"cue",
+"discipline",
+"instantiate",
+"task"
+],
+"pos": [
+"actor"
+]
+},
+"create_planet": {
+"attrs": [
+"blue",
+"chance",
+"comment",
+"fogpercent",
+"green",
+"red",
+"task",
+"typename"
+],
+"pos": [
+"typename"
+]
+},
+"create_ship": {
+"attrs": [
+"alwaysbail",
+"boardable",
+"boardingtutorial",
+"capturable",
+"chance",
+"class",
+"comment",
+"communicates",
+"covered",
+"discoverable",
+"discoverypoints",
+"distance",
+"dockingallowed",
+"dockobject",
+"easyboard",
+"group",
+"hidden",
+"highlight",
+"hired",
+"homebase",
+"ignoreplayerattack",
+"invincible",
+"ismission",
+"known",
+"leader",
+"name",
+"part",
+"race",
+"racelogic",
+"safety",
+"scanned",
+"sellable",
+"task",
+"textid",
+"typename",
+"warp",
+"weight",
+"wing"
+],
+"pos": []
+},
+"create_spacefly": {
+"attrs": [
+"chance",
+"comment",
+"discoverypoints",
+"group",
+"invincible",
+"leader",
+"name",
+"swarm",
+"task",
+"textid"
+],
+"pos": []
+},
+"create_special": {
+"attrs": [
+"chance",
+"channel",
+"class",
+"comment",
+"discoverypoints",
+"group",
+"known",
+"name",
+"task",
+"textid",
+"typename"
+],
+"pos": []
+},
+"create_station": {
+"attrs": [
+"buildtype",
+"chance",
+"class",
+"comment",
+"discoverypoints",
+"efficiency",
+"group",
+"highlight",
+"invincible",
+"known",
+"name",
+"race",
+"safety",
+"serial",
+"task",
+"tasks",
+"textid",
+"typename",
+"weight"
+],
+"pos": []
+},
+"create_stationary": {
+"attrs": [
+"active",
+"chance",
+"class",
+"comment",
+"discoverypoints",
+"group",
+"highlight",
+"invincible",
+"known",
+"name",
+"race",
+"racelogic",
+"task",
+"textid",
+"typename"
+],
+"pos": []
+},
+"create_sun": {
+"attrs": [
+"blue",
+"chance",
+"comment",
+"green",
+"red",
+"task",
+"typename"
+],
+"pos": [
+"typename"
+]
+},
+"create_ufo": {
+"attrs": [
+"chance",
+"comment",
+"dockobject",
+"group",
+"highlight",
+"invincible",
+"known",
+"leader",
+"name",
+"racelogic",
+"task",
+"textid"
+],
+"pos": []
+},
+"create_wreck": {
+"attrs": [
+"chance",
+"comment",
+"discoverable",
+"distance",
+"group",
+"hidden",
+"invincible",
+"known",
+"name",
+"task",
+"textid",
+"typename"
+],
+"pos": [
+"typename"
+]
+},
+"cue": {
+"attrs": [
+"check",
+"comment",
+"delay",
+"game",
+"instantiate",
+"library",
+"map",
+"name",
+"ref",
+"version"
+],
+"pos": [
+"name"
+]
+},
+"cue_activated": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"negate"
+],
+"pos": []
+},
+"cue_cancelled": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"negate"
+],
+"pos": [
+"cue"
+]
+},
+"cue_completed": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"negate"
+],
+"pos": [
+"cue"
+]
+},
+"cue_destroyed": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"negate"
+],
+"pos": []
+},
+"cue_exists": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"negate"
+],
+"pos": []
+},
+"cue_is_active": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"negate"
+],
+"pos": [
+"cue"
+]
+},
+"cue_is_cancelled": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"negate"
+],
+"pos": [
+"cue"
+]
+},
+"cue_is_complete": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"negate"
+],
+"pos": [
+"cue"
+]
+},
+"cue_timer": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"exact",
+"list",
+"max",
+"min",
+"negate"
+],
+"pos": []
+},
+"cues": {
+"attrs": [],
+"pos": []
+},
+"custom": {
+"attrs": [
+"action",
+"actor",
+"comment",
+"guidance",
+"icon",
+"object",
+"secondary_guidance",
+"text"
+],
+"pos": []
+},
+"cutscene_event": {
+"attrs": [
+"event"
+],
+"pos": []
+},
+"cutscene_started": {
+"attrs": [
+"key"
+],
+"pos": [
+"key"
+]
+},
+"cutscene_stopped": {
+"attrs": [
+"cue",
+"key"
+],
+"pos": []
+},
+"decouple_cluster": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": []
+},
+"deliver": {
+"attrs": [
+"comment",
+"object",
+"secondary_guidance"
+],
+"pos": [
+"object"
+]
+},
+"destination": {
+"attrs": [
+"comment",
+"gate",
+"sector",
+"x",
+"y"
+],
+"pos": [
+"gate"
+]
+},
+"destroy": {
+"attrs": [
+"comment",
+"object",
+"secondary_guidance"
+],
+"pos": [
+"object"
+]
+},
+"destroy_actor": {
+"attrs": [
+"actor",
+"chance",
+"comment",
+"task"
+],
+"pos": [
+"actor"
+]
+},
+"destroy_cue": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"instantiate",
+"task"
+],
+"pos": [
+"cue"
+]
+},
+"destroy_group": {
+"attrs": [
+"chance",
+"comment",
+"explosion",
+"group",
+"task",
+"warp"
+],
+"pos": [
+"group"
+]
+},
+"destroy_object": {
+"attrs": [
+"chance",
+"comment",
+"explosion",
+"object",
+"task",
+"warp"
+],
+"pos": [
+"object"
+]
+},
+"director": {
+"attrs": [
+"comment",
+"name",
+"xmlns:xsi",
+"xsi:noNamespaceSchemaLocation"
+],
+"pos": [
+"name"
+]
+},
+"disable_plotflag": {
+"attrs": [
+"plotflag"
+],
+"pos": [
+"plotflag"
+]
+},
+"discoverypoints": {
+"attrs": [
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale"
+],
+"pos": []
+},
+"distance": {
+"attrs": [
+"comment",
+"exact",
+"list",
+"max",
+"min"
+],
+"pos": []
+},
+"dlc_installed": {
+"attrs": [
+"chance",
+"comment",
+"name",
+"negate"
+],
+"pos": []
+},
+"do_all": {
+"attrs": [
+"chance",
+"comment",
+"counter",
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale",
+"task"
+],
+"pos": []
+},
+"do_any": {
+"attrs": [
+"chance",
+"comment",
+"counter",
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale",
+"task"
+],
+"pos": []
+},
+"do_choose": {
+"attrs": [
+"chance",
+"comment",
+"task"
+],
+"pos": []
+},
+"do_if": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"negate",
+"task",
+"value"
+],
+"pos": [
+"value"
+]
+},
+"do_otherwise": {
+"attrs": [
+"comment"
+],
+"pos": []
+},
+"do_when": {
+"attrs": [
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"negate",
+"value"
+],
+"pos": [
+"value"
+]
+},
+"dockat": {
+"attrs": [
+"comment",
+"object",
+"secondary_guidance"
+],
+"pos": [
+"object"
+]
+},
+"documentation": {
+"attrs": [],
+"pos": []
+},
+"drone": {
+"attrs": [
+"chance",
+"class",
+"comment",
+"group",
+"highlight",
+"invincible",
+"known",
+"name",
+"task",
+"textid",
+"typename"
+],
+"pos": []
+},
+"eject_cargo": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"enable_gamestart": {
+"attrs": [
+"chance",
+"comment",
+"requirements",
+"task"
+],
+"pos": [
+"requirements"
+]
+},
+"enable_plotflag": {
+"attrs": [
+"plotflag"
+],
+"pos": [
+"plotflag"
+]
+},
+"engineering": {
+"attrs": [
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale"
+],
+"pos": []
+},
+"equipment": {
+"attrs": [
+"comment",
+"loadout",
+"loadoutmask"
+],
+"pos": [
+"loadout"
+]
+},
+"fade_scene": {
+"attrs": [
+"chance",
+"comment",
+"fade",
+"task"
+],
+"pos": []
+},
+"fighting": {
+"attrs": [
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale"
+],
+"pos": []
+},
+"fightrank": {
+"attrs": [
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale"
+],
+"pos": []
+},
+"find": {
+"attrs": [
+"comment",
+"object",
+"secondary_guidance"
+],
+"pos": []
+},
+"find_asteroid": {
+"attrs": [
+"chance",
+"comment",
+"enemy",
+"findobject",
+"friend",
+"group",
+"known",
+"max",
+"multiple",
+"name",
+"nearest",
+"neutral",
+"scanned",
+"silent",
+"task",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"find_crate": {
+"attrs": [
+"category",
+"chance",
+"comment",
+"enemy",
+"findobject",
+"friend",
+"group",
+"illegal",
+"known",
+"max",
+"multiple",
+"name",
+"nearest",
+"neutral",
+"silent",
+"task",
+"typename",
+"visible",
+"war"
+],
+"pos": [
+"name"
+]
+},
+"find_debris": {
+"attrs": [
+"chance",
+"collect",
+"comment",
+"enemy",
+"findobject",
+"friend",
+"group",
+"known",
+"max",
+"multiple",
+"name",
+"nearest",
+"neutral",
+"scanned",
+"silent",
+"task",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"find_gate": {
+"attrs": [
+"chance",
+"comment",
+"enemy",
+"findobject",
+"friend",
+"gate",
+"group",
+"known",
+"max",
+"multiple",
+"name",
+"nearest",
+"neutral",
+"silent",
+"task",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"find_object": {
+"attrs": [
+"category",
+"chance",
+"class",
+"comment",
+"enemy",
+"findobject",
+"friend",
+"group",
+"known",
+"max",
+"multiple",
+"name",
+"nearest",
+"neutral",
+"race",
+"silent",
+"task",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"find_sector": {
+"attrs": [
+"border",
+"chance",
+"comment",
+"core",
+"exact",
+"known",
+"list",
+"max",
+"min",
+"name",
+"nearest",
+"profile",
+"race",
+"scale",
+"sector",
+"task",
+"x",
+"y"
+],
+"pos": [
+"name"
+]
+},
+"find_ship": {
+"attrs": [
+"chance",
+"class",
+"comment",
+"covered",
+"dockingallowed",
+"enemy",
+"findobject",
+"friend",
+"group",
+"includedocked",
+"known",
+"maker",
+"max",
+"multiple",
+"name",
+"nearest",
+"neutral",
+"race",
+"racelogic",
+"silent",
+"task",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"find_station": {
+"attrs": [
+"category",
+"chance",
+"class",
+"comment",
+"dockingallowed",
+"enemy",
+"findobject",
+"friend",
+"group",
+"known",
+"maker",
+"max",
+"multiple",
+"name",
+"nearest",
+"neutral",
+"race",
+"resource",
+"serial",
+"silent",
+"task",
+"typename",
+"visible",
+"war"
+],
+"pos": [
+"name"
+]
+},
+"find_wreck": {
+"attrs": [
+"category",
+"chance",
+"comment",
+"enemy",
+"findobject",
+"friend",
+"group",
+"known",
+"max",
+"multiple",
+"name",
+"nearest",
+"neutral",
+"silent",
+"task",
+"typename",
+"visible",
+"war"
+],
+"pos": []
+},
+"fire_laser": {
+"attrs": [
+"chance",
+"commandobject",
+"comment",
+"object",
+"task",
+"turret"
+],
+"pos": []
+},
+"fire_missile": {
+"attrs": [
+"chance",
+"commandobject",
+"comment",
+"group",
+"name",
+"object",
+"task",
+"turret",
+"typename"
+],
+"pos": []
+},
+"flyto": {
+"attrs": [
+"comment",
+"object",
+"secondary_guidance"
+],
+"pos": []
+},
+"follow": {
+"attrs": [
+"comment",
+"object",
+"secondary_guidance"
+],
+"pos": [
+"object"
+]
+},
+"force": {
+"attrs": [
+"comment",
+"ref"
+],
+"pos": []
+},
+"hacking": {
+"attrs": [
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale"
+],
+"pos": []
+},
+"headquarters_production_finished": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"typename"
+],
+"pos": []
+},
+"history": {
+"attrs": [],
+"pos": []
+},
+"hull": {
+"attrs": [
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale"
+],
+"pos": []
+},
+"incoming_message": {
+"attrs": [
+"author",
+"chance",
+"comment",
+"log",
+"popup",
+"silent",
+"task",
+"temporary",
+"text"
+],
+"pos": [
+"author"
+]
+},
+"increment_mission_rank": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"name",
+"profile",
+"scale",
+"task",
+"textid",
+"titleid"
+],
+"pos": [
+"name"
+]
+},
+"increment_statistic": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale",
+"statistic",
+"task"
+],
+"pos": [
+"statistic"
+]
+},
+"influence": {
+"attrs": [
+"comment",
+"exact",
+"force",
+"list",
+"max",
+"min",
+"mutual",
+"operation",
+"profile",
+"race",
+"scale"
+],
+"pos": []
+},
+"influences": {
+"attrs": [],
+"pos": []
+},
+"interval": {
+"attrs": [
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale"
+],
+"pos": []
+},
+"item": {
+"attrs": [
+"author",
+"date",
+"description",
+"priority"
+],
+"pos": []
+},
+"jumps": {
+"attrs": [
+"comment",
+"exact",
+"list",
+"max",
+"min"
+],
+"pos": []
+},
+"kill": {
+"attrs": [
+"actor",
+"comment",
+"secondary_guidance"
+],
+"pos": [
+"actor"
+]
+},
+"lfl_object_found": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"line": {
+"attrs": [
+"actor",
+"comment",
+"face",
+"pageid",
+"textid"
+],
+"pos": []
+},
+"link_beacon": {
+"attrs": [
+"chance",
+"comment",
+"gate",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"load_conversation": {
+"attrs": [
+"chance",
+"comment",
+"file",
+"task"
+],
+"pos": []
+},
+"load_map": {
+"attrs": [
+"chance",
+"comment",
+"file",
+"task"
+],
+"pos": [
+"file"
+]
+},
+"load_text": {
+"attrs": [
+"chance",
+"comment",
+"fileid",
+"task"
+],
+"pos": []
+},
+"map": {
+"attrs": [],
+"pos": []
+},
+"match_object": {
+"attrs": [
+"category",
+"chance",
+"class",
+"comment",
+"maker",
+"negate",
+"object",
+"race",
+"typename"
+],
+"pos": [
+"object"
+]
+},
+"match_sector": {
+"attrs": [
+"border",
+"chance",
+"comment",
+"core",
+"exact",
+"list",
+"max",
+"min",
+"negate",
+"race",
+"sector",
+"x",
+"y"
+],
+"pos": []
+},
+"mechanical": {
+"attrs": [
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale"
+],
+"pos": []
+},
+"mission": {
+"attrs": [
+"comment",
+"discipline",
+"level"
+],
+"pos": []
+},
+"money": {
+"attrs": [
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"notransaction",
+"object",
+"profile",
+"scale",
+"transactionid",
+"transactionpage"
+],
+"pos": []
+},
+"movie_finished": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"notoriety": {
+"attrs": [],
+"pos": []
+},
+"object": {
+"attrs": [
+"chance",
+"class",
+"comment",
+"discoverypoints",
+"group",
+"known",
+"name",
+"object",
+"task",
+"textid",
+"typename"
+],
+"pos": [
+"object"
+]
+},
+"object_attacked": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": [
+"object"
+]
+},
+"object_attacked_by_player": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": [
+"object"
+]
+},
+"object_boarded": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"object_can_carry_cargo": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"typename"
+],
+"pos": []
+},
+"object_can_use_equipment": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"typename"
+],
+"pos": []
+},
+"object_captured": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": [
+"object"
+]
+},
+"object_changed_sector": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"object_claimed": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": [
+"object"
+]
+},
+"object_collected": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"object_destroyed": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": [
+"object"
+]
+},
+"object_destroyed_by_player": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": [
+"object"
+]
+},
+"object_docked": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"object_docking_allowed": {
+"attrs": [
+"chance",
+"comment",
+"dockobject",
+"negate",
+"object"
+],
+"pos": [
+"object"
+]
+},
+"object_docking_possible": {
+"attrs": [
+"chance",
+"comment",
+"dockobject",
+"negate",
+"object"
+],
+"pos": [
+"object"
+]
+},
+"object_ejected": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"object_exists": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object"
+],
+"pos": [
+"object"
+]
+},
+"object_finished": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": [
+"object"
+]
+},
+"object_has_cargo": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object"
+],
+"pos": []
+},
+"object_has_equipment": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object"
+],
+"pos": []
+},
+"object_hull": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"negate",
+"object"
+],
+"pos": [
+"object"
+]
+},
+"object_is_docked": {
+"attrs": [
+"chance",
+"comment",
+"dockobject",
+"negate",
+"object"
+],
+"pos": []
+},
+"object_is_in_group": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"negate",
+"object"
+],
+"pos": []
+},
+"object_is_known": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object"
+],
+"pos": []
+},
+"object_position": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"negate",
+"object"
+],
+"pos": []
+},
+"object_relation": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object"
+],
+"pos": [
+"object"
+]
+},
+"object_relation_changed": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"object_repaired": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"object_repaired_by_player": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"object_scanned": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": [
+"object"
+]
+},
+"object_sector": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"negate",
+"object"
+],
+"pos": []
+},
+"object_shields": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"negate",
+"object"
+],
+"pos": []
+},
+"object_targeted": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": [
+"object"
+]
+},
+"object_undocked": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"objective": {
+"attrs": [
+"background",
+"hint",
+"race",
+"step",
+"targetrace"
+],
+"pos": [
+"step"
+]
+},
+"objective_cancelled": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"negate"
+],
+"pos": [
+"cue"
+]
+},
+"objectives": {
+"attrs": [],
+"pos": []
+},
+"onscreen_timer_finished": {
+"attrs": [
+"chance",
+"comment",
+"name",
+"negate"
+],
+"pos": [
+"name"
+]
+},
+"open_encyclopedia": {
+"attrs": [
+"name",
+"pagetype",
+"typename"
+],
+"pos": []
+},
+"param": {
+"attrs": [
+"comment",
+"compulsory",
+"default",
+"description",
+"name",
+"type",
+"value"
+],
+"pos": [
+"name"
+]
+},
+"params": {
+"attrs": [],
+"pos": []
+},
+"parts": {
+"attrs": [],
+"pos": []
+},
+"patch": {
+"attrs": [
+"comment",
+"ref"
+],
+"pos": []
+},
+"pilot": {
+"attrs": [
+"aggression",
+"comment",
+"face",
+"fightskill",
+"gender",
+"jobtextid",
+"morale",
+"name",
+"noeject",
+"race",
+"shipname",
+"tradeskill",
+"voice",
+"voiceflags"
+],
+"pos": []
+},
+"play_cinematic": {
+"attrs": [
+"chance",
+"comment",
+"distance",
+"duration",
+"object",
+"task"
+],
+"pos": []
+},
+"play_cutscene": {
+"attrs": [
+"file"
+],
+"pos": [
+"file"
+]
+},
+"play_gatebuild": {
+"attrs": [
+"comment",
+"gate"
+],
+"pos": [
+"gate"
+]
+},
+"play_movie": {
+"attrs": [
+"chance",
+"comment",
+"fade",
+"movie",
+"movieid",
+"task"
+],
+"pos": [
+"movieid"
+]
+},
+"play_music": {
+"attrs": [
+"chance",
+"comment",
+"music",
+"task"
+],
+"pos": [
+"music"
+]
+},
+"play_sound": {
+"attrs": [
+"chance",
+"comment",
+"soundid",
+"task"
+],
+"pos": [
+"soundid"
+]
+},
+"play_subtitles": {
+"attrs": [
+"author",
+"chance",
+"comment",
+"duration",
+"task",
+"text"
+],
+"pos": []
+},
+"play_text": {
+"attrs": [
+"actor",
+"chance",
+"comment",
+"face",
+"pageid",
+"priority",
+"task",
+"textid"
+],
+"pos": []
+},
+"player_agent_command_finished": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"player_agent_command_started": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": []
+},
+"player_built_station": {
+"attrs": [
+"chance",
+"comment",
+"negate"
+],
+"pos": []
+},
+"player_changed_ship": {
+"attrs": [
+"chance",
+"comment",
+"negate"
+],
+"pos": []
+},
+"player_influence_changed": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"param",
+"param2",
+"race"
+],
+"pos": []
+},
+"player_killed_object": {
+"attrs": [
+"chance",
+"comment",
+"negate"
+],
+"pos": []
+},
+"player_notoriety_changed": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"param",
+"param2",
+"race"
+],
+"pos": []
+},
+"player_owned_killed_object": {
+"attrs": [
+"chance",
+"comment",
+"negate"
+],
+"pos": []
+},
+"player_scanned_object": {
+"attrs": [
+"chance",
+"comment",
+"negate"
+],
+"pos": []
+},
+"player_ship_count": {
+"attrs": [
+"chance",
+"class",
+"comment",
+"exact",
+"list",
+"maker",
+"max",
+"min",
+"negate",
+"typename"
+],
+"pos": [
+"typename"
+]
+},
+"player_station_count": {
+"attrs": [
+"chance",
+"class",
+"comment",
+"exact",
+"list",
+"maker",
+"max",
+"min",
+"negate",
+"typename"
+],
+"pos": []
+},
+"player_target_lost": {
+"attrs": [
+"chance",
+"comment",
+"negate"
+],
+"pos": []
+},
+"player_target_set": {
+"attrs": [
+"chance",
+"comment",
+"negate"
+],
+"pos": []
+},
+"position": {
+"attrs": [
+"comment",
+"exact",
+"height",
+"list",
+"max",
+"min",
+"object",
+"profile",
+"scale",
+"x",
+"y",
+"z"
+],
+"pos": []
+},
+"products": {
+"attrs": [],
+"pos": []
+},
+"progress": {
+"attrs": [
+"comment",
+"current",
+"limit"
+],
+"pos": [
+"current"
+]
+},
+"property": {
+"attrs": [
+"group",
+"object"
+],
+"pos": []
+},
+"protect": {
+"attrs": [
+"comment",
+"object",
+"secondary_guidance"
+],
+"pos": [
+"object"
+]
+},
+"question_answered": {
+"attrs": [
+"answer",
+"chance",
+"comment",
+"negate",
+"question"
+],
+"pos": [
+"question"
+]
+},
+"realign_gate": {
+"attrs": [
+"chance",
+"comment",
+"force",
+"gate",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"relation": {
+"attrs": [
+"comment",
+"exact",
+"force",
+"group",
+"list",
+"max",
+"min",
+"mutual",
+"object",
+"operation",
+"profile",
+"race",
+"relation",
+"scale"
+],
+"pos": [
+"race"
+]
+},
+"relations": {
+"attrs": [
+"comment"
+],
+"pos": []
+},
+"remove_actor": {
+"attrs": [
+"actor",
+"chance",
+"comment",
+"task"
+],
+"pos": [
+"actor"
+]
+},
+"remove_briefing": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"instantiate",
+"task"
+],
+"pos": [
+"cue"
+]
+},
+"remove_group": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"remove_help_page": {
+"attrs": [
+"name"
+],
+"pos": []
+},
+"remove_inventory": {
+"attrs": [
+"chance",
+"comment",
+"pageid",
+"task",
+"textid",
+"typename"
+],
+"pos": [
+"typename"
+]
+},
+"remove_manual_page": {
+"attrs": [
+"name"
+],
+"pos": []
+},
+"remove_mission_rank": {
+"attrs": [
+"chance",
+"comment",
+"name",
+"task"
+],
+"pos": [
+"name"
+]
+},
+"remove_object": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"remove_object_from_group": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"remove_objective": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"instantiate",
+"status",
+"task"
+],
+"pos": [
+"cue"
+]
+},
+"remove_offer": {
+"attrs": [
+"actor",
+"chance",
+"comment",
+"conversation",
+"discipline",
+"task"
+],
+"pos": [
+"actor"
+]
+},
+"remove_products": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": []
+},
+"remove_resources": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": []
+},
+"remove_secondary_resources": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": []
+},
+"remove_sector": {
+"attrs": [
+"chance",
+"comment",
+"sector",
+"task"
+],
+"pos": []
+},
+"remove_step": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"instantiate",
+"step",
+"task"
+],
+"pos": [
+"cue"
+]
+},
+"remove_tradables": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": []
+},
+"remove_value": {
+"attrs": [
+"chance",
+"comment",
+"task",
+"value"
+],
+"pos": [
+"value"
+]
+},
+"requirement": {
+"attrs": [
+"name",
+"type",
+"value",
+"visible"
+],
+"pos": [
+"value"
+]
+},
+"requirements": {
+"attrs": [
+"name"
+],
+"pos": []
+},
+"reset_cue": {
+"attrs": [
+"chance",
+"comment",
+"cue",
+"instantiate",
+"task"
+],
+"pos": [
+"cue"
+]
+},
+"resource": {
+"attrs": [
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale",
+"typename"
+],
+"pos": [
+"typename"
+]
+},
+"resources": {
+"attrs": [],
+"pos": []
+},
+"return": {
+"attrs": [
+"description",
+"name",
+"type"
+],
+"pos": [
+"name"
+]
+},
+"returns": {
+"attrs": [],
+"pos": []
+},
+"reward": {
+"attrs": [
+"comment",
+"money",
+"other"
+],
+"pos": [
+"money"
+]
+},
+"reward_player": {
+"attrs": [
+"chance",
+"comment",
+"task"
+],
+"pos": []
+},
+"rotation": {
+"attrs": [
+"alpha",
+"beta",
+"comment",
+"gamma",
+"object"
+],
+"pos": [
+"alpha"
+]
+},
+"rsmsector_activated": {
+"attrs": [
+"chance",
+"comment",
+"negate"
+],
+"pos": []
+},
+"run_script": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"script",
+"task",
+"taskid"
+],
+"pos": [
+"script"
+]
+},
+"score": {
+"attrs": [
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"operation",
+"player",
+"profile",
+"race",
+"scale"
+],
+"pos": [
+"race"
+]
+},
+"script_event": {
+"attrs": [
+"chance",
+"comment",
+"name",
+"negate",
+"object",
+"param",
+"param2"
+],
+"pos": [
+"name"
+]
+},
+"scriptargs": {
+"attrs": [
+"comment"
+],
+"pos": []
+},
+"scriptarray": {
+"attrs": [],
+"pos": []
+},
+"scriptvalue": {
+"attrs": [
+"comment",
+"datatype",
+"datavalue"
+],
+"pos": [
+"datatype"
+]
+},
+"secondaryresources": {
+"attrs": [],
+"pos": []
+},
+"sector": {
+"attrs": [
+"comment",
+"sector",
+"x",
+"y"
+],
+"pos": [
+"sector"
+]
+},
+"sector_is_known": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"sector",
+"x",
+"y"
+],
+"pos": []
+},
+"sector_is_proposed": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"sector",
+"x",
+"y"
+],
+"pos": []
+},
+"sector_is_sub": {
+"attrs": [
+"chance",
+"comment",
+"negate",
+"sector",
+"x",
+"y"
+],
+"pos": []
+},
+"sell": {
+"attrs": [
+"comment"
+],
+"pos": []
+},
+"set_active": {
+"attrs": [
+"active",
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": []
+},
+"set_actor": {
+"attrs": [
+"chance",
+"comment",
+"name",
+"task",
+"value"
+],
+"pos": [
+"name"
+]
+},
+"set_actor_invincible": {
+"attrs": [
+"actor",
+"chance",
+"comment",
+"invincible",
+"task"
+],
+"pos": []
+},
+"set_actor_location": {
+"attrs": [
+"actor",
+"chance",
+"comment",
+"location",
+"object",
+"task"
+],
+"pos": [
+"actor"
+]
+},
+"set_alwaysbail": {
+"attrs": [
+"alwaysbail",
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": []
+},
+"set_attacked_response": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"response",
+"task"
+],
+"pos": []
+},
+"set_boardable": {
+"attrs": [
+"boardable",
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_boarding_tutorial": {
+"attrs": [
+"boardingtutorial",
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": []
+},
+"set_capturable": {
+"attrs": [
+"capturable",
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_client_state": {
+"attrs": [
+"chance",
+"comment",
+"state",
+"task",
+"value"
+],
+"pos": []
+},
+"set_command": {
+"attrs": [
+"chance",
+"command",
+"commandobject",
+"comment",
+"distance",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_communicates": {
+"attrs": [
+"chance",
+"comment",
+"communicates",
+"object",
+"task"
+],
+"pos": []
+},
+"set_covered": {
+"attrs": [
+"chance",
+"comment",
+"covered",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_cutscene_sector": {
+"attrs": [
+"environment",
+"name"
+],
+"pos": []
+},
+"set_diplomacy_readonly": {
+"attrs": [
+"chance",
+"comment",
+"readonly",
+"task"
+],
+"pos": []
+},
+"set_diplomacy_tutorial": {
+"attrs": [
+"chance",
+"command",
+"comment",
+"influence",
+"race",
+"task",
+"tasks"
+],
+"pos": [
+"race"
+]
+},
+"set_disabled_weapons": {
+"attrs": [
+"chance",
+"comment",
+"disabled",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_discoverable": {
+"attrs": [
+"chance",
+"comment",
+"discoverable",
+"distance",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_discovery": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"points",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_dynamic_notoriety": {
+"attrs": [
+"dynamic",
+"race"
+],
+"pos": [
+"race"
+]
+},
+"set_easyboarding": {
+"attrs": [
+"chance",
+"comment",
+"easyboard",
+"object",
+"task"
+],
+"pos": []
+},
+"set_group_active": {
+"attrs": [
+"active",
+"chance",
+"comment",
+"group",
+"task"
+],
+"pos": []
+},
+"set_group_allow_player_dock": {
+"attrs": [
+"chance",
+"comment",
+"dockingallowed",
+"group",
+"task"
+],
+"pos": []
+},
+"set_group_alwaysbail": {
+"attrs": [
+"alwaysbail",
+"chance",
+"comment",
+"group",
+"task"
+],
+"pos": []
+},
+"set_group_attacked_response": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"response",
+"task"
+],
+"pos": []
+},
+"set_group_boardable": {
+"attrs": [
+"boardable",
+"chance",
+"comment",
+"group",
+"task"
+],
+"pos": []
+},
+"set_group_boarding_tutorial": {
+"attrs": [
+"boardingtutorial",
+"chance",
+"comment",
+"group",
+"task"
+],
+"pos": []
+},
+"set_group_capturable": {
+"attrs": [
+"capturable",
+"chance",
+"comment",
+"group",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"set_group_command": {
+"attrs": [
+"chance",
+"command",
+"commandobject",
+"comment",
+"distance",
+"group",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"set_group_communicates": {
+"attrs": [
+"chance",
+"comment",
+"communicates",
+"group",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"set_group_covered": {
+"attrs": [
+"chance",
+"comment",
+"covered",
+"group",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"set_group_discoverable": {
+"attrs": [
+"chance",
+"comment",
+"discoverable",
+"distance",
+"group",
+"task"
+],
+"pos": []
+},
+"set_group_easyboarding": {
+"attrs": [
+"chance",
+"comment",
+"easyboard",
+"group",
+"task"
+],
+"pos": []
+},
+"set_group_formation": {
+"attrs": [
+"chance",
+"comment",
+"formation",
+"group",
+"task"
+],
+"pos": []
+},
+"set_group_hidden": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"hidden",
+"task"
+],
+"pos": []
+},
+"set_group_highlight": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"highlight",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"set_group_hired": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"hired",
+"task"
+],
+"pos": []
+},
+"set_group_homebase": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"homebase",
+"task"
+],
+"pos": []
+},
+"set_group_ignoreplayerattack": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"ignoreplayerattack",
+"task"
+],
+"pos": []
+},
+"set_group_invincible": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"invincible",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"set_group_known": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"known",
+"task"
+],
+"pos": []
+},
+"set_group_leader": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"object",
+"task"
+],
+"pos": []
+},
+"set_group_minable": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"minable",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"set_group_mission_object": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"ismission",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"set_group_object_speed": {
+"attrs": [
+"chance",
+"comment",
+"force",
+"group",
+"speed",
+"task"
+],
+"pos": []
+},
+"set_group_override_name_flags": {
+"attrs": [
+"chance",
+"comment",
+"corp",
+"greek",
+"group",
+"job",
+"race",
+"size",
+"task",
+"type",
+"variation"
+],
+"pos": [
+"group"
+]
+},
+"set_group_owner": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"race",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"set_group_racelogic": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"racelogic",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"set_group_relation": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"set_group_scanned": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"scanned",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"set_group_sellable": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"sellable",
+"task"
+],
+"pos": []
+},
+"set_group_wing": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"task",
+"wing"
+],
+"pos": []
+},
+"set_headquarters_upgrades": {
+"attrs": [
+"chance",
+"comment",
+"task",
+"upgrades"
+],
+"pos": []
+},
+"set_hidden": {
+"attrs": [
+"chance",
+"comment",
+"hidden",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_highlight": {
+"attrs": [
+"chance",
+"comment",
+"highlight",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_hired": {
+"attrs": [
+"chance",
+"comment",
+"hired",
+"object",
+"task"
+],
+"pos": []
+},
+"set_homebase": {
+"attrs": [
+"chance",
+"comment",
+"homebase",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_hull": {
+"attrs": [
+"action",
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"object",
+"profile",
+"scale",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_ignoreplayerattack": {
+"attrs": [
+"chance",
+"comment",
+"ignoreplayerattack",
+"object",
+"task"
+],
+"pos": []
+},
+"set_influence": {
+"attrs": [
+"chance",
+"comment",
+"race",
+"task"
+],
+"pos": []
+},
+"set_invincible": {
+"attrs": [
+"chance",
+"comment",
+"invincible",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_known": {
+"attrs": [
+"chance",
+"comment",
+"known",
+"object",
+"task"
+],
+"pos": []
+},
+"set_laser_energy": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"object",
+"profile",
+"scale",
+"task"
+],
+"pos": []
+},
+"set_marine_data": {
+"attrs": [
+"actor",
+"chance",
+"comment",
+"object",
+"price",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_minable": {
+"attrs": [
+"chance",
+"comment",
+"minable",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_mission_object": {
+"attrs": [
+"chance",
+"comment",
+"ismission",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_mission_rank": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"name",
+"profile",
+"scale",
+"task",
+"textid",
+"titleid"
+],
+"pos": []
+},
+"set_no_npc_docking": {
+"attrs": [
+"chance",
+"comment",
+"nodocking",
+"object",
+"task"
+],
+"pos": [
+"nodocking"
+]
+},
+"set_notoriety": {
+"attrs": [
+"chance",
+"comment",
+"grouped",
+"race",
+"task"
+],
+"pos": [
+"race"
+]
+},
+"set_notoriety_locked": {
+"attrs": [
+"locked",
+"race"
+],
+"pos": [
+"race"
+]
+},
+"set_object": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"leader",
+"name",
+"task",
+"value",
+"weight"
+],
+"pos": [
+"name"
+]
+},
+"set_object_speed": {
+"attrs": [
+"chance",
+"comment",
+"force",
+"object",
+"speed",
+"task"
+],
+"pos": []
+},
+"set_objective": {
+"attrs": [
+"active",
+"chance",
+"chapter",
+"comment",
+"cue",
+"hint",
+"instantiate",
+"menuid",
+"noabort",
+"race",
+"silent",
+"story",
+"targetrace",
+"task",
+"text",
+"title"
+],
+"pos": [
+"cue"
+]
+},
+"set_override_name": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task",
+"textid"
+],
+"pos": [
+"object"
+]
+},
+"set_override_name_flags": {
+"attrs": [
+"chance",
+"comment",
+"corp",
+"greek",
+"job",
+"object",
+"race",
+"size",
+"task",
+"type",
+"variation"
+],
+"pos": [
+"object"
+]
+},
+"set_owner": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"race",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_pilot_data": {
+"attrs": [
+"aggression",
+"chance",
+"comment",
+"face",
+"fightskill",
+"gender",
+"jobtextid",
+"morale",
+"name",
+"noeject",
+"object",
+"race",
+"shipname",
+"task",
+"tradeskill",
+"voice",
+"voiceflags"
+],
+"pos": [
+"object"
+]
+},
+"set_player_allow_dock": {
+"attrs": [
+"chance",
+"comment",
+"dockingallowed",
+"object",
+"task"
+],
+"pos": []
+},
+"set_player_race": {
+"attrs": [
+"chance",
+"comment",
+"race",
+"task"
+],
+"pos": [
+"race"
+]
+},
+"set_race_aggression": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"race",
+"scale",
+"task"
+],
+"pos": []
+},
+"set_racelogic": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"racelogic",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_relation": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_safety": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"safety",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_scanned": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"scanned",
+"task"
+],
+"pos": []
+},
+"set_sector": {
+"attrs": [
+"chance",
+"comment",
+"name",
+"task",
+"value"
+],
+"pos": [
+"name"
+]
+},
+"set_sector_known": {
+"attrs": [
+"chance",
+"comment",
+"known",
+"sector",
+"task",
+"x",
+"y"
+],
+"pos": []
+},
+"set_sector_override": {
+"attrs": [
+"chance",
+"comment",
+"race",
+"sector",
+"task",
+"textid",
+"x",
+"y"
+],
+"pos": [
+"sector"
+]
+},
+"set_sector_owner": {
+"attrs": [
+"chance",
+"comment",
+"race",
+"sector",
+"task",
+"x",
+"y"
+],
+"pos": [
+"sector"
+]
+},
+"set_sellable": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"sellable",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_shield": {
+"attrs": [
+"action",
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"object",
+"profile",
+"scale",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_state": {
+"attrs": [
+"chance",
+"comment",
+"gate",
+"lock",
+"object",
+"realign",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_target": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task"
+],
+"pos": [
+"object"
+]
+},
+"set_value": {
+"attrs": [
+"chance",
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"name",
+"operation",
+"profile",
+"scale",
+"task"
+],
+"pos": [
+"name"
+]
+},
+"set_war_manager": {
+"attrs": [
+"chance",
+"comment",
+"task",
+"warmanager"
+],
+"pos": [
+"warmanager"
+]
+},
+"set_war_reports": {
+"attrs": [
+"chance",
+"comment",
+"race",
+"task"
+],
+"pos": []
+},
+"set_wing": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task",
+"wing"
+],
+"pos": []
+},
+"set_wing_command": {
+"attrs": [
+"chance",
+"command",
+"commandobject",
+"comment",
+"distance",
+"task",
+"wing"
+],
+"pos": []
+},
+"shield": {
+"attrs": [
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale"
+],
+"pos": []
+},
+"ship": {
+"attrs": [
+"chance",
+"class",
+"comment",
+"discoverypoints",
+"dockobject",
+"group",
+"hidden",
+"highlight",
+"homebase",
+"invincible",
+"known",
+"leader",
+"name",
+"part",
+"scanned",
+"task",
+"textid",
+"typename"
+],
+"pos": [
+"typename"
+]
+},
+"show_effect": {
+"attrs": [
+"chance",
+"comment",
+"effect",
+"object",
+"task"
+],
+"pos": []
+},
+"show_help": {
+"attrs": [
+"chance",
+"comment",
+"duration",
+"force",
+"key",
+"preferred",
+"task",
+"text",
+"textid"
+],
+"pos": []
+},
+"show_timer": {
+"attrs": [
+"chance",
+"comment",
+"duration",
+"name",
+"pageid",
+"task",
+"text",
+"textid"
+],
+"pos": [
+"text"
+]
+},
+"signature": {
+"attrs": [],
+"pos": []
+},
+"skills": {
+"attrs": [],
+"pos": []
+},
+"special": {
+"attrs": [
+"chance",
+"class",
+"comment",
+"group",
+"name",
+"part",
+"task",
+"textid",
+"typename"
+],
+"pos": []
+},
+"start_script": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"script",
+"task",
+"taskid"
+],
+"pos": [
+"script"
+]
+},
+"start_tasks": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task",
+"tasks"
+],
+"pos": []
+},
+"station": {
+"attrs": [
+"chance",
+"class",
+"comment",
+"discoverypoints",
+"group",
+"highlight",
+"invincible",
+"known",
+"name",
+"serial",
+"task",
+"textid",
+"typename"
+],
+"pos": []
+},
+"stationary": {
+"attrs": [
+"chance",
+"class",
+"comment",
+"discoverypoints",
+"group",
+"highlight",
+"invincible",
+"known",
+"name",
+"task",
+"textid",
+"typename"
+],
+"pos": []
+},
+"stop_tasks": {
+"attrs": [
+"chance",
+"comment",
+"object",
+"task",
+"tasks"
+],
+"pos": []
+},
+"talkto": {
+"attrs": [
+"actor",
+"comment",
+"secondary_guidance"
+],
+"pos": [
+"actor"
+]
+},
+"thumbnail": {
+"attrs": [
+"comment",
+"disabled",
+"image",
+"order"
+],
+"pos": [
+"order"
+]
+},
+"thumbnails": {
+"attrs": [],
+"pos": []
+},
+"time": {
+"attrs": [
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale"
+],
+"pos": []
+},
+"timer": {
+"attrs": [
+"comment",
+"duration",
+"end",
+"start"
+],
+"pos": []
+},
+"timing": {
+"attrs": [
+"comment",
+"ref"
+],
+"pos": []
+},
+"todo": {
+"attrs": [],
+"pos": []
+},
+"tradables": {
+"attrs": [],
+"pos": []
+},
+"traderank": {
+"attrs": [
+"comment",
+"exact",
+"list",
+"max",
+"min",
+"profile",
+"scale"
+],
+"pos": []
+},
+"unlock_achievement": {
+"attrs": [
+"chance",
+"comment",
+"name",
+"task"
+],
+"pos": [
+"name"
+]
+},
+"version": {
+"attrs": [
+"date",
+"number",
+"status"
+],
+"pos": []
+},
+"war": {
+"attrs": [],
+"pos": []
+},
+"war_score_changed": {
+"attrs": [
+"chance",
+"comment",
+"negate"
+],
+"pos": []
+},
+"ware": {
+"attrs": [
+"comment",
+"critical",
+"exact",
+"list",
+"max",
+"min",
+"name",
+"profile",
+"scale",
+"typename"
+],
+"pos": [
+"typename"
+]
+},
+"warp_group": {
+"attrs": [
+"chance",
+"comment",
+"group",
+"task"
+],
+"pos": [
+"group"
+]
+},
+"warp_object": {
+"attrs": [
+"chance",
+"comment",
+"dockobject",
+"object",
+"task",
+"warp"
+],
+"pos": [
+"object"
+]
+},
+"warp_player": {
+"attrs": [
+"chance",
+"comment",
+"task"
+],
+"pos": []
+}
+},
+"note": "generated by x3kc md schema from director.xsd/dirobjdb.xsd (AP, FL) and the stock files"
+}

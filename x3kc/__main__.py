@@ -76,6 +76,14 @@ MSCI scripts (addon/scripts/*.pck|xml)
                                         cost of MSCI lines in KC instructions (emulator, game interpreter)
   msci usage <db.json> <dir>            which commands the scripts use, how often inside loops
 
+Mission Director (addon/director/*.xml)
+  md dis <file.xml | dir>... [-o out]   director XML -> compact C-like text (.xmd); checks that the text
+                                        rebuilds the file byte for byte
+  md asm <file.xmd | dir>... [-o out]   text -> director XML: unknown elements/attributes, braces and cue
+                                        references checked (file:line)
+  md check <file.xml | dir>... [-v]     round trip in memory, N/N identical
+  md schema <out.json> <director dir>...  rebuild x3kc/data/md_schema.json from director.xsd + stock files
+
 Game files
   cat <file.cat> [pattern] [-o dir] [--pack PATH=FILE...]   list, extract or write catalogues
   unpck <src dir> <dst dir> [ext]       .pck -> plain files
@@ -110,6 +118,8 @@ def main(argv=None):
         return call(mod, 'main', ([word] if word else []) + rest, 'x3kc msci ' + sub)
     if cmd == 'names':
         return call('annotations', 'main', rest, 'x3kc names')
+    if cmd == 'md':
+        return call('md', 'main', rest, 'x3kc md')
     table = {'extract': ('gameio', 'main_extract'), 'msci-setup': ('gameio', 'main_msci_setup'),
              'decompile': ('kcd', 'main'), 'compile': ('kcc', 'main'), 'selftest': ('kcselftest', 'main'),
              'test': ('kctest', 'main'), 'dis': ('kcdis', 'main'), 'cat': ('catx', 'main'),
