@@ -75,7 +75,7 @@ class DeclParser(kcparse.Parser):
         ps = []
         i = p0 + 3                  # function NAME ( ...
         while i < f.start and self.toks[i].text != ')':
-            if self.toks[i].kind == 'id':
+            if self.toks[i].kind == 'id' and self.toks[i - 1].text != ':':      # `p: Ship`: Ship is a hint
                 ps.append(self.toks[i])
             i += 1
         self.param_toks[id(f)] = ps[:len(f.params)]
@@ -105,6 +105,11 @@ class RefParser(kcparse.BodyParser):
             self.var_tok[id(s.var)] = name_i
             self.refs[name_i] = ('local', s.var)
         return s
+
+    def declared(self, var, tok_i):
+        # foreach loop variables
+        self.var_tok[id(var)] = tok_i
+        self.refs[tok_i] = ('local', var)
 
     def name_value(self, w, t):
         i = self.p - 1
@@ -185,6 +190,9 @@ class Part:
         self.var_tok = {}           # id(Var) -> token index
         self.sig = None             # declarations signature, to know when other parts must be re-checked
         self._keys = None           # (toks, [(line, col)]) for tok_at
+        self.has_dirs = False       # the text has #if / #ifdef ... lines
+        self.ckey = None            # Project.ckey pass 1 ran with (parts with directives only)
+        self.runs1 = 0              # pass 1 runs: a re-run on the same version (constants changed) re-checks
 
     def name(self):
         return os.path.basename(self.path)
@@ -200,11 +208,27 @@ class Part:
         self.version += 1
 
     def pass1(self):
-        if self.done1 == self.version:
+        # a part with #if also depends on the top-level constants of every part (Project.const_key)
+        want = self.project.ckey if self.has_dirs else None
+        if self.done1 == self.version and self.ckey == want:
             return False
         self.done1 = self.version
+        self.runs1 += 1
         self.diag1 = []
         src = self.source()
+        from x3kc import kcpre
+        self.has_dirs = kcpre.has_directives(src)
+        self.ckey = self.project.ckey if self.has_dirs else None
+        if self.has_dirs:
+            # conditional compilation with no -D names: inactive lines become empty (positions stay)
+            try:
+                consts = kcpre.Consts([p.source() for p in self.project.parts])
+                src = kcpre.process(src, self.name(), {}, consts)
+            except kcpre.PreError as e:
+                m = re.match(r'^[^:\n]*:(\d+): ', str(e))
+                self.diag1 = [Diag(int(m.group(1)) if m else 1, 0, 1, strip_loc(str(e)))]
+                self.toks = []
+                return False
         try:
             dp = DeclParser(src, self.name())
         except kcparse.ParseError as e:
@@ -246,6 +270,11 @@ def signature(u):
             out.append(('c', x.id, x.name, u.class_parent_names.get(x.id, (None,))[0],
                         tuple(f.name for f in x.fields), tuple((m.name, m.nparams) for m in x.methods)))
     out.append(('g', tuple(f.name for f in u.globals.fields), tuple((m.name, m.nparams) for m in u.globals.methods)))
+    # type hints and extra-argument readers: the hint checks of other parts' bodies depend on them
+    out.append(('h', tuple(sorted((k.id, n, h[0]) for k in [u.globals] + [x for kind, x in u.items if kind == 'class']
+                                  for n, h in k.hints.items())),
+                tuple((f.cls, f.name, tuple(h and h[0] for h in f.ptypes), f.rtype and f.rtype[0], f.varargs)
+                      for f in u.funcs)))
     # constants: their values reach every body that uses them
     out.append(('k', tuple((d.cid, d.name, d.enum, tuple(t.text for t in d.toks or ())) for d in u.consts),
                 tuple((f.name, cid, tuple(t.text for t in toks)) for f, cid, toks in u.const_fields)))
@@ -272,6 +301,7 @@ class Project:
         self.known = kcc.known_natives() or set()
         self.natives_doc = native_docs()
         self._built = False
+        self.ckey = None
         from . import textrefs
         self.wrappers = textrefs.Wrappers()
 
@@ -279,12 +309,22 @@ class Project:
         return os.path.basename(self.index or self.parts[0].path)
 
     # -- symbols --
+    def const_key(self):
+        """The top-level constants of all parts (name and value tokens): what #if lines may read."""
+        return tuple((d.name, tuple(t.text for t in d.toks or ())) for p in self.parts if p.unit is not None
+                     for d in p.unit.consts if d.cid == 0 and d.enum is None)
+
     def refresh(self):
         """Pass 1 of every part whose text changed; rebuild the merged symbols when a signature changed."""
         changed = not self._built
-        for p in self.parts:
-            if p.pass1():
-                changed = True
+        for _ in range(2):
+            # a part with #if is re-read when a top-level constant (which #if may use) changed in any part
+            self.ckey = self.const_key()
+            for p in self.parts:
+                if p.pass1():
+                    changed = True
+            if self.const_key() == self.ckey:
+                break
         if changed:
             self.merge()
             self._built = True
@@ -322,6 +362,8 @@ class Project:
                     continue
                 g.fields.append(f)
                 owner[('g', f.name)] = (p, f)
+                if f.name in u.globals.hints:
+                    g.hints[f.name] = u.globals.hints[f.name]
             for m in u.globals.methods:
                 if ('f', m.name) in owner:
                     md.setdefault(p.key, []).append(tok_diag(p.dp.decl_tok[id(m.fn)], 'function %s defined twice '
@@ -375,12 +417,19 @@ class Project:
             for d in consts:            # the rest still resolve to something: the bodies get checked
                 if d.state != 2:
                     d.state, d.value = 2, 0
+        # type hints of fields and globals naming no class (parameter and return hints: pass 2 of the body)
+        for cid, k in S.classes.items():
+            for fname, h in k.hints.items():
+                o = owner.get(('g', fname) if cid == 0 else cid)
+                if o is None or class_id(S, h[0]) in S.classes:
+                    continue
+                md.setdefault(o[0].key, []).append(tok_diag(h[1], 'unknown class %s in a type hint' % h[0]))
         self.syms, self.owner, self.merge_diags = S, owner, md
 
     # -- pass 2 --
     def check(self, part):
         """Pass 2 + codegen of one part's bodies (after refresh)."""
-        state = (part.version, self.gen)
+        state = (part.version, part.runs1, self.gen)
         if part.done2 == state:
             return
         part.done2 = state
@@ -408,6 +457,9 @@ class Project:
                 kcgen.FuncGen(f.ast, 0, env).function()
             except kcgen.GenError as e:
                 part.diag2.append(tok_diag(part.dp.decl_tok[id(f)], '%s: %s' % (f.name, e)))
+            for kind, rel, msg in f.ast.notes:      # type hint checks (kcparse.BodyParser.check_call)
+                if kind == 'warn':
+                    part.diag2.append(tok_diag(part.toks[f.start + rel], msg, 2))
             for i, r in calls:
                 t = part.toks[i]
                 if type(r) is A.Native:

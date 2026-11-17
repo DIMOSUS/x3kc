@@ -248,13 +248,28 @@ class Source:
         return '%s:%d' % (f, line - s + 1)
 
 
-def load(path, check_unlisted=True):
+def preprocess(chunks, names, defines):
+    """Conditional compilation (kcpre) of each part: inactive lines become empty lines, so lines keep their
+    numbers. #if may use the top-level constants of every part."""
+    from . import kcpre
+    if not any(kcpre.has_directives(t) for t in chunks):
+        return chunks
+    consts = kcpre.Consts(chunks)
+    try:
+        return [kcpre.process(t, n, defines or {}, consts) for t, n in zip(chunks, names)]
+    except kcpre.PreError as x:
+        raise SplitError(str(x))
+
+
+def load(path, check_unlisted=True, defines=None):
     """A single .kc file, a .kcs index or a split project directory -> Source. check_unlisted: a .kc file in the
-    project folder that the index does not list is an error (x3kc add / remove read without the check)."""
+    project folder that the index does not list is an error (x3kc add / remove read without the check).
+    defines: {NAME: value} of `-D` for #if / #ifdef (kcpre)."""
     index = find_index(path)
     if index is None:
         with open(path, encoding='latin1') as f:
-            return Source(f.read(), os.path.basename(path), os.path.dirname(os.path.abspath(path)))
+            text = preprocess([f.read()], [os.path.basename(path)], defines)[0]
+            return Source(text, os.path.basename(path), os.path.dirname(os.path.abspath(path)))
     base = os.path.dirname(os.path.abspath(index))
     chunks, parts = [], []
     line = 1
@@ -278,6 +293,7 @@ def load(path, check_unlisted=True):
         line += t.count('\n')
     if not parts:
         raise SplitError('%s: the index lists no parts' % index)
+    chunks = preprocess(chunks, [f for f, _ in parts], defines)
     return Source(''.join(chunks), os.path.basename(index), base, parts)
 
 
@@ -304,7 +320,8 @@ def parse_part(path):
     """Pass 1 of one part file alone (no other part read): classes keep their parent names unresolved
     (Unit.class_parent_names); bodies are parsed at compile, when every symbol is known."""
     with open(path, encoding='latin1') as f:
-        return kcparse.Parser(f.read(), os.path.basename(path)).unit(resolve=False)
+        text = preprocess([f.read()], [os.path.basename(path)], None)[0]
+        return kcparse.Parser(text, os.path.basename(path)).unit(resolve=False)
 
 
 def join_bytes(index):

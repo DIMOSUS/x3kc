@@ -116,6 +116,94 @@ class Ship = 2004 : ScriptObject {
 - `split` keeps top-level constants and enums in `@header.kc` (or a `@globals.<NAME>.kc` part after a class or
   function, like a late `var`).
 
+**foreach** (compiler only, like constants: the decompiler never writes it, the object gets the plain loop code).
+
+```
+for (var x in a) { … }                   // the elements of array a
+for (var i, x in a) { … }                // index and element
+for (var k in table t) { … }             // the keys of table t
+for (var k, v in table t) { … }          // key and value
+for (var s: Ship in ships) { … }         // a loop variable may carry a type hint
+```
+
+- `table` after `in` marks a table; without it the value is an array. (`table` stays usable as a variable name:
+  it is the marker only when an expression follows it, so `in table)` and `in table[0]` read the variable.)
+- Lowering, in a block of its own: `{ var $c = SE_ArrayClone(a); var $n = SE_ArraySize($c); var $i = 0;
+  for (; $i < $n; $i = $i + 1) { var x = $c[$i]; …body } }`. A table: `var $t = t; var $c = SE_TableKeys($t);`,
+  then the same loop over the keys, with `var v = $t[k];`.
+- **A foreach walks a snapshot:** the elements of an array (a shallow copy, `SE_ArrayClone`) and the keys of a
+  table as they were when the loop started. Adding, removing or replacing elements in the body does not move the
+  loop: every element of the start is visited once, removed ones included, appended ones not (removing dead ships
+  while walking the list is safe). For a table the value is read when its key is visited, so a key removed by
+  then gives `v` = 0. The copy costs one array allocation per loop. Key 0 is visited, unlike the stock
+  `while ((k = SE_TableNext(t, k)) != 0)` walk. A value that is not an array (table) runs the body zero times.
+- The loop variables are fresh locals of each iteration: assigning them does not move the loop. `break` and
+  `continue` work as in `for`; `continue` goes to the step.
+- **Frame and savegames:** the hidden locals (container, size, index; the table too) stay on the stack for the whole
+  loop, so a foreach usually makes the method's frame larger than a loop written by hand. That matters only in a
+  method a task can wait in, under `compile --base` (see «Mods and savegames»): the build is refused there as for any
+  changed frame, and `compile` / `savecheck` add a note naming the foreach. Write such a loop by hand with locals
+  the method already has, or move it into a method that does not wait.
+
+**Type hints** (compiler only; they never change the code, the decompiler does not write them).
+
+```
+var gPlayer: Ship;                       // a global or a field
+class Ship = 2004 : ScriptObject {
+    var target: Ship;
+    function Attack(enemy: Ship, n): Ship { … }    // parameters and the return value
+}
+var s: Ship = FindShip();                // a local; also foreach variables
+```
+
+- A hint names a class of the project (`Ship` or `C2004`); an unknown class is an error at the hint.
+- The compiler knows the class of a hinted variable, field, global or parameter, of a call to a function with a
+  return hint, and of `this`. With it, it **warns** (`warning: part.kc:line: …`, the build goes on):
+  - `x.F(a)` on a hinted `x`: the class chain has no method `F` (the VM looks the name up in the object's class
+    chain; a missing method answers 0); more arguments than `F` takes; fewer (a call by name passes 0 for the
+    missing ones) — unless `F` reads `__argc` or an `argN` past its parameters;
+  - `x.C::F(a)` on a hinted `x` that is not a `C`;
+  - a value of a known class that is not the hinted class or a subclass of it: `var s: Ship = t;`, `s = t;`, an
+    argument for a hinted parameter (direct calls and calls on a hinted object), `return t;` in a function with a
+    return hint.
+- Calls by name on `this` (`this.F()`, `this->F()`) are not checked: a base class calling a method its subclasses
+  define is the usual virtual call. Direct calls already have their argument count checked by the verifier.
+- There is no cast: `var s: Sub = this;` in a method of a base class warns (`this` is the base class there).
+
+**Conditional compilation** (compiler only, `x3kc/kcpre.py`): `#ifdef NAME`, `#ifndef NAME`, `#if expr`,
+`#elif expr`, `#else`, `#endif`, and `x3kc compile -D NAME[=V]` (repeatable; `-D NAME` is 1; V is an integer or a
+string). `savecheck` takes `-D` too.
+
+```
+#ifdef DEBUG
+    gTicks++;
+#endif
+#if LEVEL >= 2 && MODE == "fast"
+    …
+#elif defined(OLD_SAVES)
+    …
+#else
+    …
+#endif
+```
+
+- A directive is a line starting (after blanks) with `#` and one of these words. The inactive lines and the
+  directive lines become empty lines, so every other line keeps its number: messages point at the right line of
+  the right part. Directives may stand anywhere, inside functions too; each part of a split project closes its
+  own `#if`. A `#` line inside a `/* */` comment is not a directive (a `"/*"` inside a string opens no comment).
+  A directive may end with `// …` or `/* … */`; a `/*` after a directive must close on the same line.
+- `#if` expressions: integers, strings, names, `defined(NAME)` / `defined NAME`, parentheses, `! - ~ +`, and
+  `* / % + - << >> < > <= >= == != & ^ | && ||` with C precedence; 32-bit arithmetic. `&&` and `||`
+  short-circuit as in C: the side they do not need is not evaluated, so `#if defined(X) && X > 1` and
+  `#if !defined(X) || X == 0` work without `X`.
+- Names are the `-D` names, then the top-level `const` declarations of the project that stand outside every `#if`
+  block (their values must be integer or string expressions of literals and such constants). An unknown name in
+  `#if` is an error, not 0 as in C. `#ifdef NAME` and `defined(NAME)` are true for either kind. `-D` names are
+  not visible to the code: declare a `const` (possibly inside `#if`) for a value the code reads.
+- **Cache:** the `-D` values are part of the compile cache signature, and every set of them keeps its own entry, so
+  alternating builds (debug / release) both stay warm.
+- The language server sees no `-D` names: it shows the `#else` branches.
+
 **Fallback form** — `function F(arg1) frame N asm { … }` with labels `L0012:` and the mnemonics of `kcisa.py`.
 `x3kc decompile --asm-all` writes every method this way. It was never needed for the stock objects.
 

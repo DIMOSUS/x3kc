@@ -15,11 +15,12 @@ KC objects (l/*.obj: x3story, x3galedit, x3intro, x3config)
                                         build's identifiers (v12, m5, g7 too) stay where the code still
                                         matches (both: small diffs between builds)
   compile <src> -o <out.obj> [--check ORIG] [--base OBJ [--build N] [--force]] [--cache DIR | --no-cache]
+          [-D NAME[=V] ...]
                                         source project -> object; --base keeps old savegames loading.
                                         <src>: a .kc file or a split project (its directory or .kcs index);
                                         --cache: parsed bodies and base data kept in DIR between builds (the
                                         same object, faster rebuilds); a .kc file the index does not list is
-                                        an error
+                                        an error; -D: a name for #ifdef / #if (value V, default 1)
   split <file.kc> <dir>                 single-file project -> split project: <name>.kcs index (the order),
                                         @header.kc (directives, globals), one <Class>.kc per class, one
                                         @<Function>.kc per global function; .pool/.ptch copied unchanged
@@ -38,7 +39,8 @@ KC objects (l/*.obj: x3story, x3galedit, x3intro, x3config)
 
 Checking a build without the game
   verify <obj> [-v]                     static bytecode verifier (compile runs it on every build)
-  savecheck <src> <base.obj>            which savegame return sites (calls a task can wait in) the new source
+  savecheck <src> <base.obj> [-D NAME[=V] ...]
+                                        which savegame return sites (calls a task can wait in) the new source
                                         breaks, and why
   methoddiff <old.obj> <new.obj>        methods whose code differs between two builds
   smoke <old.obj> <new.obj> [--budget N] [-v]

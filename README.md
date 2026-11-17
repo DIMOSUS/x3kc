@@ -79,7 +79,8 @@ compiled) and an index line whose file is missing.
 **Rebuilds.** `compile --cache DIR` keeps what does not change between builds in DIR, outside the sources: the
 parsed function bodies (an edit re-parses only the bodies it touches; a new or renamed class, field, method or
 global re-parses all) and what `--base` derives from the base object. The object is byte for byte the one
-`--no-cache` (or no `--cache`) builds; a missing or stale cache only costs time. AP x3story with `--base`:
+`--no-cache` (or no `--cache`) builds; a missing or stale cache only costs time. Each set of `-D` values keeps its
+own entry. AP x3story with `--base`:
 7.5 s without the cache, 6.0 s with it (it was 108 s before `--base` stopped aligning unchanged methods with difflib).
 
 MSCI:
@@ -199,6 +200,22 @@ MT_LASER }` at the top level (project-global) or in a class body (`Ship.NAME` fr
 and its subclasses). A use compiles to exactly the code of the typed literal; the object does not change. Rules,
 errors and where a literal is still required: [docs/kc.md](docs/kc.md) "Constants". The decompiler never writes
 constants.
+
+## foreach, type hints, conditional compilation
+More compile-only sugar for hand-written code; none of it changes the object beyond the plain code it stands for,
+and the decompiler never writes it ([docs/kc.md](docs/kc.md) has the rules):
+```
+for (var x in ships) { … }                    for (var i, x in ships) { … }      an array: element / index, element
+for (var k, v in table t) { … }               for (var k in table t) { … }       a table: key, value / key
+var s: Ship = gPlayerShip;   function Attack(enemy: Ship, n): Ship { … }    hints: warnings for calls on s / enemy
+#ifdef DEBUG … #elif LEVEL > 1 … #else … #endif                                     conditional lines
+x3kc compile src -o out.obj -D DEBUG -D LEVEL=2 -D MODE=fast                        names for #if / #ifdef
+```
+foreach walks a snapshot of the array (the keys of the table) taken at the start, so removing elements in the body
+is safe and removed ones are still visited. It lowers to a `for` loop over hidden locals (container, size, index):
+a larger frame, which `--base` refuses
+in a method a task can wait in (the note names the foreach). Hints warn when a method a call names does not exist
+in the hinted class chain, the argument count does not fit, or a value of another class is assigned or passed.
 
 ## Documentation
 - [docs/kc.md](docs/kc.md) — the KC language (constants and enums included), how Egosoft's compiler generated

@@ -116,6 +116,9 @@ class FuncDecl:
         self.cls, self.name, self.params, self.frame, self.asm = cls, name, params, frame, asm
         self.start, self.end, self.line = start, end, line
         self.ast = None
+        self.ptypes = [None] * len(params)  # type hints of the parameters: (class name, token) | None
+        self.rtype = None                   # return type hint: (class name, token) | None
+        self.varargs = False                # the body reads __argc or an argN past its parameters
 
 
 class Unit:
@@ -227,6 +230,7 @@ class Parser:
                 if pname not in u.syms.by_name:
                     raise ParseError('%s: unknown parent class %s' % (self.loc(line), pname))
                 k.parent = u.syms.by_name[pname]
+        self.check_hints(u)
         self.resolve_consts(u)
         return u
 
@@ -304,9 +308,43 @@ class Parser:
             return self.number()
         return None
 
+    def hint_opt(self):
+        """`: ClassName` after a variable, parameter or function header: a type hint, (name, token) or None.
+        Hints never change the code; they only let the compiler check calls (BodyParser.check_call)."""
+        if not self.accept(':'):
+            return None
+        t = self.peek()
+        self.ident()
+        return (t.text, t)
+
+    def resolve_hint(self, h, syms):
+        """(name, token) -> class id; an unknown class is an error at the hint."""
+        name, t = h
+        if name in syms.by_name:
+            return syms.by_name[name]
+        m = re.fullmatch(r'C(\d+)', name)
+        if m and int(m.group(1)) in syms.classes:
+            return int(m.group(1))
+        raise self.err('unknown class %s in a type hint' % name, t)
+
+    def check_hints(self, u):
+        """Every hint of the headers and fields names a class of the project (pass 1, after all classes)."""
+        for k in u.syms.classes.values():
+            for h in k.hints.values():
+                self.resolve_hint(h, u.syms)
+        for f in u.funcs:
+            for h in list(f.ptypes) + [f.rtype]:
+                if h is not None:
+                    self.resolve_hint(h, u.syms)
+
     def field(self, cid=0):
         self.expect('var')
         name = self.ident()
+        h = self.hint_opt()
+        if h is not None:
+            k = self.u.syms.classes.get(cid)
+            if k is not None:
+                k.hints[name] = h
         typ, val = 0, 0
         deferred = None
         if self.accept('='):
@@ -388,12 +426,15 @@ class Parser:
         name = self.ident()
         self.expect('(')
         params = []
+        ptypes = []
         if not self.at(')'):
             while True:
                 params.append(self.ident())
+                ptypes.append(self.hint_opt())
                 if not self.accept(','):
                     break
         self.expect(')')
+        rtype = self.hint_opt()
         frame = None
         if self.accept('frame'):
             frame = self.number()
@@ -402,6 +443,7 @@ class Parser:
             raise self.err('function body expected')
         start = self.p
         depth = 0
+        varargs = False
         while True:
             t = self.next()
             if t.kind == 'eof':
@@ -412,7 +454,11 @@ class Parser:
                 depth -= 1
                 if depth == 0:
                     break
+            elif t.kind == 'id' and t.text.startswith(('__argc', 'arg')) and \
+                    (t.text == '__argc' or re.fullmatch(r'arg(\d+)', t.text) and int(t.text[3:]) > len(params)):
+                varargs = True
         f = FuncDecl(cid, name, params, frame, asm, start, self.p, line)
+        f.ptypes, f.rtype, f.varargs = ptypes, rtype, varargs
         self.u.funcs.append(f)
         return f
 
@@ -460,6 +506,12 @@ class BodyParser(Parser):
         for n in d.params:
             self.no_const_clash(n, 'parameter', Tok('id', n, d.line))
         self.params = [A.Var('param', n, i + 1) for i, n in enumerate(d.params)]
+        self.notes = []
+        self.hint_ids = {}
+        for p, h in zip(self.params, getattr(d, 'ptypes', ()) or ()):
+            if h is not None:
+                p.type = self.resolve_hint(h, self.syms)
+        self.rtype = self.resolve_hint(d.rtype, self.syms) if getattr(d, 'rtype', None) else None
         self.extra = {}
         self.scopes = [{p.name: p for p in self.params}]
         self.loops = 0
@@ -470,6 +522,7 @@ class BodyParser(Parser):
             body = self.block()
             fn = A.Function(d.cls, d.name, self.params, body, d.frame)
         fn.frame_vars = self.extra
+        fn.notes = self.notes
         if self.p != d.end:
             raise self.err('junk after function body')
         return fn
@@ -496,11 +549,17 @@ class BodyParser(Parser):
                 nt = self.peek()
                 name = self.ident()
                 self.no_const_clash(name, 'local variable', nt)
+                h = self.hint_opt()
                 init = None
                 if self.accept('='):
+                    it = self.p
                     init = self.expr()
                 self.expect(';')
                 v = A.Var('local', name)
+                if h is not None:
+                    v.type = self.resolve_hint(h, self.syms)
+                    if init is not None:
+                        self.check_value(v.type, init, it, 'the value of %s' % name)
                 d = A.VarDecl(v, init)
                 v.decl = d
                 self.scopes[-1][name] = v
@@ -529,6 +588,8 @@ class BodyParser(Parser):
             if w == 'for':
                 self.next()
                 self.expect('(')
+                if self.at('var'):
+                    return self.foreach(self.p - 2)
                 init = [] if self.at(';') else [A.ExprStmt(self.expr())]
                 self.expect(';')
                 c = self.expr()
@@ -556,7 +617,10 @@ class BodyParser(Parser):
                 self.next()
                 if self.accept(';'):
                     return A.Return(None)
+                it = self.p
                 e = self.expr()
+                if self.rtype is not None:
+                    self.check_value(self.rtype, e, it, 'the returned value')
                 self.expect(';')
                 return A.Return(e)
             if w in ('break', 'continue'):
@@ -574,6 +638,194 @@ class BodyParser(Parser):
 
     def loop_block(self):
         return self.block()
+
+    # ---- foreach ---------------------------------------------------------------------------------------------
+    def table_marker(self):
+        """`in table <expr>`: `table` is the marker when an expression follows it (else it is a variable)."""
+        if not self.at('table'):
+            return False
+        n = self.peek(1)
+        return n.kind in ('id', 'num', 'str') or (n.kind == 'op' and n.text in ('(', '{', '::', '!', '~'))
+
+    def foreach(self, for_i):
+        """for (var x in a) / for (var i, x in a)   - an array: element / index and element
+           for (var k in table t) / for (var k, v in table t) - a table: key / key and value (a snapshot of the keys)
+        Lowered to the ordinary for loop over hidden locals, in a block of its own:
+           { var $c = SE_ArrayClone(a);  [tables: var $t = t; var $c = SE_TableKeys($t);]
+             var $n = SE_ArraySize($c);  var $i = 0;
+             for (; $i < $n; $i = $i + 1) { var x = $c[$i]; ...body } }
+        The loop variables are fresh locals of each iteration: assigning them does not move the loop; `continue`
+        goes to the step. It walks a snapshot (the elements / the keys at the start): changes in the body do not
+        move it, removed elements are still visited."""
+        self.expect('var')
+        names = []
+        name_toks = []
+        while True:
+            nt = self.peek()
+            name_toks.append(self.p)
+            name = self.ident()
+            self.no_const_clash(name, 'local variable', nt)
+            h = self.hint_opt()
+            names.append((name, h))
+            if not self.accept(','):
+                break
+        if len(names) > 2:
+            raise self.err('foreach takes one or two variables: for (var x in a), for (var i, x in a), '
+                           'for (var k, v in table t)')
+        if not self.at('in'):
+            raise self.err("expected 'in' (a foreach: for (var x in array) or for (var k, v in table t))")
+        self.next()
+        is_table = self.table_marker()
+        if is_table:
+            self.next()
+        src = self.expr()
+        self.expect(')')
+        self.notes.append(('foreach', for_i - self.decl.start, ''))
+        hid = lambda n: A.Var('local', '(foreach %s)' % n)
+        c, n, i = hid('array'), hid('size'), hid('index')
+        decls = []
+        if is_table:
+            t = hid('table')
+            decls.append(A.VarDecl(t, src))
+            decls.append(A.VarDecl(c, A.Native('SE_TableKeys', [A.Ref(t)])))
+        else:
+            # a snapshot (SE_ArrayClone, a shallow copy): removing elements in the body (dead ships ...) neither
+            # skips the next one nor reads past the end; a non-array clones to an empty array
+            decls.append(A.VarDecl(c, A.Native('SE_ArrayClone', [src])))
+        decls.append(A.VarDecl(n, A.Native('SE_ArraySize', [A.Ref(c)])))
+        decls.append(A.VarDecl(i, A.Int(0)))
+        for v in decls:
+            v.var.decl = v
+        uvars = []
+        for (name, h), ti in zip(names, name_toks):
+            v = A.Var('local', name)
+            if h is not None:
+                v.type = self.resolve_hint(h, self.syms)
+            uvars.append(v)
+            self.declared(v, ti)
+        item = A.Index(A.Ref(c), A.Ref(i))
+        if len(uvars) == 1:
+            inits = [item]
+        elif is_table:
+            inits = [item, A.Index(A.Ref(t), A.Ref(uvars[0]))]
+        else:
+            inits = [A.Ref(i), item]
+        per = []
+        for v, e in zip(uvars, inits):
+            d = A.VarDecl(v, e)
+            v.decl = d
+            per.append(d)
+        self.scopes.append({v.name: v for v in uvars})
+        body = self.loop_block()
+        self.scopes.pop()
+        step = [A.ExprStmt(A.Assign(A.Ref(i), A.Bin('+', A.Ref(i), A.Int(1))))]
+        return A.Block(decls + [A.For([], A.Bin('<', A.Ref(i), A.Ref(n)), step, per + body)])
+
+    def declared(self, var, tok_i):
+        """A local declared outside a `var` statement (foreach variables) at token tok_i: a hook for the language
+        server (go to definition)."""
+        pass
+
+    # ---- type hints ------------------------------------------------------------------------------------------
+    def note(self, tok_i, msg):
+        self.notes.append(('warn', tok_i - self.decl.start, msg))
+
+    def hint_of(self, h):
+        """A hint of another declaration (header, field): class id, or None when it does not resolve (its own
+        declaration reports that)."""
+        if h is None:
+            return None
+        cid = self.hint_ids.get(h[0], False)
+        if cid is False:
+            try:
+                cid = self.resolve_hint(h, self.syms)
+            except ParseError:
+                cid = None
+            self.hint_ids[h[0]] = cid
+        return cid
+
+    def callee(self, e):
+        """The Method a call goes to when the compiler can tell (direct calls; calls by name on a hinted object or
+        on this), with the class the lookup started from."""
+        k = e.kind
+        if k in 'sgc':
+            cid, name = e.target
+            kl = self.syms.classes.get(cid)
+            return (kl.method(name) if kl else None), cid
+        T = self.type_of(e.obj) if k == 'o' else (self.cls or None)
+        if T is None:
+            return None, None
+        owner = self.syms.find_method(T, e.target)
+        return (self.syms.classes[owner].method(e.target) if owner is not None else None), T
+
+    def type_of(self, e):
+        """The class a value is known to be an object of (from hints), or None."""
+        t = type(e)
+        if t is A.Ref:
+            return e.var.type
+        if t is A.This:
+            return self.cls or None
+        if t is A.Assign:
+            return self.type_of(e.t)
+        if t is A.Mem and self.cls:
+            m = self.syms.member(self.cls, e.k)
+            return self.hint_of(self.syms.classes[m[0]].hints.get(m[1].name)) if m else None
+        if t is A.Glob:
+            f = self.syms.glob(e.k)
+            return self.hint_of(self.syms.classes[0].hints.get(f.name)) if f is not None else None
+        if t is A.Call:
+            m, _ = self.callee(e)
+            fd = m.fn if m is not None else None
+            return self.hint_of(getattr(fd, 'rtype', None)) if fd is not None else None
+        return None
+
+    def is_a(self, sub, cls):
+        return cls in self.syms.chain(sub)
+
+    def check_value(self, want, e, tok_i, what):
+        got = self.type_of(e)
+        if got is not None and want is not None and not self.is_a(got, want):
+            self.note(tok_i, '%s is a %s, not a %s' % (what, self.syms.class_name(got), self.syms.class_name(want)))
+
+    def check_call(self, e, tok_i):
+        """Calls on hinted objects: the method exists in the class chain, the argument count fits, hinted
+        parameters get objects of their class; x.C::F on a hinted x: x is a C."""
+        S = self.syms
+        if e.kind in 'on':
+            # calls by name on this (`this.F()`, `this->F()`) are left alone: a base class calling a method its
+            # subclasses define is the usual virtual call
+            T = self.type_of(e.obj) if e.kind == 'o' and type(e.obj) is not A.This else None
+            if T is None:
+                return
+            owner = S.find_method(T, e.target)
+            if owner is None:
+                self.note(tok_i, '%s has no method %s (a call by name answers 0)' % (S.class_name(T), e.target))
+                return
+            m = S.classes[owner].method(e.target)
+        elif e.kind == 'c':
+            m = S.classes[e.target[0]].method(e.target[1]) if e.target[0] in S.classes else None
+            if e.obj is not None and type(e.obj) is not A.Int:
+                T = self.type_of(e.obj)
+                if T is not None and not self.is_a(T, e.target[0]):
+                    self.note(tok_i, '%s::%s is called on a %s, which is not a %s'
+                              % (S.class_name(e.target[0]), e.target[1], S.class_name(T), S.class_name(e.target[0])))
+        else:
+            m = S.classes[e.target[0]].method(e.target[1]) if e.target[0] in S.classes else None
+        if m is None:
+            return
+        fd = m.fn
+        if e.kind in 'on':
+            owner_name = '%s::%s' % (S.class_name(owner), m.name) if owner else m.name
+            n = len(e.args)
+            if n > m.nparams:
+                self.note(tok_i, '%d arguments to %s, which takes %d' % (n, owner_name, m.nparams))
+            elif n < m.nparams and not getattr(fd, 'varargs', False):
+                self.note(tok_i, '%d argument%s to %s, which takes %d (a call by name passes 0 for the rest)'
+                          % (n, '' if n == 1 else 's', owner_name, m.nparams))
+        for j, (a, h) in enumerate(zip(e.args, getattr(fd, 'ptypes', None) or ())):
+            want = self.hint_of(h)
+            if want is not None:
+                self.check_value(want, a, tok_i, 'argument %d of %s' % (j + 1, m.name))
 
     def switch(self):
         self.expect('switch')
@@ -630,7 +882,12 @@ class BodyParser(Parser):
         if self.at('=') or (self.peek().kind == 'op' and self.peek().text in self.COMPOUND):
             op = self.next().text
             self.not_const(e, op)
+            it = self.p
             v = self.expr()
+            if op == '=' and type(e) in (A.Ref, A.Mem, A.Glob):
+                want = self.type_of(e)
+                if want is not None:
+                    self.check_value(want, v, it, 'the value assigned')
             if op != '=':
                 if type(e) not in (A.Ref, A.Mem, A.Glob):
                     raise self.err('%s needs a variable, a field or a global' % op)
@@ -741,8 +998,10 @@ class BodyParser(Parser):
                 e = A.Index(self.value(e), i)
             elif self.at('.'):
                 self.next()
+                ni = self.p
                 name = self.ident()
                 if self.accept('::'):
+                    ni = self.p
                     mname = self.ident()
                     cid = self.class_id(name)
                     args = self.call_args()
@@ -758,6 +1017,7 @@ class BodyParser(Parser):
                         e = A.Call('c', (owner, name), args, A.Int(e.id))
                     else:
                         e = A.Call('o', name, args, e)
+                self.check_call(e, ni)
             else:
                 return self.value(e) if type(e) is ClassConst and not self.at('.') else e
 
@@ -796,13 +1056,17 @@ class BodyParser(Parser):
         w = t.text
         if w == 'this':
             if self.accept('->'):
+                ni = self.p
                 name = self.ident()
-                return A.Call('n', name, self.call_args())
+                e = A.Call('n', name, self.call_args())
+                self.check_call(e, ni)
+                return e
             return A.This()
         if w in ('__m', '__g', '__f64', '__and', '__or', '__opland', '__oplor') and self.at('('):
             return self.builtin(w)
         if self.at('::'):
             self.next()
+            ni = self.p
             name = self.ident()
             args = self.call_args()
             if w == 'native':
@@ -812,15 +1076,22 @@ class BodyParser(Parser):
             cid = self.class_id(w)
             if not (self.syms.classes.get(cid) and self.syms.classes[cid].method(name)):
                 raise self.err('unknown method %s::%s' % (w, name))
-            return A.Call('s', (cid, name), args)
+            e = A.Call('s', (cid, name), args)
+            self.check_call(e, ni)
+            return e
         if self.at('('):
+            ni = self.p - 1
             args = self.call_args()
             if self.cls:
                 owner = self.syms.find_method(self.cls, w)
                 if owner is not None:
-                    return A.Call('s', (owner, w), args)
+                    e = A.Call('s', (owner, w), args)
+                    self.check_call(e, ni)
+                    return e
             if self.syms.global_function(w):
-                return A.Call('g', (0, w), args)
+                e = A.Call('g', (0, w), args)
+                self.check_call(e, ni)
+                return e
             return A.Native(w, args)
         if self.at('.') and self.peek(1).kind == 'id' and not (self.at('(', 2) or self.at('::', 2)) \
                 and not self.is_local(w):

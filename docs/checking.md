@@ -25,6 +25,19 @@ verifier of the bytecode, and an emulator of the game's script VM that runs the 
 - `x3kc savecheck src.kc base.obj` — which savegame return addresses a change breaks, and why (the call after
   the address differs, or the frame size of the method changed). Only calls a task can wait in count (see
   [kc.md](kc.md#mods-and-savegames-x3kc-compile---base)): a frame change in a method that never waits is fine.
+  A frame change in a method with a `foreach` says so: `frame 3 -> 7 (the foreach at line 12 keeps hidden locals
+  …)`; `compile --base` prints the same as a `note:` line when it refuses the build.
+- **Type hint warnings** of `x3kc compile` (`warning: part.kc:line: …`; the build goes on; the language server
+  shows them too). Only where the source has hints (`var s: Ship`, `function F(e: Ship): Ship`, see
+  [kc.md](kc.md#source-language)); stock sources get none:
+  - `Ship has no method Nope (a call by name answers 0)` — `s.Nope()` on a hinted `s`: no method of that name in
+    the class chain;
+  - `2 arguments to Ship::Fly, which takes 1` / `1 argument to Thing::Hit, which takes 2 (a call by name passes 0
+    for the rest)` — the argument count of a call by name on a hinted object (no warning on too few when the
+    method reads `__argc` or an `argN` past its parameters);
+  - `Ship::Fly is called on a Thing, which is not a Ship` — `t.Ship::Fly()` on a hinted `t`;
+  - `the value of s is a Thing, not a Ship`, `the value assigned …`, `argument 1 of F …`, `the returned value
+    …` — a value of a known class that is not the hinted class or a subclass of it.
 - `x3kc bugscan obj [--names auto] -o out.jsonl` — a scan for typical bug patterns
   (a switch section falling through, a getter result thrown away, `!x & n`, an off-by-one size comparison, a
   copy-pasted getter …): candidates to review by hand, not findings.
@@ -90,6 +103,7 @@ An expression line (`$c = $a + $b * 2`) costs about 40 instructions per token, a
 | `test_fuzz_compiler.py` | ~900 random expressions and programs: `compile` + emulator against a reference evaluator in Python |
 | `test_verify.py` | the verifier finds 8 kinds of damaged bytecode |
 | `test_b19.py` | an old savegame loaded with a `--base` build moves objects as the game does: new fields on a level with saved fields get their initial value, below the last such level they stay null (game bug B19, the compiler warns); an object of a removed class breaks the load |
+| `test_kc_sugar.py` | `foreach` (arrays, tables, `break` / `continue`, the frame note), type hint warnings with lines and the same object without hints, `#if` / `-D` (branches, errors, split projects, the cache per set of `-D` values), the language server's hint diagnostics |
 | `test_savesites.py` | only calls a task can wait in are savegame return sites (directly or through a callee) |
 | `test_emulator_game.py` | every game object verifies; MSCI scripts through the game's interpreter; a mod adds an MSCI command (build with `--base`, verified, savegames map, the command runs, the stock object neither crashes nor hangs on it); a task saved mid-wait on the stock object finishes on the modded build |
 

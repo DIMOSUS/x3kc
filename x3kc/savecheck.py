@@ -1,6 +1,6 @@
 """Which return sites of a base object a rebuilt source breaks, and why.
 
-    x3kc savecheck <source.kc> <base.obj>
+    x3kc savecheck <source.kc> <base.obj> [-D NAME[=V] ...]
 
 For every WRONG site: the method, the base offset, and the reason — the call after the mapped address differs
 (`call`), or the method's frame size changed (`frame old -> new`). Only sites where a task can be suspended are
@@ -16,11 +16,32 @@ from . import kcsave
 
 
 def main():
-    if len(sys.argv) != 3:
+    from . import kcpre
+    args, defs = [], []
+    it = iter(sys.argv[1:])
+    for x in it:
+        if x == '-D':
+            n = next(it, None)
+            if n is None:
+                print('error: -D needs a name (-D NAME or -D NAME=value)')
+                print(__doc__)
+                return 2
+            defs.append(n)
+        elif x.startswith('-D') and len(x) > 2:
+            defs.append(x[2:])
+        else:
+            args.append(x)
+    if len(args) != 2:
         print(__doc__)
         return 2
-    o, _, _ = kcc.compile_source(sys.argv[1])
-    base = kcobj.load(sys.argv[2])
+    try:
+        defines = kcpre.parse_defines(defs)
+    except kcpre.PreError as x:
+        print('error:', x)
+        return 2
+    o, _, fns = kcc.compile_source(args[0], defines=defines)
+    base = kcobj.load(args[1])
+    foreach = {(f.cls, f.name): f.foreach_lines for f in fns if getattr(f, 'foreach_lines', None)}
     segs = kcsave.code_map(base, o)
     bn = {e: k for k, (e, _) in kcsave.method_spans(base).items()}
     nn = {e: k for k, (e, _) in kcsave.method_spans(o).items()}
@@ -51,7 +72,11 @@ def main():
         if got != want:
             out[meth].append('%06x call %s -> %s' % (i.end, want, got))
         elif fb != fn:
-            out[meth].append('%06x frame %s -> %s' % (i.end, fb, fn))
+            fl = foreach.get(tuple(meth))
+            out[meth].append('%06x frame %s -> %s%s' % (i.end, fb, fn, (
+                ' (the foreach at line %s keeps hidden locals - container, size, index - in the frame: write that '
+                'loop with existing locals or move it into a method that does not wait)'
+                % ', '.join(map(str, fl))) if fl else ''))
     for m, lines in sorted(out.items()):
         print('%s::%s  %d sites' % (m[0], m[1], len(lines)))
         for l in lines[:4]:

@@ -1,6 +1,6 @@
 """Compile a KC source project (<name>.kc + .pool + .ptch, or a split project) into an object file.
 
-    x3kc compile <file.kc | dir | index.kcs> -o <out.obj> [--check <original.obj>]
+    x3kc compile <file.kc | dir | index.kcs> -o <out.obj> [--check <original.obj>] [-D NAME[=V] ...]
 
 --check compares the result with an object byte for byte and names the first differing methods.
 """
@@ -83,12 +83,15 @@ def natives_of(node):
             stack.extend(getattr(n, k) for k in n.__slots__ if k != 'asm')
 
 
-def compile_source(path, cache=None):
+def compile_source(path, cache=None, defines=None, quiet=False):
     """A source project -> (object, pool, functions). `path`: a single .kc file, or a split project (its .kcs
     index or its directory, see kcsplit), whose parts are joined in index order; messages name the part file.
-    cache: a kccache.Cache - function bodies parsed by an earlier build are taken from it (same result)."""
+    cache: a kccache.Cache - function bodies parsed by an earlier build are taken from it (same result).
+    defines: {NAME: value} of `-D` for #if / #ifdef (kcpre). The warnings are printed (unless quiet) and kept in
+    object.warnings as 'part.kc:line: text'."""
+    defines = dict(defines or {})
     try:
-        source = kcsplit.load(path)
+        source = kcsplit.load(path, defines=defines)
     except kcsplit.SplitError as x:
         raise CompileError(str(x))
     src, base, loc = source.text, source.base, source.loc
@@ -114,9 +117,13 @@ def compile_source(path, cache=None):
     if cache is not None:
         import hashlib
         import pickle
-        cname = 'bodies-%s' % hashlib.sha1(os.path.abspath(path).lower().encode('utf-8')).hexdigest()[:12]
+        # the -D values select the text: part of the signature, and every set of them keeps its own entry, so
+        # alternating builds (debug / release) both stay warm
+        dsig = repr(sorted(defines.items())).encode('utf-8')
+        cname = 'bodies-%s' % hashlib.sha1(os.path.abspath(path).lower().encode('utf-8') + b'\0' +
+                                           (dsig if defines else b'')).hexdigest()[:12]
         bodies = cache.load(cname) or {}
-        sig = hashlib.sha1(kccache.signature(S)).digest()
+        sig = hashlib.sha1(kccache.signature(S) + b'\0' + dsig).digest()
     for f in u.funcs:
         key = kccache.body_key(sig, P.toks, f) if cache is not None else None
         blob = bodies.get(key) if key else None
@@ -135,6 +142,7 @@ def compile_source(path, cache=None):
         cache.save(cname, used)         # only this build's bodies: the cache does not grow with edits
 
     # a native the exe does not have resolves to group 0 at load and silently returns 0: warn
+    warnings = []
     known = known_natives()
     if known:
         for f in fns:
@@ -142,6 +150,18 @@ def compile_source(path, cache=None):
                 if name not in known:
                     print('warning: %s (%s): native %s is unknown to X3AP.exe (it would return 0)'
                           % (loc(f.line), f.name, name))
+    # type hint checks (kept with the body: token offsets from its start) and where the foreach loops are
+    for f in fns:
+        f.foreach_lines = []
+        for kind, rel, msg in getattr(f.ast, 'notes', None) or ():
+            line = P.toks[f.start + rel].line
+            if kind == 'foreach':
+                f.foreach_lines.append(line)
+            else:
+                warnings.append('%s: %s' % (loc(line), msg))
+    if not quiet:
+        for w in warnings:
+            print('warning: ' + w)
 
     # layout in source order; addresses of calls are fixed up afterwards
     env = kcgen.Env(pool, {})
@@ -191,7 +211,29 @@ def compile_source(path, cache=None):
                                            rows_of(k), field_rows(k)))
     o.strings = bytes(pool.data)
     o.unit = u
+    o.warnings = warnings
+    o.loc = loc
     return o, pool, fns
+
+
+def foreach_frame_notes(o, fns, base):
+    """Methods with a foreach whose frame differs from the base's method of that name: the loop's hidden locals
+    (container, size, index) grew the frame, which breaks savegames when the method can wait."""
+    frames = {}
+    for k in [kcobj.KcClass(0, 0, 0, base.symb, [])] + list(base.classes):
+        for row in k.methods:
+            frames[(k.id, base.string(row[1]))] = row[2]
+    out = []
+    for f in fns:
+        old = frames.get((f.cls, f.name))
+        lines = getattr(f, 'foreach_lines', None)
+        if lines and old is not None and old != f.frame_size:
+            out.append('note: %s: %s: frame %d -> %d; the foreach at line %s keeps 3-4 hidden locals (container, '
+                       'size, index) for the whole loop. In a method that can wait, a changed frame breaks the '
+                       'savegames suspended in it: write the loop with locals the method already has, or move it '
+                       'into a method of its own that does not wait'
+                       % (o.loc(f.line), f.name, old, f.frame_size, ', '.join(str(x) for x in lines)))
+    return out
 
 
 def compare(o, ref, fns):
@@ -228,11 +270,14 @@ def main():
                     help='keep what does not change between builds in DIR (parsed bodies, what --base derives from '
                          'the base object): a rebuild after a small edit is faster; the object is the same')
     ap.add_argument('--no-cache', action='store_true', help='ignore --cache (neither read nor write it)')
+    ap.add_argument('-D', dest='defines', action='append', metavar='NAME[=V]',
+                    help='define NAME for #ifdef / #if (value V, default 1); repeatable')
     a = ap.parse_args()
     cache = kccache.Cache(a.cache) if a.cache and not a.no_cache else None
+    from . import kcpre
     try:
-        o, pool, fns = compile_source(a.src, cache)
-    except (CompileError, kcparse.ParseError) as x:
+        o, pool, fns = compile_source(a.src, cache, kcpre.parse_defines(a.defines))
+    except (CompileError, kcparse.ParseError, kcpre.PreError) as x:
         print('error:', x)
         return 1
     if a.base:
@@ -267,6 +312,9 @@ def main():
             ok, gone, bad = kcsave.check_return_sites(base, o, segs, cache=cache)
             print('base return sites (calls a task can wait in): %d mapped, %d gone, %d WRONG; new build %d'
                   % (ok, gone, bad, build))
+            if bad:
+                for line in foreach_frame_notes(o, fns, base):
+                    print(line)
             if (broken or bad) and not a.force:
                 print('error: old saves would break (see above); nothing written. --force writes anyway')
                 return 3

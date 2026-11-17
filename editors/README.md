@@ -140,7 +140,12 @@ set KCLSP_LOG=<file>                        logs every message
   - duplicate classes, globals or functions across parts, and unknown parent classes;
   - codegen errors (`break` outside a loop, duplicate cases, ...), at the function name;
   - warnings for natives X3AP.exe lacks and for static or global calls whose argument count differs from the
-    declaration. The stock AP x3story has none of either.
+    declaration. The stock AP x3story has none of either;
+  - the type hint warnings of `x3kc compile` (`var s: Ship`, `function F(e: Ship): Ship`; see
+    [docs/checking.md](../docs/checking.md)), at the method name of the call or the value;
+  - conditional compilation (`#if` / `#ifdef` …): the server knows no `-D` names, so it checks the branches a build
+    without `-D` compiles; the lines of the other branches are not analysed. A broken directive (`#if` without
+    `#endif`, an unknown name in `#if`) is a diagnostic of the part.
 - **Document symbols**: global variables, global functions, classes with their fields and methods.
 - **Go to definition**:
   - class names (`C150`, `Ship`, `new Ship(`, `: Parent`, `Ship::F`);

@@ -25,6 +25,7 @@ class Klass:
         self.id, self.name, self.parent, self.stamp = cid, name, parent, stamp
         self.fields = []        # [Field], own fields in index order
         self.methods = []       # [Method], row order
+        self.hints = {}         # field name -> (class name, token): type hints of fields (`var m: Ship;`)
 
     def method(self, name):
         for m in self.methods:

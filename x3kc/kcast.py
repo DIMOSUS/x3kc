@@ -11,7 +11,7 @@ class Node:
 # ---- variables -------------------------------------------------------------------------------
 class Var:
     """A stack cell with a name: parameter, local, or frame cell (argc / retpc / ctx)."""
-    __slots__ = ('kind', 'name', 'index', 'slot', 'decl')
+    __slots__ = ('kind', 'name', 'index', 'slot', 'decl', 'type')
 
     def __init__(self, kind, name, index=None):
         self.kind = kind        # 'param' | 'local' | 'frame'
@@ -19,6 +19,7 @@ class Var:
         self.index = index      # param number (1-based) or frame cell name
         self.slot = None        # absolute stack index during codegen
         self.decl = None
+        self.type = None        # class id of a type hint (`var s: Ship`): compiler checks only, never the code
 
     def __repr__(self):
         return 'Var(%s)' % self.name
@@ -257,7 +258,7 @@ class Asm(Node):
 
 # ---- top level -------------------------------------------------------------------------------
 class Function(Node):
-    __slots__ = ('cls', 'name', 'params', 'body', 'frame', 'asm', 'frame_vars', 'stmt_pc')
+    __slots__ = ('cls', 'name', 'params', 'body', 'frame', 'asm', 'frame_vars', 'stmt_pc', 'notes')
 
     def __init__(self, cls, name, params, body, frame=None, asm=None):
         self.cls, self.name, self.params, self.body = cls, name, params, body
@@ -265,6 +266,8 @@ class Function(Node):
         self.asm = asm          # list of asm items when the body is raw
         self.frame_vars = None  # dict name -> Var for frame cells
         self.stmt_pc = {}       # id(statement) -> code offset (decompiler only)
+        self.notes = []         # compiler: (kind, token index relative to the body start, text); kind 'warn' (a
+                                # type hint check) or 'foreach' (a foreach loop keeps hidden locals in the frame)
 
 
 BINOPS = {0x46: '+', 0x4b: '-', 0x50: '*', 0x51: '/', 0x52: '%', 0x53: '&', 0x54: '|', 0x55: '^', 0x56: '&&&',

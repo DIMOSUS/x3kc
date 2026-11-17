@@ -5,7 +5,8 @@
   parameter counts), the global variables and functions. A body is parsed against exactly those names, so the
   same tokens under the same signature give the same AST. An edit inside one body re-parses that body; a new or
   renamed class, field, method or global changes the signature and re-parses all of them - as does any change to
-  a constant (kcconst: its value is in the AST of every body that uses it, whichever part declares it).
+  a constant (kcconst: its value is in the AST of every body that uses it, whichever part declares it), a type
+  hint (the hint warnings are kept with the AST) and the `-D` values (kcc: each set of them has its own entry).
 - Base: what `--base` derives from the base object alone (the instruction keys of its methods, its return sites
   that a savegame can hold), keyed by the base object's sha256.
 Every entry also depends on the x3kc code: the cache is keyed by a hash of the package's modules and data files,
@@ -44,6 +45,14 @@ def signature(syms):
         k = syms.classes[cid]
         out.append((cid, k.name, k.parent, tuple(f.name for f in k.fields),
                     tuple((m.name, m.nparams) for m in k.methods)))
+        # type hints (fields, parameters, returns) and which methods take extra arguments: the hint checks of a
+        # body (kept with its AST) depend on them
+        hints = tuple(sorted((n, h[0]) for n, h in getattr(k, 'hints', {}).items()))
+        fh = tuple((m.name, tuple(h and h[0] for h in getattr(m.fn, 'ptypes', ()) or ()),
+                    getattr(m.fn, 'rtype', None) and m.fn.rtype[0], getattr(m.fn, 'varargs', False))
+                   for m in k.methods)
+        if hints or any(x[1] and any(x[1]) or x[2] or x[3] for x in fh):
+            out.append(('hints', cid, hints, fh))
     if syms.consts is not None and (syms.consts.consts or syms.consts.enums):
         # a use of a constant is its value in the AST: a changed value re-parses every body
         out.append(('const', syms.consts.signature()))
