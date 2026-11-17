@@ -95,6 +95,12 @@ class Syntax(unittest.TestCase):
     def test_dis(self):
         self.assertEqual(md.dis_bytes(XML.encode('latin-1'), 't.xml'), TEXT)
 
+    def test_bom(self):
+        # a .xmd saved by an editor with a UTF-8 BOM (and CRLF) builds the same XML
+        plain = md.asm_text(TEXT, 't.xmd')
+        self.assertEqual(md.asm_text('﻿' + TEXT, 't.xmd'), plain)
+        self.assertEqual(md.asm_text('﻿' + TEXT.replace('\n', '\r\n'), 't.xmd'), plain)
+
     def test_odd_bytes_kept(self):
         # CRLF, a tab-indented line, a blank line, spaces in a tag, single quotes, a comment on the line of a tag,
         # an element on the line of its parent, a multi-line comment, a literal action with two children, no BOM

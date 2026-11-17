@@ -1479,7 +1479,9 @@ def layout(doc):
 
 
 def asm_text(text, fname='<text>'):
-    """-> (xml bytes, warnings)."""
+    """-> (xml bytes, warnings). A leading UTF-8 BOM (an editor's; msci_asm reads utf-8-sig too) is skipped."""
+    if text.startswith('﻿'):
+        text = text[1:]
     text = text.replace('\r\n', '\n')
     p = Parser(text, fname)
     doc = p.document()
