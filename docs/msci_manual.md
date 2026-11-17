@@ -460,12 +460,14 @@ my.xms:12:1: warning: Var/Ship parameter of `get warearray for` gets $s, which h
   race as the object of `get notoriety title to race` and `get notority percentage to race`; on FL also a string as
   `type=` of `convert gate`, numbers in `add large number arrays`, arrays as `filterclass=` and `racemask=` of
   `create input` (the user input forms) and a table of races as `owner=` of `find a random sector`.
-- On the 697 AP stock scripts this gives 13 warnings, on the 1 020 FL stock scripts 18 (each of them, built from
-  its `dis` text, gives the same XML as `msci new`). All are mismatches by the declared types: a `Var/Sector`
-  argument passed to `is in same sector as` or a station to `find ship: sector=`, a race to `-> exists`,
-  `-> get owner race` and `is … a enemy`, `START $x -> call script` on a number (AP), a station as `race=` of
-  `add notoriety` (FL `!agent.cmd.stealstation`), `-> exists` on the number `is in home sector` or `fire missile`
-  gives (FL).
+- On the 697 AP scripts this gives 11 warnings, on the 1 020 FL scripts 12 (each of them, built from its `dis`
+  text, gives the same XML as `msci new`). These counts are for the scripts with the x3_src fixes B199-B201; the
+  stock scripts give 13 and 18. The remaining warnings are mismatches by the declared types: a `Var/Sector`
+  argument passed to `is in same sector as` or a station to `find ship: sector=`, a race to `-> exists` and
+  `-> get owner race`, `START $x -> call script` on a number (AP), and `-> exists` on what `fire missile` gives (FL).
+  The stock scripts also had real bugs among them, now fixed: a station as `race=` of `add notoriety`
+  (FL `!agent.cmd.stealstation`), `-> exists` on the number `is in home sector` (FL `!lib.packstation.dropped`)
+  and a race as the object of `is … a enemy` (`plugin.autotrade.checksector`).
   `--no-types` turns them off.
 
 ### Editor support

@@ -375,11 +375,14 @@ my.xms:12:1: warning: Var/Ship parameter of `get warearray for` gets $s, which h
   раса как объект `get notoriety title to race` и `get notority percentage to race`; в FL ещё строка в `type=`
   у `convert gate`, числа в `add large number arrays`, массивы в `filterclass=` и `racemask=` у `create input`
   (формы ввода) и таблица рас в `owner=` у `find a random sector`.
-- На 697 стоковых скриптах AP это 13 предупреждений, на 1 020 скриптах FL — 18 (каждый из них, собранный из текста
-  `dis`, даёт тот же XML, что `msci new`). Все — расхождения с объявленными типами: аргумент `Var/Sector` в
-  `is in same sector as` или станция в `find ship: sector=`, раса в `-> exists`, `-> get owner race` и `is … a enemy`,
-  `START $x -> call script` на числе (AP), станция в `race=` у `add notoriety` (FL `!agent.cmd.stealstation`),
-  `-> exists` на числе, которое дают `is in home sector` и `fire missile` (FL). `--no-types` их отключает.
+- На 697 скриптах AP это 11 предупреждений, на 1 020 скриптах FL — 12 (каждый из них, собранный из текста `dis`,
+  даёт тот же XML, что `msci new`). Это счёт для скриптов с исправлениями x3_src B199-B201; стоковые дают 13 и 18.
+  Оставшиеся предупреждения — расхождения с объявленными типами: аргумент `Var/Sector` в `is in same sector as` или
+  станция в `find ship: sector=`, раса в `-> exists` и `-> get owner race`, `START $x -> call script` на числе (AP),
+  `-> exists` на том, что даёт `fire missile` (FL). Среди стоковых были и настоящие ошибки, теперь исправленные:
+  станция в `race=` у `add notoriety` (FL `!agent.cmd.stealstation`), `-> exists` на числе от `is in home sector`
+  (FL `!lib.packstation.dropped`) и раса как объект `is … a enemy` (`plugin.autotrade.checksector`).
+  `--no-types` их отключает.
 
 ### Поддержка в редакторе
 Языковой сервер (`editors/kclsp`) обрабатывает `.xms` как `.msci`: сообщения препроцессора, опускания, сборщика и
