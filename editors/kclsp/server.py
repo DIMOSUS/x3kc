@@ -221,7 +221,7 @@ class Server:
         d = self.docs.get(key)
         if d:
             return d
-        if path.lower().endswith('.msci'):  # an MSCI script: no project, pr is None
+        if path.lower().endswith(('.msci', '.xms')):  # an MSCI script (.xms: MSCI sugar): no project, pr is None
             self.docs[key] = (None, msci_ls.Doc(path))
             return self.docs[key]
         index, _ = P.find_project(path)

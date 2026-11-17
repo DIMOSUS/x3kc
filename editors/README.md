@@ -54,7 +54,10 @@ Installing:
 
 ## MSCI in the language server (editors/kclsp/msci_ls.py)
 
-The server process is the same; it treats a file by its extension (`.msci`).
+The server process is the same; it treats a file by its extension (`.msci`). An `.xms` file (MSCI sugar,
+`x3kc msci build`, docs/msci_manual.md "MSCI sugar") gets the build's own messages instead: preprocessor,
+lowering, the first assembler error and type warnings, mapped to the source line (messages from an included file
+on line 1); hover and completion work as for `.msci`, the grammar is the `.msci` one.
 
 - **Diagnostics** come from x3kc's assembler (`msci_asm.Assembler.line`), fed line by line, so every bad line gets
   its own diagnostic: an unknown or mistyped command, a bad value or expression, block errors (`end` without `if`,

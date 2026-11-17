@@ -20,7 +20,10 @@ fields and functions, plus a decoder and assembler for ordinary **MSCI** scripts
   kept as text.
   Albion Prelude and Farnham's Legacy (`--addon addon2`). A [manual for writing scripts](docs/msci_manual.md)
   and a command reference generated from the game's tables ([AP](docs/msci_commands_ap.md),
-  [FL](docs/msci_commands_fl.md)).
+  [FL](docs/msci_commands_fl.md)). `msci build` adds a source layer on top (`.xms`, [MSCI
+  sugar](docs/msci_manual.md#msci-sugar-xms)): a preprocessor (`#define`, `#ifdef`, `#include`), functions with
+  private variables, `sub` blocks, `foreach`, `+=` / `++`, and type warnings; it lowers to plain editor text, so the
+  stock game runs the result and stock text builds unchanged.
 - **Checked before the game.** Every build passes a bytecode verifier, and an emulator of the game's script VM
   runs the object's own code — natives as the exe implements them, MSCI scripts through the game's own
   interpreter, savegames moved to a new build — so a mod can be tested without starting the game.
@@ -86,6 +89,7 @@ x3kc msci dis work/msci_db.json work/scripts/plugin.foo.xml > foo.txt
 # edit foo.txt
 x3kc msci asm work/msci_db.json work/scripts/plugin.foo.xml foo.txt > plugin.foo.xml
 x3kc msci new work/msci_db.json my.script.txt -o my.script.xml       a new script: header from `//` lines
+x3kc msci build work/msci_db.json my.script.xms -o my.script.xml     the same from MSCI sugar (--text: lowered text)
 ```
 Farnham's Legacy: `x3kc msci-setup "<TC dir>" work-fl --addon addon2` (and `extract … --addon addon2`).
 

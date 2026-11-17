@@ -18,7 +18,7 @@
       {
         "id": "msci",
         "aliases": ["MSCI", "msci"],
-        "extensions": [".msci"],
+        "extensions": [".msci", ".xms"],
         "configuration": "./msci-language-configuration.json"
       }
     ],

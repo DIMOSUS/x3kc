@@ -18,7 +18,11 @@
   скрипт по одному тексту; `dis` → `new` воспроизводит код каждого скрипта игры (AP 697 из 697, FL 1 020 из
   1 020), так что скрипты можно хранить текстом. AP и Farnham's Legacy (`--addon addon2`). [Руководство по написанию
   скриптов](docs/ru/msci_manual.md) и справочник команд, сгенерированный из базы игры ([AP](docs/msci_commands_ap.md),
-  [FL](docs/msci_commands_fl.md)).
+  [FL](docs/msci_commands_fl.md)). `msci build` добавляет слой исходника поверх (`.xms`, [MSCI
+  sugar](docs/ru/msci_manual.md#msci-sugar-xms)): препроцессор (`#define`, `#ifdef`,
+  `#include`), функции с собственными переменными, блоки `sub`, `foreach`, `+=` / `++` и предупреждения о типах;
+  всё опускается до обычного текста редактора, так что результат выполняет игра без правок, а текст игры
+  собирается без изменений.
 - **Проверено до игры.** Каждая сборка проходит верификатор байткода, а эмулятор скриптовой VM игры исполняет
   код самого объекта — нативы как в exe, MSCI-скрипты через интерпретатор игры, перенос сейвов на новую
   сборку, — так что мод можно проверить, не запуская игру.
@@ -81,6 +85,7 @@ x3kc msci dis work/msci_db.json work/scripts/plugin.foo.xml > foo.txt
 # правим foo.txt
 x3kc msci asm work/msci_db.json work/scripts/plugin.foo.xml foo.txt > plugin.foo.xml
 x3kc msci new work/msci_db.json my.script.txt -o my.script.xml       новый скрипт: шапка из строк `//`
+x3kc msci build work/msci_db.json my.script.xms -o my.script.xml     то же из MSCI sugar (--text: опущенный текст)
 ```
 Farnham's Legacy: `x3kc msci-setup "<папка TC>" work-fl --addon addon2` (и `extract … --addon addon2`).
 

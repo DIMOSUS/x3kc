@@ -1,4 +1,5 @@
 """MSCI scripts in their text form (.msci: `x3kc msci dis` output, read by `x3kc msci new`) for the language server.
+An .xms file (MSCI sugar, x3kc/msci_sugar.py) gets the diagnostics of `msci build` (sugar_diagnostics).
 
 Diagnostics come from x3kc's assembler (msci_asm.Assembler), line by line so that every bad line is reported, plus
 blocks left open and undefined labels. The assembler needs the game's msci_db.json (`x3kc msci-setup`), looked for
@@ -133,20 +134,55 @@ def sibling_args(folder):
     except OSError:
         return out
     for n in names:
-        if n.lower().endswith('.msci'):
+        if n.lower().endswith(('.msci', '.xms')):
             try:
                 with open(os.path.join(folder, n), encoding='utf-8-sig', errors='replace') as f:
                     head = [next(f, '') for _ in range(40)]
             except OSError:
                 continue
             _, args = header([h.rstrip('\n') for h in head])
-            out[n[:-5]] = [a[2] for a in args]
+            out[os.path.splitext(n)[0]] = [a[2] for a in args]
+    return out
+
+
+def sugar_diagnostics(doc):
+    """.xms (MSCI sugar, x3kc/msci_sugar.py): preprocessor, lowering, assembler and type diagnostics. A message
+    from an included file is shown on line 1 with its own file:line."""
+    from x3kc import msci_sugar
+    lines = doc.lines()
+    ed = edition_of(doc.path)
+    dbp = find_db(doc.path, ed)
+    A = db = None
+    out = []
+    if dbp is None:
+        out.append(P.Diag(1, 0, 2, 'no msci_db.json found for %s (x3kc msci-setup; or set KCLSP_MSCI_DB): only the '
+                                   'preprocessor and the lowering are checked' % ed.upper(), 3))
+    else:
+        A, db = assembler(dbp)
+        A.scriptargs = sibling_args(os.path.dirname(os.path.abspath(doc.path)))
+    me = P.norm(os.path.abspath(doc.path))
+
+    def reader(p):
+        return doc.source() if P.norm(os.path.abspath(p)) == me else msci_sugar.read_file(p)
+    try:
+        r = msci_sugar.build(doc.path, db, A, text=doc.source(), reader=reader, addon=ed)
+    except Exception as x:          # report, do not kill the server
+        return out + [P.Diag(1, 0, 2, 'msci sugar: %s: %s' % (type(x).__name__, x))]
+    for d in r.diags:
+        sev = 1 if d.severity == 'error' else 2
+        if P.norm(os.path.abspath(d.file)) == me and 1 <= d.line <= len(lines):
+            a, b = span(lines[d.line - 1])
+            out.append(P.Diag(d.line, max(0, d.col - 1), b, d.msg, sev))
+        else:
+            out.append(P.Diag(1, 0, len(lines[0]) if lines else 1, str(d), sev))
     return out
 
 
 def diagnostics(doc):
     """[Diag] for the current text."""
     from x3kc import msci_asm
+    if doc.path.lower().endswith('.xms'):
+        return sugar_diagnostics(doc)
     lines = doc.lines()
     ed = edition_of(doc.path)
     dbp = find_db(doc.path, ed)

@@ -458,7 +458,9 @@ class Assembler:
             try:
                 self.line(raw, code, extra, stack, labels, here)
             except AsmError as x:
-                raise AsmError('%s  [line: %s]' % (x, raw.strip()))
+                e = AsmError('%s  [line: %s]' % (x, raw.strip()))
+                e.lineno, e.msg = i, str(x)         # index into lines: msci_sugar maps it back to the source
+                raise e
             if self.last is not None:
                 self.origin.append((i, self.last))
             elif self.last_extra is not None:
@@ -683,8 +685,12 @@ def new_script(A, db, path_txt, engine=40):
     """A whole script XML from text alone: the `//` header `dis` prints gives name, description and arguments
     (`// version: N`, `// engine: N` and `// command: N` - the script command, script[9] - are optional), the rest
     is the script. Written like the game's SaveScript, without a signature."""
-    text = open(path_txt, encoding='utf-8-sig').read().replace('\r', '')
-    lines = text.split('\n')
+    return new_script_text(A, db, open(path_txt, encoding='utf-8-sig').read(), engine)
+
+
+def new_script_text(A, db, text, engine=40):
+    """new_script from the text itself (msci_sugar builds its lowered text this way)."""
+    lines = text.replace('\r', '').split('\n')
     name = desc = None
     version = command = 0
     args = []

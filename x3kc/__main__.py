@@ -62,6 +62,10 @@ MSCI scripts (addon/scripts/*.pck|xml)
   msci new <db.json> <script.txt> [-o name.xml] [--scripts DIR] [--engine N]
                                         a new script XML from text alone: the `//` header (as `dis` prints it)
                                         gives name, description and arguments
+  msci build <db.json> <src.xms> [-o name.xml] [--text] [-D NAME[=V]]... [--scripts DIR] [--engine N]
+             [--no-types] [--addon ap|fl]
+                                        MSCI sugar -> script XML: preprocessor, functions, subs, foreach, +=,
+                                        type warnings; --text writes the lowered editor text instead
   msci check <db.json> <dir>            decoder vs the <sourceplaintext> of every script
   msci verify <db.json> <dir>           assembler vs the <codearray> of every script
   msci map <x3story.kc|dir> <texts.tsv> <out.md> [--json F]
@@ -93,7 +97,7 @@ def main(argv=None):
             return 2
         sub, rest = rest[0], rest[1:]
         table = {'dis': ('msci', 'dis'), 'check': ('msci', 'check'), 'asm': ('msci_asm', 'asm'),
-                 'new': ('msci_asm', 'new'),
+                 'new': ('msci_asm', 'new'), 'build': ('msci_sugar', None),
                  'verify': ('msci_asm', 'check'), 'map': ('msci_map', None),
                  'cost': ('msci_cost', None), 'usage': ('msci_usage', None), 'learn': ('msci_learn', None),
                  'ref': ('msci_ref', None)}

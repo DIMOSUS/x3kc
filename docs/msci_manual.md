@@ -11,7 +11,7 @@ difference is listed in [Older guides](#what-older-guides-get-wrong).
 File format and encoding: [msci.md](msci.md)
 
 **Contents.** [Rules in brief](#rules-in-brief) · [Worked example](#worked-example) · [Games and versions](#games-and-versions)
-· [Files and loading](#files-and-loading) · [The text form](#the-text-form) · [Language](#language) ·
+· [Files and loading](#files-and-loading) · [The text form](#the-text-form) · [MSCI sugar](#msci-sugar-xms) · [Language](#language) ·
 [Objects](#objects-and-this) · [Texts](#texts-t-files) · [Commands, signals, tasks, AL, saves](#commands-signals-tasks-al-saves)
 · [Command reference](#reading-the-command-reference) · [Pitfalls](#pitfalls) · [Testing](#testing-without-the-game)
 · [Checklist](#checklist-before-shipping) · [Older guides](#what-older-guides-get-wrong) · [Limitations](#limitations)
@@ -275,6 +275,201 @@ x3kc reads and writes the text the in-game editor shows (`<sourceplaintext>`): o
 - **Expressions** (a line `$x = <expression>` or `if <expression>`): operators separated by spaces, as the editor
   prints them: `$a + 1`, `( $a + 1 ) * 2`, `$a == 3 AND $b < 5`, `not` is written `!` or `if not`. An operand
   must be followed by a space or `)`; `$a+1` does not parse.
+
+## MSCI sugar (.xms)
+`x3kc msci build` reads a source layer over the text form and lowers it to plain editor text, which then goes
+through `msci new` unchanged. Everything lowers to ordinary commands (`gosub`, `while`, expressions, `inc`), so the
+stock game runs the result; nothing in the game changes. **Stock text is valid sugar**: a `dis` output or a `.txt`
+for `msci new` builds the same XML through `msci build` (checked on all 697 AP stock scripts).
+```
+x3kc msci build <db.json> <src.xms> [-o name.xml] [--text] [-D NAME[=V]]... [--scripts DIR] [--engine N]
+                [--no-types] [--addon ap|fl]
+```
+`--text` writes the lowered text instead of the XML (to read what the sugar became, or to feed `msci new`).
+`--scripts` and the output directory give the argument names of called scripts, as for `msci new`. Messages are
+`file:line:col: message`, warnings `file:line:col: warning: message`, and point at the source line (an included
+file, a macro use) even when the assembler finds the error in the lowered text. Exit code 1 on any error.
+
+A complete example:
+```
+// lib.mymod.stats  (sum and maximum of an array)
+// version: 1
+//   $arr: Var/Array  "Numbers"
+#include "mymod.xmh"
+$sum = 0
+$best = null
+foreach $i, $v in $arr {
+  skip if $v != SKIP
+    continue
+  $sum += $v
+  $best = max($best, $v)
+}
+$r = array alloc: size=2
+$r[0] = $sum
+$r[1] = $best
+return $r
+
+* the larger of two numbers; null counts as smaller
+function max($a, $b) {
+  if not $a
+    return $b
+  end
+  if $a > $b
+    return $a
+  end
+  return $b
+}
+```
+
+### Preprocessor
+Lines starting with `#` are directives; they are done before everything else.
+- `#define NAME value`, `#define F(a, b) body` (no space before `(`), `#undef NAME`. A name is replaced as a whole
+  word outside `'strings'`, not after `$`, `.` or `[` (so `$NAME`, `lib.NAME`, `[NAME]` stay) and not before `.`.
+  A `'` between two letters (`Kha'ak`, `Duke's Haven`) or without a closing `'` on the line is an apostrophe, not
+  the start of a string.
+  Arguments are substituted, then the result is expanded again (a macro does not expand inside itself).
+  A line ending in `\` continues the directive; **each continued part becomes its own script line**, so a macro can
+  stand for several commands. Redefining a macro differently warns. `//` and `*` lines are not expanded.
+- `#ifdef NAME` / `#ifndef NAME` test whether the macro is defined; `#elifdef` / `#elseifdef` (and `…ndef`) do
+  the same in a chain. `#if NAME` / `#elseif NAME` (also `#elif`) test the value, as in C: true when the macro is
+  defined and its value is neither `0` nor empty, so `-D DEBUG=0` makes `#if DEBUG` false and `#ifdef DEBUG` true.
+  Every condition may compare the value instead: `#if LEVEL >= 2`, `#elseif MODE == fast`. Two integers compare as
+  numbers, anything else as text (quotes are stripped); an undefined name in a comparison is false. `#else`,
+  `#endif` close the chain.
+- `-D NAME` (value `1`) or `-D NAME=V` on the command line defines a macro before the file.
+- `#include "path"`: relative to the including file; a cycle is an error. Use `#ifndef GUARD` / `#define GUARD` in
+  a header included from several places. `#error text` stops the build, `#warning text` only reports.
+
+### Functions
+```
+function name($a, $b) {          `{` at the end of the line or alone on the next one
+  ...
+  return <expression>            sets the result and leaves the function (not the script)
+}
+$r = name($x, 5)                 call with a result
+name($x)                         call without one
+```
+Lowering:
+```
+$fn.name.a = $x                  arguments copied in at the call site; missing ones get null
+$fn.name.b = 5
+gosub fn.name
+$r = $fn.name                    the result variable has the function's name
+...
+fn.name:                         after the main body
+$fn.name = null                  (only when some return has a value)
+  ... body: every $v renamed $fn.name.v, its own labels fn.name.<label> ...
+  $fn.name = <expression>        return <expression>
+  goto label fn.name.exit        (not for a return that is the last line)
+fn.name.exit:
+endsub
+```
+- **Private variables**: every `$var` inside is `$fn.<name>.<var>`; a function sees only its arguments and its own
+  variables (no script arguments, no variables of the caller). They are **not reset** between calls: a variable you
+  read before setting it keeps its value from the previous call. Labels inside a function are local
+  (`fn.<name>.<label>`); `exit` is reserved there.
+- `return <expression>` takes a whole expression (`return $a + 1`), unlike the stock `return <value>`. A `return`
+  without a value or `return null` leaves with `null`; so does falling off the end.
+- Functions may be called before they are defined. A call is a whole statement: `$r = f(x)`, `f(x)`, `= f(x)`,
+  `$x += f(y)`, `$a = $b = f(x)`, the source of a `foreach`. A call inside a condition (`if f($x)`), inside a larger
+  expression or as an argument of another call is not supported (an error in the first and last case): assign it
+  to a variable first.
+- **Recursion** (direct, or through other functions and subs) is a warning: there is no stack, a nested call overwrites the
+  caller's arguments and variables. The `gosub` stack allows 500 nested calls.
+- A function or sub may not be named like a keyword, a label of the script, or the first word of a command
+  (`wait`, `show`, `use`, `get` …): that is an error, since `name(...)` would read as the command. A function
+  name may not extend another function's name with `.` (`vec` and `vec.len`): `$fn.vec.len` would be both a
+  variable of `vec` and the result of `vec.len`.
+- Functions run in the caller's task and do not wait; `[THIS]` is the script's `[THIS]`.
+
+### Subs
+`sub name() { ... }` (or `sub name { ... }`) is `name:` + the body + `endsub`, placed after the main body wherever
+it stands in the source; variables are shared with the script. Call it with `gosub name` or `name()`. A stock
+`return` inside a sub ends the script, as in plain MSCI.
+
+When the source has functions or subs and the main body does not end with `return` or `goto label` (or ends with
+one under `skip if` / `do if`), `return null` is added after it so the script never runs into them. `*` comments
+and empty lines right above a function or sub move with it.
+
+### skip if / do if before sugar
+`skip if c` and `do if c` guard exactly one code line. When the guarded statement lowers to more than one line (a
+call with arguments, `$x = f(…)`, a `return <value>` inside a function, a chained assignment) or to none (a bare
+`return` as a function's last line), the guard becomes a block: `do if c` (and the old `skip if not c`) turns into
+`if c` … `end`, `skip if c` into `if not c` … `end`. A guard before a one-line statement, and every stock guard,
+stays as written. A guard before a line that opens or closes a block (`if`, `while`, `end`, `foreach`, `}`) is
+left as written too, as in plain MSCI.
+```
+do if $a                         if $a
+  $x = f(1)              ->        $fn.f.v = 1
+                                   gosub fn.f
+                                   $x = $fn.f
+                                 end
+```
+
+### foreach
+```
+foreach $item in <value> {       <value>: a variable, any command or expression, or a function call
+foreach $index, $item in <value> {
+  ... break / continue work ...
+}
+```
+Lowering (`K` counts the loops of the script):
+```
+$_feK.a = <value>                the array is taken once
+$_feK.n = size of array $_feK.a  and its size: elements appended in the loop are not visited
+$_feK.i = 0
+while $_feK.i < $_feK.n
+  $item = $_feK.a[$_feK.i]
+  $index = $_feK.i
+  inc $_feK.i =                  before the body, so `continue` (a jump to the `while` line) does not skip it
+  ... body ...
+end
+```
+A `foreach` is closed by `}`, `if` / `while` by `end`; a `}` or `end` that closes the wrong one is an error naming
+the open block's line. Inside a function the hidden variables are private like the others. Names starting with
+`$_fe` are reserved.
+
+### Assignments
+| write | lowers to |
+|---|---|
+| `$x += e`, `-=`, `*=`, `/=` | `$x = $x + e` (`e` in parentheses when it is more than one token and not already one `( … )` group) |
+| `$x++`, `$x--` | `inc $x =`, `dec $x =` |
+| `$a = $b = e` | `$b = e`, then `$a = $b` (any length; `e` may be a command or a call) |
+
+`+=` is an expression, so it follows the expression rules: `null + 1` is a string, while `inc` of `null` gives 1.
+
+### Type warnings
+After the build, `msci build` infers variable types and warns (never fails) when a value of a known type goes to a
+parameter of another type, for example a sector to a ship-only command:
+```
+my.xms:12:1: warning: Var/Ship parameter of `get warearray for` gets $s, which holds a sector (set at my.xms:11)
+```
+- Types come from header arguments (`Var/Sector` …), literals, constants (`[PLAYERSHIP]`, `[TRUE]` …),
+  expressions (comparisons and arithmetic give numbers, `+` with a string gives a string) and command results: the
+  `Returns` line of the command reference (`x3kc/data/msci_semantics_<ap|fl>.json`; `--addon`, or else the size of
+  the database, picks which). They flow through assignments, function arguments and results.
+- A variable has a type only when every assignment to it gives the same one; a command whose result depends on
+  its arguments (`find ship: … maxnum=` gives a ship or an array) or is "any type" gives none. Unknown means no
+  warning, and so does `null`.
+- Checked parameter types: `Var/Number`, `Var/Ship`, `Var/Station`, `Var/Ship/Station` (also `… owned by Player`,
+  `Var/Station/Carrier`), `Var/Sector`, `Var/Array` (an FL table too), `Var/Ware` (a number too), `Var/Race`,
+  `Var/Class`, and `RefObj` (`$x ->`) against numbers, wares, races and classes. `Value`, `Var`, `Var/String`,
+  `Var/Boolean` and the other types are not checked.
+- On the 697 AP stock scripts this gives 14 warnings, all mismatches by the declared types (a `Var/Sector`
+  argument passed to `is in same sector as`, a race to `-> exists`, `START $x -> call script` on a number).
+  `--no-types` turns them off.
+
+### Editor support
+The language server (`editors/kclsp`) treats `.xms` files like `.msci`: preprocessor, lowering, assembler and type
+messages appear as diagnostics (one assembler error at a time; messages from included files on line 1). Hover,
+completion and go-to-definition are those of `.msci`; the grammar does not colour the sugar keywords.
+
+### Limitations
+- One statement per line; no nested calls, calls in conditions or expressions, default arguments, or braces for
+  `if` / `while` (use `… end`). Function locals are not reset between calls.
+- Recursion compiles but shares variables (warning). `foreach` reads the size once.
+- Type inference is flow-insensitive (one type per variable for the whole script) and per script: the result of
+  `call script` is unknown. Only checked on AP; FL uses its own semantics file for its new commands.
 
 ## Language
 

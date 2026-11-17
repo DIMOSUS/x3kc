@@ -119,11 +119,18 @@ x3kc msci-setup "<игра>" work [--addon addon2]         тексты, име�
 x3kc msci dis work/msci_db.json work/scripts/X.xml     текст скрипта, как в редакторе
 x3kc msci asm work/msci_db.json work/scripts/X.xml правка.txt > X.xml
 x3kc msci new work/msci_db.json X.txt -o X.xml          новый скрипт по одному тексту (шапка из строк `//`)
+x3kc msci build work/msci_db.json X.xms -o X.xml        то же из MSCI sugar (.xms); --text: опущенный текст
+           [-D NAME[=V]]... [--scripts DIR] [--engine N] [--no-types] [--addon ap|fl]
 x3kc msci learn work/msci_db.json work/scripts         тексты редактора, которых нет в файлах игры (msci-setup запускает сам)
 x3kc msci ref work/msci_db.json out.md [--map M --scripts DIR --other DB]   справочник команд
 x3kc msci check work/msci_db.json work/scripts         декодер против <sourceplaintext>
 x3kc msci verify work/msci_db.json work/scripts        сборщик против <codearray>
 ```
+`build` читает MSCI sugar: препроцессор (`#define`, `#if`, `#include`), функции с собственными переменными, блоки
+`sub`, `foreach`, `+=` / `++` и предупреждения о типах; всё опускается до обычного текста редактора, который дальше
+без изменений идёт через `new`; текст игры собирается так же, как через `new`. Подробно —
+[руководство, «MSCI sugar»](msci_manual.md#msci-sugar-xms).
+
 `asm` берёт шапку, описание, версию и аргументы из указанного XML, а имена аргументов вызываемых скриптов — из XML
 рядом с ним. Строки шапки `//` из вывода `dis` пропускаются, отступы не важны, BOM допускается. `<sourcetext>` и
 `<signature>` не пишутся.

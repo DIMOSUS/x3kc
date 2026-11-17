@@ -120,11 +120,17 @@ x3kc msci-setup "<game>" work [--addon addon2]         texts, ware names, msci_d
 x3kc msci dis work/msci_db.json work/scripts/X.xml     script text as the editor shows it
 x3kc msci asm work/msci_db.json work/scripts/X.xml edited.txt > X.xml
 x3kc msci new work/msci_db.json X.txt -o X.xml          a new script from text alone (header from `//` lines)
+x3kc msci build work/msci_db.json X.xms -o X.xml        the same from MSCI sugar (.xms); --text: the lowered text
+           [-D NAME[=V]]... [--scripts DIR] [--engine N] [--no-types] [--addon ap|fl]
 x3kc msci learn work/msci_db.json work/scripts         editor texts the text files lack (msci-setup runs it)
 x3kc msci ref work/msci_db.json out.md [--map M --scripts DIR --other DB]   command reference
 x3kc msci check work/msci_db.json work/scripts         decoder vs <sourceplaintext>
 x3kc msci verify work/msci_db.json work/scripts        assembler vs <codearray>
 ```
+`build` reads MSCI sugar: a preprocessor (`#define`, `#if`, `#include`), functions with private variables, `sub`
+blocks, `foreach`, `+=` / `++` and type warnings, all lowered to plain editor text that then goes through `new`
+unchanged; stock text builds identically. See [the manual, "MSCI sugar"](msci_manual.md#msci-sugar-xms).
+
 `asm` takes the header, description, version and arguments from the given XML and argument names of called
 scripts from the XML files next to it. The `//` header lines of `dis` output are skipped, indentation does not
 matter, a BOM is accepted. `<sourcetext>` and `<signature>` are not written.
