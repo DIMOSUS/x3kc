@@ -252,9 +252,9 @@ working JSON form ([docs/kc.md](docs/kc.md#annotations)), check them with `decom
 agents from the code and the game texts and have not been proof-read by a human.
 
 ## Status and caveats
-- Round trips are verified, changed objects are checked by the verifier and the emulator; running a **changed**
-  object or an assembled MSCI script in the game has not been tested yet. Expect the game to mark itself
-  "modified" (signatures will not match).
+- Round trips are verified, changed objects are checked by the verifier and the emulator. Output of all three
+  kinds has been run in the game: changed KC objects, assembled MSCI scripts and Mission Director files built
+  from `.xmd`. The game marks itself "modified" (signatures do not match).
 - Comments that the agents attached to an offset of another method are reported as `names: comment not placed`.
 - `for (;;)` is not supported (write `while (1)`).
 
