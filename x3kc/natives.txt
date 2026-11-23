@@ -1,4 +1,4 @@
-# native command names found as strings in X3AP.exe (groups SA SE B3D INS X2 STA P SFX J3D MOV TI GS); kcc warns about calls to other names
+# native command names found as strings in X3AP.exe (groups SA SE B3D INS X2 STA P SFX J3D MOV TI GS); kcc warns about calls to other names; also X2_GetStoryBuild, a native of the x3_src remake's exe
 B3D_CameraAddToScene
 B3D_CameraAlloc
 B3D_CameraCalcDist
@@ -956,6 +956,7 @@ X2_GetSaveDevices
 X2_GetScene
 X2_GetScreenDebugLine
 X2_GetSpace
+X2_GetStoryBuild
 X2_GetStringParameter
 X2_GraphicSettings
 X2_IsRunInBackground

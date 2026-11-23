@@ -802,6 +802,7 @@ X2_GetLastGamepadTextInput
 X2_GetModName
 X2_GetSaveDevices
 X2_GetScreenDebugLine
+X2_GetStoryBuild
 X2_GetStringParameter
 X2_GraphicSettings
 X2_IsRunInBackground
