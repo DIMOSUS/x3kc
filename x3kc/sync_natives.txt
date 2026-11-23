@@ -3,6 +3,7 @@
 # every path of the handler calls Script::ResumeTask* before the dispatcher returns); SE and TI also from
 # the handler specs (docs/natives/spec_*.jsonl, "waits": false). Natives of other groups (SFX J3D MOV P STA GS) are
 # not analysed and count as possibly waiting.
+# X2_GetStoryBuild is a native of the x3_src remake's exe only (not in X3AP.exe); its handler resumes the task at once.
 B3D_CameraAddToScene
 B3D_CameraAlloc
 B3D_CameraCalcDist
