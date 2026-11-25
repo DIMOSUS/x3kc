@@ -108,43 +108,96 @@ def where_text(name):
             'x3_src only': 'only in the x3_src engine (the original exes answer 0)'}.get(w, 'in ' + w)
 
 
+SPEC_DIR = os.path.join(os.path.dirname(HERE), 'docs', 'natives')
+
+
+def spec_files():
+    """the spec files of the x3kc checkout: docs/natives/spec_<GROUP>.jsonl (one per native group) and
+    spec_x3src.jsonl (the x3_src engine's own natives); [] without the docs"""
+    if not os.path.isdir(SPEC_DIR):
+        return []
+    return [os.path.join(SPEC_DIR, fn) for fn in sorted(os.listdir(SPEC_DIR))
+            if fn.startswith('spec_') and fn.endswith('.jsonl')]
+
+
+def spec_lines():
+    """(path, line number, line text, entry) of every entry of the spec files"""
+    import json
+    out = []
+    for path in spec_files():
+        with open(path, encoding='utf-8') as f:
+            for n, line in enumerate(f, 1):
+                try:
+                    s = json.loads(line)
+                except ValueError:
+                    continue
+                if isinstance(s, dict) and s.get('name'):
+                    out.append((path, n, line.rstrip('\n'), s))
+    return out
+
+
 def specs():
-    """native name -> its entry of docs/natives/spec_*.jsonl of the x3kc checkout ({} without the docs)"""
+    """native name -> its entry of the spec files ({} without the docs); the fields: docs/natives/README.md"""
     if 'specs' not in _cache:
-        import json
-        out = {}
-        d = os.path.join(os.path.dirname(HERE), 'docs', 'natives')
-        if os.path.isdir(d):
-            for fn in sorted(os.listdir(d)):
-                if fn.startswith('spec_') and fn.endswith('.jsonl'):
-                    with open(os.path.join(d, fn), encoding='utf-8') as f:
-                        for line in f:
-                            try:
-                                s = json.loads(line)
-                            except ValueError:
-                                continue
-                            if s.get('name'):
-                                out[s['name']] = s
-        _cache['specs'] = out
+        _cache['specs'] = {s['name']: s for _, _, _, s in spec_lines()}
     return _cache['specs']
 
 
-def summary(semantics):
-    """the first sentence of a spec's semantics"""
-    s = ' '.join((semantics or '').split())
+def summary(spec):
+    """a spec entry's one-line description: its summary, else the first sentence of its semantics"""
+    if spec.get('summary'):
+        return spec['summary']
+    s = ' '.join((spec.get('semantics') or '').split())
     for i in range(len(s)):
         if s[i] == '.' and (i + 1 == len(s) or s[i + 1] == ' '):
             return s[:i + 1]
     return s
 
 
+FULL_FIELDS = (('args', 'call'), ('returns', 'returns'), ('waits', 'waits'), ('index', 'index AP'),
+               ('index_fl', 'index FL'), ('handler', 'handler AP'), ('handler_fl', 'handler FL'),
+               ('summary', 'summary'), ('semantics', 'semantics'), ('fl', 'FL'), ('x3_src', 'x3_src'),
+               ('confidence', 'confidence'), ('bugs', 'bugs'), ('notes', 'notes'))
+
+
+def full_text(name, target=None, width=110):
+    """every field of a native's spec entry as indented text (x3kc natives --full)"""
+    import textwrap
+    t = check(target)
+    s = specs().get(name)
+    out = ['%s  [group %s, %s; target %s lists it as %s]' % (
+        name, name.split('_', 1)[0], where_word(name) or 'unknown', t, 'at once' if name in sync(t) else 'may wait')]
+    if not s:
+        return '\n'.join(out + ['  (no description in docs/natives)'])
+    if s.get('callable') is False:
+        out.append('  not a callable native: a call answers int 0')
+    for k, label in FULL_FIELDS:
+        v = s.get(k)
+        if k == 'args':
+            v = '%s(%s)' % (name, v or '')
+        elif k == 'waits':
+            v = 'may wait (a call is a savegame return site)' if v else 'answers at once'
+        if v is None or v == '' or v == []:
+            continue
+        items = v if isinstance(v, list) else [str(v)]
+        for i, it in enumerate(items):
+            head = '  %-11s ' % (label + ':' if i == 0 else '')
+            if len(items) > 1:
+                head += '- '
+            out += textwrap.wrap(it, width, initial_indent=head, subsequent_indent=' ' * len(head)) or [head]
+    return '\n'.join(out)
+
+
 def main():
-    """x3kc natives [--target T] [filter]: the natives of a target, one per line"""
+    """x3kc natives [--target T] [--full] [filter]: the natives of a target, one per line (--full: every field)"""
     import argparse
     ap = argparse.ArgumentParser(prog='x3kc natives', description='The natives of a target: name, group, '
                                  'arguments -> result, at once / may wait, which exes have it, what it does (the '
-                                 'first sentence of docs/natives/spec_*.jsonl; "(no description)" without an entry).')
+                                 'summary of its entry in docs/natives/spec_*.jsonl; "(no description)" without '
+                                 'one). The reference: docs/natives/README.md.')
     add_argument(ap)
+    ap.add_argument('--full', action='store_true',
+                    help='every field of each matching entry: semantics, FL and x3_src differences, bugs, notes')
     ap.add_argument('filter', nargs='?', default='',
                     help='a name or a prefix (SE_, B3D_Inst, P_SetJoy...), case-insensitive')
     a = ap.parse_args()
@@ -152,12 +205,18 @@ def main():
     flt = a.filter.lower()
     names = sorted(n for n in known(t) if n.lower().startswith(flt))
     sp = specs()
+    if a.full:
+        for n in names:
+            print(full_text(n, t))
+            print()
+        print('%d natives of target %s%s' % (len(names), t, ' matching %r' % a.filter if flt else ''))
+        return 0 if names or not flt else 1
     rows = []
     for n in names:
         s = sp.get(n)
         sig = '(%s) -> %s' % (s.get('args', ''), s.get('returns', '?')) if s else '(?) -> ?'
         rows.append((n, n.split('_', 1)[0], sig, 'at once' if n in sync(t) else 'may wait', where_word(n),
-                     summary(s.get('semantics')) if s else '(no description)'))
+                     summary(s) if s else '(no description)'))
     if rows:
         w = [max(len(r[k]) for r in rows) for k in range(5)]
         w[2] = min(w[2], 48)

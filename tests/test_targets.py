@@ -37,6 +37,21 @@ class Targets(unittest.TestCase):
         with self.assertRaises(ValueError):
             targets.check('tc')
 
+    def test_specs(self):
+        """docs/natives/spec_*.jsonl: one entry per native of every list, each in its group's file"""
+        from x3kc import natives_ref
+        self.assertEqual(natives_ref.check(), [])
+        sp = targets.specs()
+        self.assertEqual(set(sp), targets.read('natives_ap.txt') | targets.read('natives_fl.txt')
+                         | targets.read('natives_x3src.txt'))
+        self.assertIn('Crt::Ftol', sp['SE_ToInt']['semantics'])
+        self.assertEqual((sp['X2_GetStoryBuild']['index'], sp['X2_GetStoryBuild']['index_fl']), (61, 60))
+        self.assertIs(sp['SFX_LOOP']['callable'], False)
+        self.assertEqual(targets.summary(sp['SE_StringLen']), sp['SE_StringLen']['summary'])
+        t = targets.full_text('SE_ReadText', 'fl')
+        self.assertIn('semantics:', t)
+        self.assertIn('B148', t)
+
 
 if __name__ == '__main__':
     unittest.main()

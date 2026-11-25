@@ -57,8 +57,8 @@
 
 `x3kc/kcnatives.py` реализует 117 нативов SE_ / TI_ (строки, массивы, таблицы, математика, текстовые страницы,
 таймеры, вычислитель выражений MSCI) по их коду в exe; поведение описано в
-[natives/spec_0.jsonl](../natives/spec_0.jsonl), [spec_1](../natives/spec_1.jsonl),
-[spec_2](../natives/spec_2.jsonl), включая ловушки (`SE_ToInt` от int даёт 0, `%s` от не-строки печатает
+[natives/SE.md](../natives/SE.md) и [natives/TI.md](../natives/TI.md) (справочник нативов,
+[natives/README.md](../natives/README.md)), включая ловушки (`SE_ToInt` от int даёт 0, `%s` от не-строки печатает
 `<invalid>`, переполнение в `SE_DivFix` роняет игру …). Где exe упал бы, эмулятор бросает `VMError`. Нативы
 движка (SA_, X2_, INS_, звук, 3D) отвечают 0 и записываются в журнал; тест подставляет нужные
 (`vm.natives[имя] = fn`), а методы KC тоже можно подменить (`vm.overrides[имя] = fn`), чтобы отрезать мир.

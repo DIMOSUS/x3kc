@@ -53,13 +53,21 @@ def listing(entry, size):
 
 
 def cases(entry, table):
+    """index -> (case address, name) of the dispatcher's own switch. `rt cases` also lists the switches nested in
+    the handlers (SA: 0x00468e19 in SA_CalcReward, 0x004640c8 in SA_DamageObject); --names labels their small
+    case numbers with the group's names too, so only the switch with the most cases is the dispatcher's. (Reading
+    every block once let the nested cases 0..10 overwrite SA_AllocObject .. SA_FlyObjectBeforeContainer, which made
+    SA_FlyObjectIntoContainer and SA_FlyObjectBeforeContainer come out sync.)"""
     out = rt('cases', hex(entry), '--names', hex(table))
-    res = {}
+    blocks = []
     for l in out.splitlines():
+        if l.startswith('switch '):
+            blocks.append({})
+            continue
         m = re.match(r'\s*(\d+)\s+(0x[0-9a-f]+)\s+(\S+)', l)
-        if m and m.group(3).startswith(('B3D_', 'INS_', 'SA_', 'X2_', 'SE_', 'STA_')):
-            res[int(m.group(1))] = (int(m.group(2), 16), m.group(3))
-    return res
+        if blocks and m and m.group(3).startswith(('B3D_', 'INS_', 'SA_', 'X2_', 'SE_', 'STA_')):
+            blocks[-1].setdefault(int(m.group(1)), (int(m.group(2), 16), m.group(3)))
+    return max(blocks, key=len) if blocks else {}
 
 
 def target(ops):

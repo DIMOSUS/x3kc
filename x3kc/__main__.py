@@ -42,8 +42,12 @@ Checking a build without the game
   savecheck <src> <base.obj> [-D NAME[=V] ...] [--target T]
                                         which savegame return sites (calls a task can wait in) the new source
                                         breaks, and why
-  natives [--target T] [name or prefix] the natives of a target: group, arguments -> result, at once / may
-                                        wait, which exes have it, a one-line description
+  natives [--target T] [--full] [name or prefix]
+                                        the natives of a target: group, arguments -> result, at once / may
+                                        wait, which exes have it, a one-line description (--full: every field
+                                        of the entry: semantics, FL / x3_src differences, bugs)
+  natives-ref [dir] [--check]           the natives reference docs/natives/<GROUP>.md and README.md from
+                                        docs/natives/spec_*.jsonl (--check: validate the specs only)
   --target T (compile, verify, savecheck, natives): the exe the object is for - ap (X3AP.exe, the
                                         default), fl (X3FL.exe), x3_src-ap, x3_src-fl (the x3_src engine
                                         built as AP / FL: the edition's natives + the engine's own)
@@ -132,7 +136,8 @@ def main(argv=None):
              'verify': ('kcverify', 'main'), 'savecheck': ('savecheck', 'main'), 'methoddiff': ('methoddiff', 'main'),
              'smoke': ('smoke', 'main'), 'bugscan': ('bugscan', 'main'),
              'split': ('kcsplit', 'main_split'), 'join': ('kcsplit', 'main_join'),
-             'add': ('kcadd', 'main_add'), 'remove': ('kcadd', 'main_remove'), 'natives': ('targets', 'main')}
+             'add': ('kcadd', 'main_add'), 'remove': ('kcadd', 'main_remove'), 'natives': ('targets', 'main'),
+             'natives-ref': ('natives_ref', 'main')}
     if cmd not in table:
         print('unknown command %r (x3kc help)' % cmd)
         return 2

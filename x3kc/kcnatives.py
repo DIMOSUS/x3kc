@@ -442,7 +442,7 @@ def install(vm):
 
 
 def install_1(vm):
-    """docs/natives/spec_1.jsonl."""
+    """docs/natives/spec_SE.jsonl, spec_TI.jsonl (second batch)."""
     n = vm.natives
     R = vm.rand
 
@@ -632,7 +632,7 @@ def install_1(vm):
 
 
 def install_2(vm):
-    """docs/natives/spec_2.jsonl."""
+    """docs/natives/spec_SE.jsonl (third batch)."""
     n = vm.natives
 
     def s(a, k):
@@ -929,7 +929,8 @@ def _sin_table():
 
 
 def install_pending(vm):
-    """Natives whose spec is not read yet (docs/natives/spec_1, spec_2): plausible behaviour, to be replaced."""
+    """Natives implemented before their spec was read (now in docs/natives/spec_SE.jsonl, spec_TI.jsonl): plausible
+    behaviour, to be replaced."""
     n = vm.natives
     R = vm.rand
 

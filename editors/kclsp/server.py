@@ -45,38 +45,31 @@ def text_hover(src_path, page, tid, lang, found):
     return '\n'.join(lines)
 
 
-_SPECS = None
-
-
 def native_hover(name):
-    """A native's entry of docs/natives/spec_*.jsonl (args, returns, waits, semantics), else its name only."""
-    global _SPECS
-    if _SPECS is None:
-        _SPECS = {}
-        d = os.path.join(P.ROOT, 'docs', 'natives')
-        if os.path.isdir(d):
-            for fn in sorted(os.listdir(d)):
-                if fn.startswith('spec_') and fn.endswith('.jsonl'):
-                    with open(os.path.join(d, fn), encoding='utf-8') as f:
-                        for line in f:
-                            try:
-                                s = json.loads(line)
-                            except ValueError:
-                                continue
-                            if s.get('name'):
-                                _SPECS[s['name']] = s
-    s = _SPECS.get(name)
+    """A native's entry of docs/natives/spec_<GROUP>.jsonl (targets.specs(): signature, waits, summary, semantics,
+    FL and x3_src differences, bugs), else its name only."""
+    s = targets.specs().get(name)
     if not s:
         w = targets.where_text(name)
         return '**%s** (native; not described in docs/natives)%s' % (name, '\n\n' + w if w else '')
-    out = ['**%s**(%s) -> %s%s' % (name, s.get('args', ''), s.get('returns', '?'),
+    if s.get('callable') is False:
+        return '**%s**: %s' % (name, md_escape(s.get('summary') or 'not a callable native (a call answers int 0)'))
+    out = ['**%s**(%s) -> %s%s' % (name, md_escape(s.get('args', '')), md_escape(s.get('returns', '?')),
                                     ', may wait' if s.get('waits') else '')]
     w = targets.where_text(name)
     if w:
         out += ['', w]
+    if s.get('summary'):
+        out += ['', md_escape(s['summary'])]
     if s.get('semantics'):
         sem = s['semantics']
         out += ['', md_escape(sem if len(sem) < 1500 else sem[:1500] + ' ...')]
+    for k, label in (('fl', 'FL'), ('x3_src', 'x3_src')):
+        v = s.get(k) or ''
+        if v and v != 'same':
+            out += ['', '*%s:* %s' % (label, md_escape(v))]
+    if s.get('bugs'):
+        out += ['', '*Bugs:* ' + md_escape(' / '.join(s['bugs']))]
     return '\n'.join(out)
 
 

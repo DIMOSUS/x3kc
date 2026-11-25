@@ -2,7 +2,7 @@
 parameters on to one of them (found on the tokens, transitively), with literal page and id arguments.
 
 A wrapper is (page position or None, id position, language position or None) in the call's argument list.
-SE_ReadText by argument count (Script::NativeDispatch, docs/natives/spec_0.jsonl): 1 = (id) with page 0,
+SE_ReadText by argument count (Script::NativeDispatch, docs/natives/spec_SE.jsonl): 1 = (id) with page 0,
 2 = (page, id), 3 = (page, language, id).
 """
 import bisect

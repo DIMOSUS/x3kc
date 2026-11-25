@@ -8,7 +8,6 @@ project. A single-file .kc is a project of one part (the slow path: every edit r
 Positions are part-local: line 1-based (as kcparse counts), column 0-based in characters.
 """
 import bisect
-import json
 import os
 import re
 
@@ -703,19 +702,8 @@ def native_docs():
                     s = line.strip()
                     if s and not s.startswith('#'):
                         out[s] = (p, n, 0, len(s))
-    d = os.path.join(ROOT, 'docs', 'natives')
-    if os.path.isdir(d):
-        for fn in sorted(os.listdir(d)):
-            if fn.startswith('spec_') and fn.endswith('.jsonl'):
-                path = os.path.join(d, fn)
-                with open(path, encoding='utf-8') as f:
-                    for n, line in enumerate(f, 1):
-                        try:
-                            name = json.loads(line).get('name')
-                        except ValueError:
-                            continue
-                        if name:
-                            out[name] = (path, n, 0, len(line.rstrip('\n')))
+    for path, n, line, s in targets.spec_lines():          # docs/natives/spec_<GROUP>.jsonl, spec_x3src.jsonl
+        out[s['name']] = (path, n, 0, len(line))
     _NATIVE_DOCS = out
     return out
 

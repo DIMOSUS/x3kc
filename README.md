@@ -100,9 +100,15 @@ strings, `docs/natives/native_strings.py`; FL adds `B3D_InstGetQualityModifier` 
 takes the target from the environment variable `KCLSP_KC_TARGET`, else from a file `.x3kc-target` (one word) in the
 project's folder or above, else `fl` for a path with a folder `fl` or `addon2`, else `ap`.
 `x3kc natives [--target T] [name or prefix]` lists a target's natives, one line each: name, group, arguments ->
-result, at once / may wait, which exes have it (AP+FL, AP only, FL only, x3_src only) and the first sentence of its
-description in `docs/natives/spec_*.jsonl` (`(no description)` without one; described: the 117 SE and TI natives of
-the originals and the 9 of the x3_src engine).
+result, at once / may wait, which exes have it (AP+FL, AP only, FL only, x3_src only) and the summary of its entry
+in `docs/natives/spec_<GROUP>.jsonl`; `--full` prints every field of the entry.
+
+**Natives reference.** [docs/natives/README.md](docs/natives/README.md) describes every native of X3AP.exe, X3FL.exe
+and the x3_src engine (998 entries, one page per group: SA, SE, TI, B3D, J3D, INS, X2, STA, P, MOV, SFX, GS): call
+forms, result, whether the task waits (savegame return sites), the full behaviour, how FL and x3_src differ, original
+bugs and the confidence of each entry. The pages are generated from the spec files (`x3kc natives-ref`; `--check`
+validates them against the native lists). Where the reference's waits verdicts disagree with the at-once lists:
+[docs/natives/sync_review.md](docs/natives/sync_review.md).
 
 MSCI:
 ```

@@ -296,8 +296,6 @@ SA_FindVideo
 SA_FinishTake
 SA_FireAhead
 SA_FireOnObject
-SA_FlyObjectBeforeContainer
-SA_FlyObjectIntoContainer
 SA_ForceMove
 SA_FreeAllBodies
 SA_FreeCutScene

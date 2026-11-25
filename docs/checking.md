@@ -56,7 +56,7 @@ verifier of the bytecode, and an emulator of the game's script VM that runs the 
 
 `x3kc/kcnatives.py` implements 117 SE_ / TI_ natives (strings, arrays, tables, maths, text pages, timers, the MSCI
 expression evaluator) from their code in the exe; their behaviour is described in
-[natives/spec_0.jsonl](natives/spec_0.jsonl), [spec_1](natives/spec_1.jsonl), [spec_2](natives/spec_2.jsonl),
+[natives/SE.md](natives/SE.md) and [natives/TI.md](natives/TI.md) (the natives reference, [natives/README.md](natives/README.md)),
 traps included (`SE_ToInt` of an int is 0, `%s` of a non-string prints `<invalid>`, `SE_DivFix` overflow
 crashes …). Where the exe would crash, the emulator raises `VMError`. Engine natives (SA_, X2_, INS_, sound, 3D)
 answer 0 and are logged; a test supplies the ones it needs (`vm.natives[name] = fn`), and KC methods can be

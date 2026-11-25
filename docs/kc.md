@@ -65,6 +65,11 @@ A local lives until the end of its `{ }` block; every `case` section is a block.
 
 Calls by name (`callo`, `calln`) pad missing arguments with zeros.
 
+What each native does — its call forms, result, whether the task waits, the differences of Farnham's Legacy and the
+x3_src engine, original bugs — is in the natives reference [natives/README.md](natives/README.md) (one page per
+group, generated from `docs/natives/spec_<GROUP>.jsonl`); `x3kc natives --full <name>` prints the same at the command
+line.
+
 **Statements:** `var`, `if/else`, `while`, `for (init; cond; step)`, `do … while`, `switch`, `return [e]`,
 `break`, `continue`, `fork { … }`, blocks.
 - `fork { … }` runs the body in a child task with a copy of the frame; the parent continues. `break` and
@@ -283,7 +288,9 @@ What `compile --base base.obj` does:
    handler of the engine's own natives resumes the task at once). A name the target does not have answers at once.
    Natives of the other groups count as possibly waiting. So a frame change in a method that only draws or
    computes (B3D, SE, most SA calls) does not stop the build; one in a method that waits (TI_Delay, flight
-   commands, MSCI commands) does.
+   commands, MSCI commands) does. The natives reference gives a `waits` verdict per native
+   ([natives/README.md](natives/README.md#waits-and-savegame-return-sites)); where it disagrees with these lists, and
+   what following it would change in the x3_src objects' return sites: [natives/sync_review.md](natives/sync_review.md).
 6. When something breaks savegames — lost fields, a removed class, a changed parent, wrong return addresses —
    nothing is written and the exit code is 3; `--force` writes anyway.
 

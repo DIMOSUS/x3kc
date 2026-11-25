@@ -156,8 +156,8 @@ set KCLSP_LOG=<file>                        logs every message
   - `x.F(` (every method of that name: KC calls by name at run time);
   - global functions (`F(`, `::F(`);
   - fields of the class and its parents, globals, locals, parameters;
-  - natives: their entry in `docs/natives/spec_*.jsonl` when documented, else their line in `x3kc/natives_ap.txt` (`natives_fl.txt`, `natives_x3src.txt`). The hover also says which exes have the native.
-- **Hover on a native** shows its entry of `docs/natives/spec_*.jsonl` (arguments, result, whether it waits, what it
+  - natives: their entry in `docs/natives/spec_<GROUP>.jsonl` (or `spec_x3src.jsonl`), else their line in `x3kc/natives_ap.txt` (`natives_fl.txt`, `natives_x3src.txt`). The hover also says which exes have the native.
+- **Hover on a native** shows its entry of `docs/natives/spec_<GROUP>.jsonl` (arguments, result, whether it waits, what it
   does).
 - **Text references** (`editors/kclsp/texts.py`, `textrefs.py`): hover and go to definition on a call that reads a
   text page entry with literal arguments.
