@@ -275,8 +275,12 @@ What `compile --base base.obj` does:
    method with the same frame size: an added local would shift every local of a suspended call. Only calls a task
    can be suspended in are return addresses a savegame can hold: natives that may wait and methods that reach one,
    transitively (a call by name counts if any method of that name can). Which natives always answer at once is in
-   `x3kc/sync_natives.txt`: flow analysis of the native dispatchers in X3AP.exe for the groups B3D, INS, SA, X2
-   and SE (every path of a handler resumes the task before the dispatcher returns), plus the SE/TI handler specs.
+   the target's list (`--target`, README "Targets"): `x3kc/sync_natives_ap.txt` — flow analysis of the native
+   dispatchers in X3AP.exe for the groups B3D, INS, SA, X2 and SE (every path of a handler resumes the task before
+   the dispatcher returns, `docs/natives/sync_scan.py`), plus the SE/TI handler specs; `sync_natives_fl.txt` — the
+   same analysis of X3FL.exe (`sync_scan.py fl`; the natives FL shares with AP come out the same, its two B3D
+   quality natives answer at once), TI from the specs; for the x3_src targets also `sync_natives_x3src.txt` (each
+   handler of the engine's own natives resumes the task at once). A name the target does not have answers at once.
    Natives of the other groups count as possibly waiting. So a frame change in a method that only draws or
    computes (B3D, SE, most SA calls) does not stop the build; one in a method that waits (TI_Delay, flight
    commands, MSCI commands) does.

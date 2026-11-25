@@ -1,6 +1,7 @@
-"""Which natives always answer synchronously: flow analysis of the group dispatchers in X3AP.exe.
+"""Which natives always answer synchronously: flow analysis of the group dispatchers in X3AP.exe (or X3FL.exe).
 
     python sync_scan.py > sync.json          (needs the Ghidra project x3ap through rt)
+    python sync_scan.py fl > sync_fl.json    the same groups in X3FL.exe (project x3fl)
 
 A native suspends the calling task unless its handler calls Script::ResumeTask* before the dispatcher returns
 (Script::Interpret then pops the arguments and goes on; otherwise the task waits in state 2 and its pc is saved in a
@@ -22,6 +23,13 @@ GROUPS = {                      # group: (dispatcher, name table)
     'SA': (0x00460630, 0x0057a7f0),
     'X2': (0x00406de0, 0x0057c8f0),
     'SE': (0x004ab880, 0x00579fe0),
+}
+GROUPS_FL = {                   # X3FL.exe (registered at: B3D 0x00482897, INS 0x0041df2f, SA 0x0043dce0)
+    'B3D': (0x004afbf0, 0x005a5e78),
+    'INS': (0x00430540, 0x005a3d98),
+    'SA': (0x0046a640, 0x005a4098),
+    'X2': (0x0047b560, 0x005a5d60),
+    'SE': (0x004c84a0, 0x005a6288),
 }
 LINE = re.compile(r'\s*(0x[0-9a-f]{8})\s+[0-9a-f]+\s+(\S+)\s*([^;]*?)\s*(?:;\s*(.*))?$')
 
@@ -95,8 +103,12 @@ def is_sync(start, insns, nxt):
 
 
 def main():
+    groups = GROUPS
+    if sys.argv[1:] == ['fl']:
+        RT[RT.index('x3ap')] = 'x3fl'
+        groups = GROUPS_FL
     result = {}
-    for g, (entry, table) in GROUPS.items():
+    for g, (entry, table) in groups.items():
         insns, nxt = listing(entry, 12000)
         cs = cases(entry, table)
         for k, (addr, name) in sorted(cs.items()):

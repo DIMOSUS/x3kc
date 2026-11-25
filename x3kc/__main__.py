@@ -15,7 +15,7 @@ KC objects (l/*.obj: x3story, x3galedit, x3intro, x3config)
                                         build's identifiers (v12, m5, g7 too) stay where the code still
                                         matches (both: small diffs between builds)
   compile <src> -o <out.obj> [--check ORIG] [--base OBJ [--build N] [--force]] [--cache DIR | --no-cache]
-          [-D NAME[=V] ...]
+          [-D NAME[=V] ...] [--target T]
                                         source project -> object; --base keeps old savegames loading.
                                         <src>: a .kc file or a split project (its directory or .kcs index);
                                         --cache: parsed bodies and base data kept in DIR between builds (the
@@ -38,10 +38,15 @@ KC objects (l/*.obj: x3story, x3galedit, x3intro, x3config)
   names unpack <obj> <names.json> <out> portable annotations -> offset-keyed form for <obj>
 
 Checking a build without the game
-  verify <obj> [-v]                     static bytecode verifier (compile runs it on every build)
-  savecheck <src> <base.obj> [-D NAME[=V] ...]
+  verify <obj> [-v] [--target T]        static bytecode verifier (compile runs it on every build)
+  savecheck <src> <base.obj> [-D NAME[=V] ...] [--target T]
                                         which savegame return sites (calls a task can wait in) the new source
                                         breaks, and why
+  natives [--target T] [name or prefix] the natives of a target: group, arguments -> result, at once / may
+                                        wait, which exes have it, a one-line description
+  --target T (compile, verify, savecheck, natives): the exe the object is for - ap (X3AP.exe, the
+                                        default), fl (X3FL.exe), x3_src-ap, x3_src-fl (the x3_src engine
+                                        built as AP / FL: the edition's natives + the engine's own)
   methoddiff <old.obj> <new.obj>        methods whose code differs between two builds
   smoke <old.obj> <new.obj> [--budget N] [-v]
                                         run every method of both builds on the emulator, compare outcomes
@@ -127,7 +132,7 @@ def main(argv=None):
              'verify': ('kcverify', 'main'), 'savecheck': ('savecheck', 'main'), 'methoddiff': ('methoddiff', 'main'),
              'smoke': ('smoke', 'main'), 'bugscan': ('bugscan', 'main'),
              'split': ('kcsplit', 'main_split'), 'join': ('kcsplit', 'main_join'),
-             'add': ('kcadd', 'main_add'), 'remove': ('kcadd', 'main_remove')}
+             'add': ('kcadd', 'main_add'), 'remove': ('kcadd', 'main_remove'), 'natives': ('targets', 'main')}
     if cmd not in table:
         print('unknown command %r (x3kc help)' % cmd)
         return 2

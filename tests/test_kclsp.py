@@ -178,7 +178,7 @@ class LanguageServer(unittest.TestCase):
         self.assertTrue(unquote(r[0]['uri']).endswith('/@header.kc'), r)
         r = defn('SE_Random')
         self.assertEqual(len(r), 1)
-        self.assertTrue(r[0]['uri'].endswith(('.jsonl', 'natives.txt')), r)
+        self.assertTrue(r[0]['uri'].endswith(('.jsonl', '.txt')), r)
         r = defn('this->Describe', 6)
         self.assertEqual((r[0]['uri'], r[0]['range']['start']['line']), (u, pos_of(text, 'Describe(x)')[0]))
         r = defn(': Thing', 2)

@@ -1,0 +1,13 @@
+# natives of natives_x3src.txt that always answer at once: each handler in x3_src resumes the task before it
+# returns (P_ joystick natives: resumeBridgeInt / resumeBridgeText, src/script/script.cpp; SA_GetBulletTypeHalfZ:
+# SaContinuation::AnswerInteger / AnswerZero, sa_dispatcher.cpp; X2_GetStoryBuild: resumeInt,
+# x2_command_dispatcher.cpp). Targets x3_src-ap, x3_src-fl.
+P_CaptureJoyAxis
+P_GetJoyDevice
+P_GetJoyRole
+P_GetJoyRoleName
+P_ResetJoyBindings
+P_SetJoyDevice
+P_SetJoyRole
+SA_GetBulletTypeHalfZ
+X2_GetStoryBuild

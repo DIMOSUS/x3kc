@@ -1,10 +1,11 @@
 """Which return sites of a base object a rebuilt source breaks, and why.
 
-    x3kc savecheck <source.kc> <base.obj> [-D NAME[=V] ...]
+    x3kc savecheck <source.kc> <base.obj> [-D NAME[=V] ...] [--target T]
 
 For every WRONG site: the method, the base offset, and the reason — the call after the mapped address differs
 (`call`), or the method's frame size changed (`frame old -> new`). Only sites where a task can be suspended are
-checked (kcsave.waiting_sites): calls that always come back at once are never in a savegame.
+checked (kcsave.waiting_sites): calls that always come back at once are never in a savegame. --target: the exe whose
+natives decide that (ap, fl, x3_src-ap, x3_src-fl; default ap; x3kc/targets.py).
 """
 import sys
 from collections import defaultdict
@@ -17,10 +18,16 @@ from . import kcsave
 
 def main():
     from . import kcpre
-    args, defs = [], []
+    from . import targets
+    args, defs, target = [], [], None
     it = iter(sys.argv[1:])
     for x in it:
-        if x == '-D':
+        if x == '--target' or x.startswith('--target='):
+            target = x.split('=', 1)[1] if '=' in x else next(it, None)
+            if target not in targets.TARGETS:
+                print('error: --target is one of %s' % ', '.join(targets.TARGETS))
+                return 2
+        elif x == '-D':
             n = next(it, None)
             if n is None:
                 print('error: -D needs a name (-D NAME or -D NAME=value)')
@@ -39,7 +46,7 @@ def main():
     except kcpre.PreError as x:
         print('error:', x)
         return 2
-    o, _, fns = kcc.compile_source(args[0], defines=defines)
+    o, _, fns = kcc.compile_source(args[0], defines=defines, target=target)
     base = kcobj.load(args[1])
     foreach = {(f.cls, f.name): f.foreach_lines for f in fns if getattr(f, 'foreach_lines', None)}
     segs = kcsave.code_map(base, o)
@@ -54,7 +61,7 @@ def main():
     import bisect
     starts = [e for e, _ in spans]
     out = defaultdict(list)
-    live = kcsave.waiting_sites(base)
+    live = kcsave.waiting_sites(base, target=target)
     for i in kcisa.walk(base.code, 1):
         if i.op not in kcsave.CALLS or i.end not in live:
             continue

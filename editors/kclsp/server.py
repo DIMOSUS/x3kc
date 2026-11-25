@@ -18,6 +18,7 @@ import urllib.parse
 
 from . import project as P
 from . import msci_ls, texts, textrefs
+from x3kc import targets
 
 DEBOUNCE = 0.3
 
@@ -66,9 +67,13 @@ def native_hover(name):
                                 _SPECS[s['name']] = s
     s = _SPECS.get(name)
     if not s:
-        return '**%s** (native; not described in docs/natives)' % name
+        w = targets.where_text(name)
+        return '**%s** (native; not described in docs/natives)%s' % (name, '\n\n' + w if w else '')
     out = ['**%s**(%s) -> %s%s' % (name, s.get('args', ''), s.get('returns', '?'),
                                     ', may wait' if s.get('waits') else '')]
+    w = targets.where_text(name)
+    if w:
+        out += ['', w]
     if s.get('semantics'):
         sem = s['semantics']
         out += ['', md_escape(sem if len(sem) < 1500 else sem[:1500] + ' ...')]

@@ -87,6 +87,23 @@ global re-parses all) and what `--base` derives from the base object. The object
 own entry. AP x3story with `--base`:
 7.5 s without the cache, 6.0 s with it (it was 108 s before `--base` stopped aligning unchanged methods with difflib).
 
+**Targets.** `compile`, `verify`, `savecheck` and `natives` take `--target`, the exe the object is for: `ap`
+(X3AP.exe, the default), `fl` (X3FL.exe), `x3_src-ap` / `x3_src-fl` (the x3_src engine, a rewrite of the exe, built
+as AP / FL: the edition's natives plus its own). The target decides which natives exist — a call of another one
+answers 0, so it is warned about: `native X exists only in the x3_src engine (the original exe answers 0)`,
+`... only in Farnham's Legacy (the AP exe answers 0)`, `... only in Albion Prelude (the FL exe answers 0)`, else
+`native X is unknown to X3AP.exe` — and which natives always answer at once (their calls are not savegame return
+sites for `--base`). The lists: `x3kc/natives_ap.txt` and `natives_fl.txt` (the native names among each exe's
+strings, `docs/natives/native_strings.py`; FL adds `B3D_InstGetQualityModifier` and
+`B3D_InstSetQualityModifierRecursive` and has no `X2_GetModName`), `natives_x3src.txt` (the engine's own),
+`sync_natives_ap.txt`, `_fl.txt`, `_x3src.txt` (step 5 of `--base` in [docs/kc.md](docs/kc.md)). The language server
+takes the target from the environment variable `KCLSP_KC_TARGET`, else from a file `.x3kc-target` (one word) in the
+project's folder or above, else `fl` for a path with a folder `fl` or `addon2`, else `ap`.
+`x3kc natives [--target T] [name or prefix]` lists a target's natives, one line each: name, group, arguments ->
+result, at once / may wait, which exes have it (AP+FL, AP only, FL only, x3_src only) and the first sentence of its
+description in `docs/natives/spec_*.jsonl` (`(no description)` without one; described: the 117 SE and TI natives of
+the originals and the 9 of the x3_src engine).
+
 MSCI:
 ```
 x3kc msci-setup "C:/Games/X3 Terran Conflict" work           texts, ware names, command database, scripts

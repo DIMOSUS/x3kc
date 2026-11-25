@@ -13,10 +13,35 @@ import os
 import re
 
 from x3kc import kcast as A
-from x3kc import kcc, kcgen, kcparse, kcsplit
+from x3kc import kcc, kcgen, kcparse, kcsplit, targets
 from x3kc.kcsym import Klass, Symbols, NO_PARENT
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))      # the x3kc checkout
+TARGET_FILE = '.x3kc-target'
+
+
+def kc_target(path):
+    """The exe a project is for (x3kc/targets.py): the environment variable KCLSP_KC_TARGET, else the first word of a
+    file .x3kc-target in the project's folder or a folder above it, else ap - or fl when a folder of the path is
+    named fl or addon2 (as the MSCI server picks the edition)."""
+    t = os.environ.get('KCLSP_KC_TARGET')
+    if t in targets.TARGETS:
+        return t
+    d = os.path.dirname(os.path.abspath(path))
+    while True:
+        p = os.path.join(d, TARGET_FILE)
+        if os.path.isfile(p):
+            with open(p, encoding='utf-8') as f:
+                w = (f.read().split() or [''])[0]
+            if w in targets.TARGETS:
+                return w
+            break
+        up = os.path.dirname(d)
+        if up == d:
+            break
+        d = up
+    parts = [x.lower() for x in re.split(r'[\\/]+', os.path.abspath(path))]
+    return 'fl' if ('fl' in parts or 'addon2' in parts) else 'ap'
 
 
 def norm(path):
@@ -298,7 +323,8 @@ class Project:
         self.owner = {}             # class id / ('f', name) / ('g', name) -> (Part, object)
         self.const_owner = {}       # id(kcconst.ConstDef / EnumDef) -> Part
         self.merge_diags = {}       # part key -> [Diag]
-        self.known = kcc.known_natives() or set()
+        self.target = kc_target(index or single)
+        self.known = kcc.known_natives(self.target)
         self.natives_doc = native_docs()
         self._built = False
         self.ckey = None
@@ -464,8 +490,7 @@ class Project:
                 t = part.toks[i]
                 if type(r) is A.Native:
                     if self.known and r.name not in self.known:
-                        part.diag2.append(tok_diag(t, 'native %s is unknown to X3AP.exe (it would return 0)'
-                                                   % r.name, 2))
+                        part.diag2.append(tok_diag(t, targets.unknown_message(r.name, self.target), 2))
                 elif type(r) is A.Call and r.kind in ('s', 'g'):
                     k = self.syms.classes.get(r.target[0])
                     m = k.method(r.target[1]) if k else None
@@ -664,18 +689,20 @@ _NATIVE_DOCS = None
 
 
 def native_docs():
-    """native name -> (path, line, col, length) of its entry: docs/natives/spec_*.jsonl, else x3kc/natives.txt."""
+    """native name -> (path, line, col, length) of its entry: docs/natives/spec_*.jsonl, else its line in
+    x3kc/natives_ap.txt, natives_fl.txt or natives_x3src.txt (every target's natives)."""
     global _NATIVE_DOCS
     if _NATIVE_DOCS is not None:
         return _NATIVE_DOCS
     out = {}
-    p = os.path.join(ROOT, 'x3kc', 'natives.txt')
-    if os.path.isfile(p):
-        with open(p, encoding='utf-8') as f:
-            for n, line in enumerate(f, 1):
-                s = line.strip()
-                if s and not s.startswith('#'):
-                    out[s] = (p, n, 0, len(s))
+    for fn in ('natives_x3src.txt', 'natives_fl.txt', 'natives_ap.txt'):        # the AP line wins
+        p = os.path.join(ROOT, 'x3kc', fn)
+        if os.path.isfile(p):
+            with open(p, encoding='utf-8') as f:
+                for n, line in enumerate(f, 1):
+                    s = line.strip()
+                    if s and not s.startswith('#'):
+                        out[s] = (p, n, 0, len(s))
     d = os.path.join(ROOT, 'docs', 'natives')
     if os.path.isdir(d):
         for fn in sorted(os.listdir(d)):

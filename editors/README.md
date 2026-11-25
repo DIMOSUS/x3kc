@@ -11,7 +11,7 @@ editors/
     language-configuration.json      comments, brackets, auto-closing pairs, indentation
     syntaxes/kc.tmLanguage.json      the grammar (generated, do not edit by hand)
   install.py                         copies it into the per-user folder of VS or VS Code, or removes it
-  tools/gen_grammar.py               writes the grammar from the rules below + x3kc/natives.txt + x3kc/kcisa.py
+  tools/gen_grammar.py               writes the grammar from the rules below + x3kc/natives_*.txt + x3kc/kcisa.py
   tools/check_grammar.py             checks the grammar without an editor
   kclsp/                             the KC language server (Python stdlib, LSP over stdio)
   vs/                                the Visual Studio extension: language client + grammar (vs/README.md)
@@ -139,8 +139,10 @@ set KCLSP_LOG=<file>                        logs every message
   - lexer and parser errors (both passes; one per function body, the others still checked);
   - duplicate classes, globals or functions across parts, and unknown parent classes;
   - codegen errors (`break` outside a loop, duplicate cases, ...), at the function name;
-  - warnings for natives X3AP.exe lacks and for static or global calls whose argument count differs from the
-    declaration. The stock AP x3story has none of either;
+  - warnings for natives the project's target lacks (x3kc README "Targets": `KCLSP_KC_TARGET`, else a file
+    `.x3kc-target` with one word - `ap`, `fl`, `x3_src-ap`, `x3_src-fl` - in the project's folder or above, else
+    `fl` for a path with a folder `fl` or `addon2`, else `ap`) and for static or global calls whose argument count
+    differs from the declaration. The stock AP x3story has none of either;
   - the type hint warnings of `x3kc compile` (`var s: Ship`, `function F(e: Ship): Ship`; see
     [docs/checking.md](../docs/checking.md)), at the method name of the call or the value;
   - conditional compilation (`#if` / `#ifdef` …): the server knows no `-D` names, so it checks the branches a build
@@ -154,7 +156,7 @@ set KCLSP_LOG=<file>                        logs every message
   - `x.F(` (every method of that name: KC calls by name at run time);
   - global functions (`F(`, `::F(`);
   - fields of the class and its parents, globals, locals, parameters;
-  - natives: their entry in `docs/natives/spec_*.jsonl` when documented, else their line in `x3kc/natives.txt`.
+  - natives: their entry in `docs/natives/spec_*.jsonl` when documented, else their line in `x3kc/natives_ap.txt` (`natives_fl.txt`, `natives_x3src.txt`). The hover also says which exes have the native.
 - **Hover on a native** shows its entry of `docs/natives/spec_*.jsonl` (arguments, result, whether it waits, what it
   does).
 - **Text references** (`editors/kclsp/texts.py`, `textrefs.py`): hover and go to definition on a call that reads a
@@ -250,7 +252,7 @@ The token set is the one `x3kc/kcparse.py` reads (lexer `TOKEN`, the words `Pars
 | `__m __g __f64 __and __or __opland __oplor __init` | `support.function.intrinsic` |
 | `__argc __retpc __ctx` | `variable.language.frame` |
 | `C1000::F(`, `x.C150::F(`, `::F(`, `__global::F(` | `entity.name.type.class`, `entity.name.function.call` |
-| `native::SE_X(`, natives `SE_SPrintf(` … | `keyword.other.qualifier`, `support.function.native` (the 987 names of `x3kc/natives.txt`) |
+| `native::SE_X(`, natives `SE_SPrintf(` … | `keyword.other.qualifier`, `support.function.native` (the 998 names of `x3kc/natives_*.txt`, every target) |
 | a group prefix with an unknown name (`SA_Bogus`) | `support.function.native.unlisted` (kcc warns about these calls) |
 | `new Ship(` | `entity.name.type.class` |
 | `x.F(` | `entity.name.function.member` |
@@ -274,7 +276,7 @@ The grammar has to stay fast on `x3story.kc` (8 MB, 190 000 lines):
   `(?!\s*::)` / `(?=\s*\()` after an identifier;
 - all rules are line-local except the block comment, the parameter list of a function header and an asm body, so
   an edit re-tokenises from the changed line on and stops as soon as the rule stack matches the old one;
-- the 987 native names are one alternation grouped by prefix (`B3D_(?:…)|SA_(?:…)|…`), so an ordinary word fails
+- the 998 native names are one alternation grouped by prefix (`B3D_(?:…)|SA_(?:…)|…`), so an ordinary word fails
   on its first letters.
 
 ## Checks

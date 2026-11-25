@@ -1,8 +1,10 @@
 """Compile a KC source project (<name>.kc + .pool + .ptch, or a split project) into an object file.
 
-    x3kc compile <file.kc | dir | index.kcs> -o <out.obj> [--check <original.obj>] [-D NAME[=V] ...]
+    x3kc compile <file.kc | dir | index.kcs> -o <out.obj> [--check <original.obj>] [-D NAME[=V] ...] [--target T]
 
 --check compares the result with an object byte for byte and names the first differing methods.
+--target names the exe the object is for (ap, fl, x3_src-ap, x3_src-fl; default ap; x3kc/targets.py): calls of natives
+it does not have are warned about, and its natives that answer at once are not savegame return sites (--base).
 """
 import argparse
 import re
@@ -16,6 +18,7 @@ from . import kcobj
 from . import kccache
 from . import kcparse
 from . import kcsplit
+from . import targets
 from .kcsym import NO_PARENT
 
 
@@ -62,11 +65,9 @@ def read_ptch(path):
     return out
 
 
-def known_natives():
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'natives.txt')
-    if not os.path.exists(p):
-        return None
-    return {l.strip() for l in open(p) if l.strip() and not l.startswith('#')}
+def known_natives(target=None):
+    """every native name the target's exe has (x3kc/targets.py; default ap)"""
+    return set(targets.known(target))
 
 
 def natives_of(node):
@@ -83,12 +84,13 @@ def natives_of(node):
             stack.extend(getattr(n, k) for k in n.__slots__ if k != 'asm')
 
 
-def compile_source(path, cache=None, defines=None, quiet=False):
+def compile_source(path, cache=None, defines=None, quiet=False, target=None):
     """A source project -> (object, pool, functions). `path`: a single .kc file, or a split project (its .kcs
     index or its directory, see kcsplit), whose parts are joined in index order; messages name the part file.
     cache: a kccache.Cache - function bodies parsed by an earlier build are taken from it (same result).
     defines: {NAME: value} of `-D` for #if / #ifdef (kcpre). The warnings are printed (unless quiet) and kept in
-    object.warnings as 'part.kc:line: text'."""
+    object.warnings as 'part.kc:line: text'. target: the exe (x3kc/targets.py, default ap) - a call of a native it
+    does not have is warned about."""
     defines = dict(defines or {})
     try:
         source = kcsplit.load(path, defines=defines)
@@ -143,13 +145,11 @@ def compile_source(path, cache=None, defines=None, quiet=False):
 
     # a native the exe does not have resolves to group 0 at load and silently returns 0: warn
     warnings = []
-    known = known_natives()
-    if known:
-        for f in fns:
-            for name in sorted(set(natives_of(f.ast))):
-                if name not in known:
-                    print('warning: %s (%s): native %s is unknown to X3AP.exe (it would return 0)'
-                          % (loc(f.line), f.name, name))
+    known = targets.known(target)
+    for f in fns:
+        for name in sorted(set(natives_of(f.ast))):
+            if name not in known:
+                print('warning: %s (%s): %s' % (loc(f.line), f.name, targets.unknown_message(name, target)))
     # type hint checks (kept with the body: token offsets from its start) and where the foreach loops are
     for f in fns:
         f.foreach_lines = []
@@ -272,11 +272,12 @@ def main():
     ap.add_argument('--no-cache', action='store_true', help='ignore --cache (neither read nor write it)')
     ap.add_argument('-D', dest='defines', action='append', metavar='NAME[=V]',
                     help='define NAME for #ifdef / #if (value V, default 1); repeatable')
+    targets.add_argument(ap)
     a = ap.parse_args()
     cache = kccache.Cache(a.cache) if a.cache and not a.no_cache else None
     from . import kcpre
     try:
-        o, pool, fns = compile_source(a.src, cache, kcpre.parse_defines(a.defines))
+        o, pool, fns = compile_source(a.src, cache, kcpre.parse_defines(a.defines), target=a.target)
     except (CompileError, kcparse.ParseError, kcpre.PreError) as x:
         print('error:', x)
         return 1
@@ -309,7 +310,7 @@ def main():
                 print(line)
                 broken |= 'will not load' in line
             segs = getattr(o, 'code_segs', None) or kcsave.code_map(base, o)
-            ok, gone, bad = kcsave.check_return_sites(base, o, segs, cache=cache)
+            ok, gone, bad = kcsave.check_return_sites(base, o, segs, cache=cache, target=a.target)
             print('base return sites (calls a task can wait in): %d mapped, %d gone, %d WRONG; new build %d'
                   % (ok, gone, bad, build))
             if bad:
@@ -321,7 +322,7 @@ def main():
     if pool.added:
         print('%d new strings appended to the pool' % len(pool.added))
     from . import kcverify
-    V = kcverify.Verifier(o, kcverify.load_natives())
+    V = kcverify.Verifier(o, kcverify.load_natives(a.target), a.target)
     V.run()
     for m, lines in sorted(V.warnings.items()):
         for l in lines:

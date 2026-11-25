@@ -1,0 +1,14 @@
+# natives the x3_src engine registers that neither X3AP.exe nor X3FL.exe has: the rows of the native tables of
+# x3_src src/script/*.cpp ({number, "NAME", handler}, X3_FL blocks per edition) minus natives_ap.txt /
+# natives_fl.txt. All of them are in both editions' builds (the engine's AP build has X2_GetModName and not FL's
+# two B3D quality natives, as the originals). Targets x3_src-ap, x3_src-fl. Descriptions:
+# docs/natives/spec_x3src.jsonl.
+P_CaptureJoyAxis
+P_GetJoyDevice
+P_GetJoyRole
+P_GetJoyRoleName
+P_ResetJoyBindings
+P_SetJoyDevice
+P_SetJoyRole
+SA_GetBulletTypeHalfZ
+X2_GetStoryBuild

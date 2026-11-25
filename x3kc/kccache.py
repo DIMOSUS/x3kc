@@ -25,7 +25,7 @@ def code_version():
     if _code_version is None:
         h = hashlib.sha256(b'kccache %d' % FORMAT)
         d = os.path.dirname(os.path.abspath(__file__))
-        for sub in ('', 'data'):            # the modules, natives.txt / sync_natives.txt and the bundled data
+        for sub in ('', 'data'):            # the modules, natives_*.txt / sync_natives_*.txt and the data
             p = os.path.join(d, sub)
             if not os.path.isdir(p):
                 continue

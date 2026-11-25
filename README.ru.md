@@ -82,6 +82,22 @@ DrawRadar`) пишет `Radar.kc` по шаблону и вносит его в 
 (`--no-cache`); отсутствующий или устаревший кэш стоит только времени; у каждого набора значений `-D` своя запись. AP x3story с `--base`: 7,5 с без кэша,
 6,0 с с ним (до того, как `--base` перестал выравнивать неизменённые методы через difflib, было 108 с).
 
+**Цели.** `compile`, `verify`, `savecheck` и `natives` принимают `--target` — exe, для которого объект: `ap`
+(X3AP.exe, по умолчанию), `fl` (X3FL.exe), `x3_src-ap` / `x3_src-fl` (движок x3_src, переписанный exe, собранный как
+AP / FL: нативы редакции плюс его собственные). От цели зависит, какие нативы есть — вызов другого отвечает 0, о нём
+предупреждение: `native X exists only in the x3_src engine (the original exe answers 0)`, `... only in Farnham's
+Legacy (the AP exe answers 0)`, `... only in Albion Prelude (the FL exe answers 0)`, иначе `native X is unknown to
+X3AP.exe`, — и какие нативы всегда отвечают сразу (их вызовы не адреса возврата в сейве для `--base`). Списки:
+`x3kc/natives_ap.txt` и `natives_fl.txt` (имена нативов среди строк каждого exe, `docs/natives/native_strings.py`; FL
+добавляет `B3D_InstGetQualityModifier` и `B3D_InstSetQualityModifierRecursive` и не имеет `X2_GetModName`),
+`natives_x3src.txt` (собственные нативы движка), `sync_natives_ap.txt`, `_fl.txt`, `_x3src.txt` (шаг 5 `--base` в
+[docs/ru/kc.md](docs/ru/kc.md)). Языковой сервер берёт цель из переменной окружения `KCLSP_KC_TARGET`, иначе из файла
+`.x3kc-target` (одно слово) в папке проекта или выше, иначе `fl` для пути с папкой `fl` или `addon2`, иначе `ap`.
+`x3kc natives [--target T] [имя или префикс]` печатает нативы цели по строке: имя, группа, аргументы -> результат,
+сразу / может ждать, в каких exe есть (AP+FL, AP only, FL only, x3_src only) и первая фраза описания из
+`docs/natives/spec_*.jsonl` (`(no description)`, если описания нет; описаны 117 нативов SE и TI оригиналов и 9
+нативов движка x3_src).
+
 MSCI:
 ```
 x3kc msci-setup "C:/Games/X3 Terran Conflict" work           тексты, имена товаров, база команд, скрипты

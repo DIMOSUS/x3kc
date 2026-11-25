@@ -274,26 +274,25 @@ def frame_at(fr, pc):
 CALLS = (0x82, 0x84, 0x85, 0x86, 0x87, 0x88)
 
 
-def load_sync(path=None):
-    """Natives that always answer at once (sync_natives.txt): no task ever waits in them."""
-    import os
-    path = path or os.path.join(os.path.dirname(os.path.abspath(__file__)), 'sync_natives.txt')
-    return {l.strip() for l in open(path, encoding='utf-8') if l.strip() and not l.startswith('#')}
+def load_sync(target=None):
+    """Natives of the target that always answer at once (sync_natives_*.txt): no task ever waits in them."""
+    from . import targets
+    return set(targets.sync(target))
 
 
-def load_known():
-    """Every native name the exe has (natives.txt); a call to any other name answers int 0 at once."""
-    import os
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'natives.txt')
-    return {l.strip() for l in open(p, encoding='utf-8') if l.strip() and not l.startswith('#')}
+def load_known(target=None):
+    """Every native name the target's exe has (natives_*.txt); a call to any other name answers int 0 at once."""
+    from . import targets
+    return set(targets.known(target))
 
 
-def waiting_sites(o, sync=None, known=None):
+def waiting_sites(o, sync=None, known=None, target=None):
     """Call sites of o at which a task can be suspended, i.e. whose return address can be in a savegame:
     natives that may wait (not in `sync`; unknown names answer at once) and calls of methods that can reach one,
-    transitively (a call by name counts when any method of that name can). Returns the set of instruction ends."""
-    sync = load_sync() if sync is None else sync
-    known = load_known() if known is None else known
+    transitively (a call by name counts when any method of that name can). Returns the set of instruction ends.
+    sync / known default to the target's lists (x3kc/targets.py, default ap)."""
+    sync = load_sync(target) if sync is None else sync
+    known = load_known(target) if known is None else known
     spans = method_spans(o)
     by_entry = {e: (e, end) for _, (e, end) in spans.items()}
     by_name = {}
@@ -333,11 +332,12 @@ def waiting_sites(o, sync=None, known=None):
     return sites
 
 
-def check_return_sites(base, new, segs, sync=None, cache=None):
+def check_return_sites(base, new, segs, sync=None, cache=None, target=None):
     """Every return site of base where a task can be suspended (waiting_sites) must map to the same kind of site in
     new (or to nothing), inside a method with the same frame: the saved stack holds the old number of locals, so an
     added or removed local shifts every local of a suspended call. Calls that always come back at once (synchronous
-    natives, methods that never wait) are never in a savegame and are not checked."""
+    natives, methods that never wait) are never in a savegame and are not checked. target: whose natives (sync,
+    known) decide which base sites can wait (x3kc/targets.py, default ap)."""
     bad = ok = gone = 0
     nnames = {e: k for k, (e, _) in method_spans(new).items()}
 
@@ -354,11 +354,13 @@ def check_return_sites(base, new, segs, sync=None, cache=None):
     sites = None
     if cache is not None and sync is None:
         import hashlib
-        cname = 'base-sites-%s' % hashlib.sha256(base.serialize()).hexdigest()[:16]
+        from . import targets
+        lists = sorted(targets.sync(target)) + ['|'] + sorted(targets.known(target))
+        cname = 'base-sites-%s' % hashlib.sha256(base.serialize() + '\n'.join(lists).encode()).hexdigest()[:16]
         sites = cache.load(cname)
     if sites is None:
         # the base's side depends on the base alone: (end, op, callee key, frame) of every site a task can wait in
-        live = waiting_sites(base, sync)
+        live = waiting_sites(base, sync, target=target)
         bnames = {e: k for k, (e, _) in method_spans(base).items()}
         bfr = frames(base)
         sites = [(i.end, i.op, key(base, bnames, i), frame_at(bfr, i.end - 1))

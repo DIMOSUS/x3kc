@@ -1,6 +1,6 @@
 """Static verifier of KC bytecode: what would make the game's VM misbehave, checked for every method of an object.
 
-    x3kc verify <obj> [-v]
+    x3kc verify <obj> [-v] [--target ap|fl|x3_src-ap|x3_src-fl]   (the exe whose natives exist; default ap)
 
 Per method (abstract interpretation of the stack, every path):
   * the first instruction is `frame N` with N = the method row's frame (the loader sizes the task from the row,
@@ -24,6 +24,7 @@ from collections import defaultdict
 
 from . import kcisa
 from . import kcobj
+from . import targets
 
 # fixed stack effect of opcodes without an argc
 EFFECT = {}
@@ -46,9 +47,10 @@ HANDLED = set(EFFECT) | {0x23, 0x28, 0x29, 0x70, 0x82, 0x83, 0x84, 0x85, 0x86, 0
 
 
 class Verifier:
-    def __init__(self, o, natives=None):
+    def __init__(self, o, natives=None, target=None):
         self.o = o
         self.natives = natives
+        self.target = target
         rows = [(r[0], 0, r) for r in o.symb] + [(r[0], c.id, r) for c in o.classes for r in c.methods]
         rows.sort()
         self.rows = rows
@@ -136,7 +138,8 @@ class Verifier:
                 if op in GLOBAL and not 0 <= i.arg < self.nfields[0]:
                     self.err(e, pc, '%s %d: %d globals' % (kcisa.MN[op], i.arg, self.nfields[0]))
                 if op == 0x82 and self.natives is not None and o.string(i.arg) not in self.natives:
-                    self.warn(e, pc, 'native %s is unknown to the exe (answers int 0)' % o.string(i.arg))
+                    self.warn(e, pc, targets.unknown_message(o.string(i.arg), self.target)
+                              if self.target else 'native %s is unknown to the exe (answers int 0)' % o.string(i.arg))
                 if op in (0x85, 0x87) and o.string(i.arg) not in self.method_names:
                     self.warn(e, pc, 'no class has a method %s (the call answers int 0)' % o.string(i.arg))
                 # stack effect
@@ -254,17 +257,18 @@ class Verifier:
             self.method(e)
 
 
-def load_natives():
-    p = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'natives.txt')
-    return {l.strip() for l in open(p) if l.strip() and not l.startswith('#')}
+def load_natives(target=None):
+    """every native name the target's exe has (x3kc/targets.py; default ap)"""
+    return set(targets.known(target))
 
 
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('obj')
     ap.add_argument('-v', action='store_true', help='print every finding, not only counts per method')
+    targets.add_argument(ap)
     a = ap.parse_args()
-    V = Verifier(kcobj.load(a.obj), load_natives())
+    V = Verifier(kcobj.load(a.obj), load_natives(a.target), a.target)
     V.run()
     for kind, table in (('ERROR', V.errors), ('warning', V.warnings)):
         n = sum(len(v) for v in table.values())
