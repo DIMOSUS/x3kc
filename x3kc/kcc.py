@@ -65,11 +65,6 @@ def read_ptch(path):
     return out
 
 
-def known_natives(target=None):
-    """every native name the target's exe has (x3kc/targets.py; default ap)"""
-    return set(targets.known(target))
-
-
 def natives_of(node):
     """Names of the natives called anywhere in an AST (functions, statements, expressions)."""
     stack = [node]
@@ -322,7 +317,7 @@ def main():
     if pool.added:
         print('%d new strings appended to the pool' % len(pool.added))
     from . import kcverify
-    V = kcverify.Verifier(o, kcverify.load_natives(a.target), a.target)
+    V = kcverify.Verifier(o, targets.known(a.target), a.target)
     V.run()
     for m, lines in sorted(V.warnings.items()):
         for l in lines:

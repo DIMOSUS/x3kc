@@ -16,7 +16,7 @@ import shutil
 import tempfile
 import unittest
 
-from x3kc import gameio, kcc, kcd, kcmsci, kcobj, kcsave, kcverify, kcvm
+from x3kc import gameio, kcc, kcd, kcmsci, kcobj, kcsave, kcverify, kcvm, targets
 from x3kc.__main__ import main as cli
 
 GAME = os.environ.get('X3_GAME')
@@ -97,7 +97,7 @@ class Emulator(unittest.TestCase):
         return db
 
     def test_every_object_verifies(self):
-        natives = kcverify.load_natives()
+        natives = targets.known()
         for f in sorted(os.listdir(self.objs)):
             V = kcverify.Verifier(kcobj.load(os.path.join(self.objs, f)), natives)
             V.run()
@@ -132,7 +132,7 @@ class Emulator(unittest.TestCase):
         self.assertEqual(self.msci(self.stock).run_text(src).value, 212)
 
     def test_new_command_verifies_and_keeps_saves(self):
-        V = kcverify.Verifier(self.mod(), kcverify.load_natives())
+        V = kcverify.Verifier(self.mod(), targets.known())
         V.run()
         self.assertEqual(dict(V.errors), {})
         segs = kcsave.code_map(self.stock, self.mod())

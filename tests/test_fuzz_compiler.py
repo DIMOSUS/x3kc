@@ -220,8 +220,8 @@ def compile_run(src, fns):
     with open(p, 'w', encoding='latin1') as f:
         f.write(src)
     o, _, _ = kcc.compile_source(p)
-    from x3kc import kcverify
-    V = kcverify.Verifier(o, kcverify.load_natives())
+    from x3kc import kcverify, targets
+    V = kcverify.Verifier(o, targets.known())
     V.run()
     assert not V.errors, dict(V.errors)
     vm = kcvm.VM(o)

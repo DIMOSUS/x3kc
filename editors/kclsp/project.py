@@ -13,7 +13,7 @@ import os
 import re
 
 from x3kc import kcast as A
-from x3kc import kcc, kcgen, kcparse, kcsplit, targets
+from x3kc import kcgen, kcparse, kcsplit, targets
 from x3kc.kcsym import Klass, Symbols, NO_PARENT
 
 ROOT = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))      # the x3kc checkout
@@ -324,7 +324,7 @@ class Project:
         self.const_owner = {}       # id(kcconst.ConstDef / EnumDef) -> Part
         self.merge_diags = {}       # part key -> [Diag]
         self.target = kc_target(index or single)
-        self.known = kcc.known_natives(self.target)
+        self.known = targets.known(self.target)
         self.natives_doc = native_docs()
         self._built = False
         self.ckey = None

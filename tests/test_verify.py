@@ -4,7 +4,7 @@ import struct
 import tempfile
 import unittest
 
-from x3kc import kcc, kcisa, kcverify
+from x3kc import kcc, kcisa, kcverify, targets
 
 
 SRC = r'''
@@ -47,7 +47,7 @@ def find(o, entry, op):
 
 
 def verify(o):
-    V = kcverify.Verifier(o, kcverify.load_natives())
+    V = kcverify.Verifier(o, targets.known())
     V.run()
     return [l for ls in V.errors.values() for l in ls]
 

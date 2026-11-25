@@ -138,8 +138,7 @@ class Verifier:
                 if op in GLOBAL and not 0 <= i.arg < self.nfields[0]:
                     self.err(e, pc, '%s %d: %d globals' % (kcisa.MN[op], i.arg, self.nfields[0]))
                 if op == 0x82 and self.natives is not None and o.string(i.arg) not in self.natives:
-                    self.warn(e, pc, targets.unknown_message(o.string(i.arg), self.target)
-                              if self.target else 'native %s is unknown to the exe (answers int 0)' % o.string(i.arg))
+                    self.warn(e, pc, targets.unknown_message(o.string(i.arg), self.target))
                 if op in (0x85, 0x87) and o.string(i.arg) not in self.method_names:
                     self.warn(e, pc, 'no class has a method %s (the call answers int 0)' % o.string(i.arg))
                 # stack effect
@@ -257,18 +256,13 @@ class Verifier:
             self.method(e)
 
 
-def load_natives(target=None):
-    """every native name the target's exe has (x3kc/targets.py; default ap)"""
-    return set(targets.known(target))
-
-
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('obj')
     ap.add_argument('-v', action='store_true', help='print every finding, not only counts per method')
     targets.add_argument(ap)
     a = ap.parse_args()
-    V = Verifier(kcobj.load(a.obj), load_natives(a.target), a.target)
+    V = Verifier(kcobj.load(a.obj), targets.known(a.target), a.target)
     V.run()
     for kind, table in (('ERROR', V.errors), ('warning', V.warnings)):
         n = sum(len(v) for v in table.values())

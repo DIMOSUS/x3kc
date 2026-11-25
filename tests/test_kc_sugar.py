@@ -145,8 +145,8 @@ class Foreach(Base):
         # hidden locals: container, size, index - two cells more than the loop written by hand (s, i)
         frames = {f.name: f.frame_size for f in fns}
         self.assertEqual((frames['Elems'], frames['Hand']), (7, 5))
-        from x3kc import kcverify
-        V = kcverify.Verifier(o, kcverify.load_natives())
+        from x3kc import kcverify, targets
+        V = kcverify.Verifier(o, targets.known())
         V.run()
         self.assertEqual(V.errors, {})
 
