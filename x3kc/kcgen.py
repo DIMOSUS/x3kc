@@ -81,6 +81,11 @@ class FuncGen:
         self.cfix = []      # (pos of operand, (cls, name))
         self.ctx = []       # loop/switch contexts: dict(brk, cont, depth)
         self.nparams = len(fn.params)
+        # debug info (kcdbg): (pc, statement token) at each statement start, and the variables' cells with the pc
+        # range they hold a value in: [name, kind, slot, start pc, end pc]
+        self.lines = []
+        self.dbg_vars = []
+        self.dbg_open = []      # the locals of the blocks being emitted (their end pc is set at the block's end)
 
     # ---- low level ---------------------------------------------------------------------------
     def emit(self, op, arg=None, delta=0, cases=None):
@@ -115,6 +120,16 @@ class FuncGen:
             self.maxd = max(self.maxd, self.depth + 1)
         self.emit(op, self.env.pool.offset(name), delta)
 
+    def mark(self, at):
+        """the code from here on belongs to the statement whose first token is at (kcdbg's line table)"""
+        if at is None:
+            return
+        pc = self.here()
+        if self.lines and self.lines[-1][0] == pc:
+            self.lines[-1] = (pc, at)       # no code in between: the inner statement wins
+        elif not self.lines or self.lines[-1][1] != at:
+            self.lines.append((pc, at))
+
     def push_int(self, v):
         v = (v + 0x80000000) % 0x100000000 - 0x80000000     # folded constants may leave 32 bits
         if v in PUSHN:
@@ -147,6 +162,10 @@ class FuncGen:
             v.slot = n + {'argc': 0, 'retpc': 1, 'ctx': 2}[v.index] if isinstance(v.index, str) else n - v.index
         self.depth = self.maxd = n + 3
         self.frame0 = n + 3
+        for p in fn.params:
+            self.dbg_vars.append([p.name, 'param', p.slot, self.base, None])
+        for v in (fn.frame_vars or {}).values():
+            self.dbg_vars.append([v.name, 'frame', v.slot, self.base, None])
         self.emit(0x6e, 0)                    # patched below
         if fn.asm is not None:
             if fn.frame is None:
@@ -155,12 +174,16 @@ class FuncGen:
         else:
             self.block(fn.body)
             m = self.maxd
+            self.mark(getattr(fn, 'end_at', None))
             self.push_int(0)                # the epilogue is not counted in the frame size
             self.emit(0x83, delta=-1)
             self.maxd = m
         frame = fn.frame if fn.frame is not None else self.computed_frame()
         struct.pack_into('>h', self.out, 1, frame)
         self.frame = frame
+        for e in self.dbg_vars:
+            if e[4] is None:
+                e[4] = self.here()
         return self
 
     def computed_frame(self):
@@ -181,12 +204,18 @@ class FuncGen:
     # ---- statements --------------------------------------------------------------------------
     def block(self, stmts):
         start = self.depth
+        opened = len(self.dbg_open)
         for s in stmts:
             self.stmt(s)
+        for e in self.dbg_open[opened:]:
+            e[4] = self.here()
+        del self.dbg_open[opened:]
         self.pops(self.depth - start)
 
     def stmt(self, s):
         t = type(s)
+        at = getattr(s, 'at', None)
+        self.mark(at)
         if t is A.ExprStmt:
             self.expr(s.e)
             self.emit(0x24, delta=-1)
@@ -196,6 +225,9 @@ class FuncGen:
             else:
                 self.expr(s.init)
             s.var.slot = self.depth - 1
+            e = [s.var.name, 'local', s.var.slot, self.here(), None]
+            self.dbg_vars.append(e)
+            self.dbg_open.append(e)
         elif t is A.Block:
             self.block(s.body)
         elif t is A.If:
@@ -217,6 +249,7 @@ class FuncGen:
             self.expr(s.c)
             self.jump(0x34, X, -1)
             self.loop_body(s.body, X, S)
+            self.mark(at)
             self.jump(0x32, S)
             self.place(X)
         elif t is A.For:
@@ -224,14 +257,17 @@ class FuncGen:
                 self.stmt(st)
             S, X, B, I = Label(), Label(), Label(), Label()
             self.place(S)
+            self.mark(at)
             self.expr(s.c)
             self.jump(0x34, X, -1)
             self.jump(0x32, B)
             self.place(I)
+            self.mark(at)
             self.block(s.step)
             self.jump(0x32, S)
             self.place(B)
             self.loop_body(s.body, X, I)
+            self.mark(at)
             self.jump(0x32, I)
             self.place(X)
         elif t is A.DoWhile:
@@ -239,6 +275,7 @@ class FuncGen:
             self.place(S)
             self.loop_body(s.body, X, C)
             self.place(C)
+            self.mark(at)
             self.expr(s.c)
             self.jump(0x33, S, -1)
             self.place(X)

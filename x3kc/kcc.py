@@ -171,6 +171,7 @@ def compile_source(path, cache=None, defines=None, quiet=False, target=None):
         env.methods[(f.cls, f.name)] = len(code)
         f.entry = len(code)
         f.frame_size = g.frame
+        f.dbg = g                       # its line table and variable cells (kcdbg)
         code += g.out
         gens.append((f, g))
     for f, g in gens:
@@ -208,6 +209,10 @@ def compile_source(path, cache=None, defines=None, quiet=False, target=None):
     o.unit = u
     o.warnings = warnings
     o.loc = loc
+    from . import kcdbg
+    name = os.path.splitext(source.name)[0]
+    # the sidecar's content (kcdbg), made when the object is written: other callers do not pay for it
+    o.collect_debug = lambda: kcdbg.collect(o, fns, P.toks, loc, name)
     return o, pool, fns
 
 
@@ -267,6 +272,9 @@ def main():
     ap.add_argument('--no-cache', action='store_true', help='ignore --cache (neither read nor write it)')
     ap.add_argument('-D', dest='defines', action='append', metavar='NAME[=V]',
                     help='define NAME for #ifdef / #if (value V, default 1); repeatable')
+    ap.add_argument('--debug-info', metavar='FILE',
+                    help='the debug info sidecar to write with the object (default: <out>.obj -> <out>.kcdbg; '
+                         'docs/debugging.md); written whenever the object is')
     targets.add_argument(ap)
     a = ap.parse_args()
     cache = kccache.Cache(a.cache) if a.cache and not a.no_cache else None
@@ -330,8 +338,13 @@ def main():
             print('error: the bytecode would break tasks in the game; nothing written. --force writes anyway')
             return 4
     if a.out:
-        open(a.out, 'wb').write(o.serialize())
-        print('wrote %s (%d bytes, %d methods)' % (a.out, len(o.serialize()), len(fns)))
+        data = o.serialize()
+        with open(a.out, 'wb') as h:
+            h.write(data)
+        from . import kcdbg
+        dbg = a.debug_info or kcdbg.sidecar_path(a.out)
+        kcdbg.write(dbg, o.collect_debug(), data)
+        print('wrote %s (%d bytes, %d methods); debug info %s' % (a.out, len(data), len(fns), dbg))
     if a.check:
         ref = kcobj.load(a.check)
         ok = compare(o, ref, fns)

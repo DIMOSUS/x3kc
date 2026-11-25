@@ -57,6 +57,13 @@ Checking a build without the game
   bugscan <obj> [--names auto|FILE] -o <out.jsonl>
                                         static scan for typical bug patterns (candidates to review by hand)
 
+Debugging (docs/debugging.md)
+  compile writes <out>.kcdbg next to every object: the debug info (pc -> file:line, variables, fields, globals)
+  symbolize [<log> | -] [--dbg FILE|DIR]... [-o OUT] [--raw]
+                                        a game log's raw script locations kc[<object> 0x<pc> ...] ->
+                                        File.kc:line:col Class::Method (the log's load lines name the objects'
+                                        files: their .kcdbg beside them; --dbg: other places)
+
 MSCI scripts (addon/scripts/*.pck|xml)
   msci-setup <game dir> <work dir> [--addon addon2] [--lang 044] [--xscript x3fl.xml]
                                         texts, ware names, command database, unpacked scripts;
@@ -137,7 +144,7 @@ def main(argv=None):
              'smoke': ('smoke', 'main'), 'bugscan': ('bugscan', 'main'),
              'split': ('kcsplit', 'main_split'), 'join': ('kcsplit', 'main_join'),
              'add': ('kcadd', 'main_add'), 'remove': ('kcadd', 'main_remove'), 'natives': ('targets', 'main'),
-             'natives-ref': ('natives_ref', 'main')}
+             'natives-ref': ('natives_ref', 'main'), 'symbolize': ('kcdbg', 'main')}
     if cmd not in table:
         print('unknown command %r (x3kc help)' % cmd)
         return 2

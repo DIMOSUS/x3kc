@@ -265,6 +265,8 @@ in the hinted class chain, the argument count does not fit, or a value of anothe
   checks, the signature.
 - [docs/checking.md](docs/checking.md) — checking a mod without the game: the verifier, the emulator, savegame
   checks, what the tests cover.
+- [docs/debugging.md](docs/debugging.md) — the debug info `compile` writes beside every object (`.kcdbg`: pc ->
+  file:line, variables, fields, globals) and `x3kc symbolize` (raw script locations of an x3_src log -> source lines).
 - [docs/screen.md](docs/screen.md) — drawing on screen from KC: scenes, bodies, writable textures, pixel
   coordinates, the per-frame hook, what does not work; the FPS counter.
 

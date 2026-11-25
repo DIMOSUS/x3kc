@@ -523,6 +523,7 @@ class BodyParser(Parser):
             fn = A.Function(d.cls, d.name, self.params, body, d.frame)
         fn.frame_vars = self.extra
         fn.notes = self.notes
+        fn.end_at = d.end - 1 - d.start     # the closing brace: the epilogue's line in the debug info (kcdbg)
         if self.p != d.end:
             raise self.err('junk after function body')
         return fn
@@ -541,6 +542,13 @@ class BodyParser(Parser):
         return out
 
     def stmt(self):
+        """One statement; its first token (relative to the body's) is kept as node.at for the debug info (kcdbg)."""
+        at = self.p - self.decl.start
+        s = self.statement()
+        s.at = at
+        return s
+
+    def statement(self):
         t = self.peek()
         if t.kind == 'id':
             w = t.text
@@ -719,7 +727,9 @@ class BodyParser(Parser):
         body = self.loop_block()
         self.scopes.pop()
         step = [A.ExprStmt(A.Assign(A.Ref(i), A.Bin('+', A.Ref(i), A.Int(1))))]
-        return A.Block(decls + [A.For([], A.Bin('<', A.Ref(i), A.Ref(n)), step, per + body)])
+        loop = A.For([], A.Bin('<', A.Ref(i), A.Ref(n)), step, per + body)
+        loop.at = for_i - self.decl.start      # the loop's condition, step and back jump: the line of the `for`
+        return A.Block(decls + [loop])
 
     def declared(self, var, tok_i):
         """A local declared outside a `var` statement (foreach variables) at token tok_i: a hook for the language

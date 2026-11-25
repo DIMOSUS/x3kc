@@ -2,7 +2,10 @@
 
 
 class Node:
-    __slots__ = ()
+    # at: a statement's first token, relative to its function body's first token (the parser sets it on statements
+    # only; unset elsewhere: read it with getattr(node, 'at', None)). Relative, so that a body taken from the compile
+    # cache (kccache: keyed by the body's tokens, not by their lines) maps to the lines of the current build.
+    __slots__ = ('at',)
 
     def __repr__(self):
         return '%s(%s)' % (type(self).__name__, ', '.join('%s=%r' % (k, getattr(self, k)) for k in self.__slots__))
@@ -258,7 +261,7 @@ class Asm(Node):
 
 # ---- top level -------------------------------------------------------------------------------
 class Function(Node):
-    __slots__ = ('cls', 'name', 'params', 'body', 'frame', 'asm', 'frame_vars', 'stmt_pc', 'notes')
+    __slots__ = ('cls', 'name', 'params', 'body', 'frame', 'asm', 'frame_vars', 'stmt_pc', 'notes', 'end_at')
 
     def __init__(self, cls, name, params, body, frame=None, asm=None):
         self.cls, self.name, self.params, self.body = cls, name, params, body
@@ -268,6 +271,7 @@ class Function(Node):
         self.stmt_pc = {}       # id(statement) -> code offset (decompiler only)
         self.notes = []         # compiler: (kind, token index relative to the body start, text); kind 'warn' (a
                                 # type hint check) or 'foreach' (a foreach loop keeps hidden locals in the frame)
+        self.end_at = None      # compiler: the body's last token (its closing brace), relative to the body start
 
 
 BINOPS = {0x46: '+', 0x4b: '-', 0x50: '*', 0x51: '/', 0x52: '%', 0x53: '&', 0x54: '|', 0x55: '^', 0x56: '&&&',
