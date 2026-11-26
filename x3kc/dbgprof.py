@@ -16,8 +16,48 @@ import tempfile
 
 from . import kcdbg
 
-KC, NATIVE, MSCI, TRUNCATED = 1, 2, 3, 4
+KC, NATIVE, MSCI, TRUNCATED, FORK, PROFILER = 1, 2, 3, 4, 5, 6
 MARKS = {0: '', 1: ' [body]', 2: ' [case]'}
+SERIES = ('frame', 'scripts', 'client', 'world')
+
+
+def hist_stats(h, freq):
+    """a series of the per-frame histogram (the game's frameHist: [bucket, count] pairs, log-spaced: bucket 0 below
+    minNs, bucket b >= 1 from minNs * 2^((b - 1) / sub) to minNs * 2^(b / sub)) -> {frames, median, p90, p95, p99, max,
+    mean} in ms; a percentile is its bucket's geometric middle (a bucket is 4.4 % wide), never above the exact max"""
+    if not h:
+        return None
+    sub, min_ns = h.get('sub', 16), h.get('minNs', 250)
+    return {name: _stats(h.get(name, {}), sub, min_ns, freq) for name in SERIES if name in h}
+
+
+def bucket_ms(b, sub, min_ns):
+    """a bucket's lower and upper bound in ms"""
+    if b <= 0:
+        return 0.0, min_ns / 1e6
+    return min_ns * 2.0 ** ((b - 1) / sub) / 1e6, min_ns * 2.0 ** (b / sub) / 1e6
+
+
+def _stats(series, sub, min_ns, freq):
+    buckets = sorted(series.get('buckets', []))
+    n = sum(c for _, c in buckets)
+    mx = series.get('maxTicks', 0) * 1000.0 / freq
+    out = {'frames': n, 'max': mx}
+    total = 0.0
+    for b, c in buckets:
+        lo, hi = bucket_ms(b, sub, min_ns)
+        total += c * (lo * hi) ** 0.5 if b > 0 else 0.0
+    out['mean'] = total / n if n else 0.0
+    for name, q in (('median', 0.5), ('p90', 0.9), ('p95', 0.95), ('p99', 0.99)):
+        need, seen, v = q * n, 0, 0.0
+        for b, c in buckets:
+            seen += c
+            if seen >= need:
+                lo, hi = bucket_ms(b, sub, min_ns)
+                v = min(mx, (lo * hi) ** 0.5) if b > 0 else 0.0
+                break
+        out[name] = v
+    return out
 
 
 def saved_dir():
@@ -46,9 +86,11 @@ class Profile:
         self.info = info
         self.msci_line = msci_line or (lambda script, index: None)
         self.freq = float(dump.get('frequency') or 1)
-        self.nodes = dump.get('nodes', [])
-        self.stacks = dump.get('stacks', [])
-        # (the weighted samples; a status reply has no stacks: its count)
+        # (a status reply has the counts of nodes and stacks, a dump the lists)
+        nodes, stacks = dump.get('nodes'), dump.get('stacks')
+        self.nodes = nodes if isinstance(nodes, list) else []
+        self.stacks = stacks if isinstance(stacks, list) else []
+        # (the weighted samples; without the stacks: the game's count)
         self.samples = sum(s[0] for s in self.stacks) if self.stacks else dump.get('samples', 0)
         self.script_ms = self.ms(dump.get('scriptTicks', 0))
         self._names = {}
@@ -95,6 +137,10 @@ class Profile:
         elif n[0] == MSCI:
             line = self.msci_line(n[1], n[2])
             text = 'msci %s:%s' % (n[1], line[0] if line else 'i%d' % n[2])
+        elif n[0] == FORK:
+            text = '[fork]'
+        elif n[0] == PROFILER:
+            text = '[profiler]'
         else:
             text = '[deeper frames]'
         self._names[key] = text
@@ -121,11 +167,57 @@ class Profile:
                    d.get('taken', self.samples), req,
                    d.get('coalesced', 0), d.get('idle', 0), d.get('lost', 0), lat,
                    self.ms(d.get('latencyMaxTicks', 0)), over, 100.0 * over / max(1e-9, el * 1000.0)))
+        if d.get('hookSamples'):
+            text += ('; %d samples in the profiler\'s own work ([profiler]: its timing hooks, a sample\'s recording)'
+                     % d['hookSamples'])
+        if d.get('spansMissed'):
+            text += ('; %d samples asked before the spans the game keeps (placed where they were taken)'
+                     % d['spansMissed'])
         if d.get('dropped') or d.get('sitesDropped'):
             text += '; over the tables\' limits: %d samples, %d sites' % (d.get('dropped', 0), d.get('sitesDropped', 0))
         if d.get('ended'):
             text += '; collecting ended: %s' % d['ended']
-        return text
+        lines = [text]
+        split = self.split()
+        if split is not None:
+            lines.append(
+                'client (the engine\'s runs at once: Client::Input ...) %.1f ms in %d runs = %.3f ms a frame; world (the '
+                'scheduler\'s runs) %.1f ms = %s; game time %s (%d frames of the engine)'
+                % (split['clientMs'], split['clientRuns'], split['clientPerFrame'], split['worldMs'],
+                   '%.2f ms a game second (%.3f ms of a 60 fps frame)' % (split['worldPerGameS'],
+                                                                          split['worldPerGameS'] / 60.0)
+                   if split['gameS'] > 0 else 'no game time passed',
+                   '%.3f .. %.3f s (%.3f s)' % (split['gameMsStart'] / 1000.0, split['gameMsEnd'] / 1000.0,
+                                                 split['gameS']) if split['gameMsStart'] >= 0 else 'not known',
+                   split['gameFrames']))
+        dist = self.distribution()
+        if dist:
+            lines.append('per frame (%d frames without a stop; ms): %s' % (
+                dist['frame']['frames'] if 'frame' in dist else 0,
+                '; '.join('%s median %.3f p90 %.3f p95 %.3f p99 %.3f max %.3f' % (
+                    name, s['median'], s['p90'], s['p95'], s['p99'], s['max']) for name, s in dist.items())))
+        return '\n'.join(lines)
+
+    def split(self):
+        """the client part (the engine's top-level runs at once: per frame) and the world part (the scheduler's runs:
+        per game second) of the script time, with the game-time span; None for a dump without them"""
+        d = self.d
+        if 'clientTicks' not in d:
+            return None
+        frames = max(1, d.get('frames', 0))
+        client = self.ms(d.get('clientTicks', 0))
+        world = self.script_ms - client
+        g0, g1 = d.get('gameMsStart', -1), d.get('gameMsEnd', -1)
+        game_s = (g1 - g0) / 1000.0 if g0 >= 0 and g1 >= g0 else 0.0
+        f0, f1 = d.get('gameFrameStart', -1), d.get('gameFrameEnd', -1)
+        return {'clientMs': client, 'clientRuns': d.get('clientRuns', 0), 'clientPerFrame': client / frames,
+                'worldMs': world, 'worldRuns': d.get('runs', 0) - d.get('clientRuns', 0),
+                'worldPerGameS': world / game_s if game_s > 0 else 0.0, 'gameS': game_s, 'gameMsStart': g0,
+                'gameMsEnd': g1, 'gameFrames': f1 - f0 if f0 >= 0 and f1 >= f0 else 0, 'frames': d.get('frames', 0)}
+
+    def distribution(self):
+        """the per-frame distribution of the frame, script, client and world times (hist_stats)"""
+        return hist_stats(self.d.get('frameHist'), self.freq)
 
     def by_method(self):
         """[{method, where, excl, natives, incl, (ms)}]: excl = the samples whose innermost node is the method's frame
@@ -146,6 +238,9 @@ class Profile:
             seen = set()
             innermost_kc = None
             leaf_native = bool(ids) and self.nodes[ids[-1]][0] == NATIVE
+            # (a sample in the profiler's own work: inside the methods below it - their timed runs hold that time -,
+            # no method's own)
+            leaf_profiler = bool(ids) and self.nodes[ids[-1]][0] == PROFILER
             for i in ids:
                 n = self.nodes[i]
                 if n[0] != KC:
@@ -159,7 +254,9 @@ class Profile:
                 # (the innermost KC frame: its own time, or the native it calls; an MSCI node between is its line)
                 last_kc = max(j for j, i in enumerate(ids) if self.nodes[i][0] == KC)
                 after = [self.nodes[i][0] for i in ids[last_kc + 1:]]
-                if leaf_native and NATIVE in after and after.index(NATIVE) == len(after) - 1:
+                if leaf_profiler:
+                    pass
+                elif leaf_native and NATIVE in after and after.index(NATIVE) == len(after) - 1:
                     innermost_kc['natives'] += count
                 else:
                     innermost_kc['excl'] += count
@@ -228,11 +325,14 @@ class Profile:
                                key=lambda r: -r['samples'])}
 
     def by_task(self):
-        """the top-level script runs (timed) by their task's root method (and the MSCI script of a __runScript task)"""
+        """the top-level script runs (timed) by their task's root method (and the MSCI script of a __runScript task)
+        and their part: client (the engine's runs at once) or world (the scheduler's)"""
         out = []
-        for entry, script, runs, ticks, mx in self.d.get('roots', []):
+        for row in self.d.get('roots', []):
+            entry, script, runs, ticks, mx = row[:5]
+            part = row[5] if len(row) > 5 else None
             out.append({'root': (self.method_name(entry) if entry else '?') + (' ' + script if script else ''),
-                        'runs': runs, 'ms': self.ms(ticks), 'maxMs': self.ms(mx)})
+                        'runs': runs, 'ms': self.ms(ticks), 'maxMs': self.ms(mx), 'part': part})
         return sorted(out, key=lambda r: -r['ms'])
 
     def frames(self, top=10):
@@ -241,8 +341,10 @@ class Profile:
             out.append({
                 'frame': f['index'], 'ms': self.ms(f['ticks']), 'scriptMs': self.ms(f['scriptTicks']),
                 'nativeMs': self.ms(f['nativeTicks']), 'runs': f['runs'], 'samples': f['samples'],
-                'topRuns': [{'root': (self.method_name(e) if e else '?') + (' ' + s if s else ''),
-                             'ms': self.ms(t), 'runs': c} for e, s, t, c in sorted(f.get('topRuns', []), key=lambda x: -x[2])],
+                'clientMs': self.ms(f.get('clientTicks', 0)),
+                'topRuns': [{'root': (self.method_name(r[0]) if r[0] else '?') + (' ' + r[1] if r[1] else ''),
+                             'ms': self.ms(r[2]), 'runs': r[3], 'part': r[4] if len(r) > 4 else None}
+                            for r in sorted(f.get('topRuns', []), key=lambda x: -x[2])],
                 'topNatives': [{'native': self.site_native(pc), 'at': self.where(pc, False) + ' ' + self.method_name(pc),
                                 'ms': self.ms(t), 'calls': c} for pc, t, c in sorted(f.get('topNatives', []), key=lambda x: -x[1])],
                 'topLeaves': [{'node': self.node_name(i, True), 'samples': c} for i, c in f.get('topLeaves', [])]})
@@ -370,10 +472,12 @@ def text_report(p, by, top):
                 out.append('  %8.2f ms %9d calls  max %7.1f us  %-44s %s' % (r['ms'], r['calls'], r['maxMs'] * 1000,
                                                                           r['method'] + ' [%s]' % r['kind'], r['where']))
     elif by == 'native':
-        out.append('by native (timed, every call; exclusive of the script runs a native makes, which are their own)')
+        out.append('by native (timed, every call; exclusive of the script runs a native makes, which are their own; '
+                   'sampled: the samples in the native as ms of script time, for comparison)')
         for r in p.by_native()[:top]:
-            out.append('  %8.2f ms %9d calls  avg %6.2f us  max %7.1f us%s  %s' % (
+            out.append('  %8.2f ms %9d calls  avg %6.2f us  max %7.1f us  sampled %7.2f ms%s  %s' % (
                 r['ms'], r['calls'], 1000.0 * r['ms'] / max(1, r['calls']), r['maxMs'] * 1000,
+                p.sample_ms(r['samples']),
                 '  (+%.1f ms in scripts it ran)' % r['nestedMs'] if r['nestedMs'] >= 0.05 else '', r['native']))
             for c in r['callers'][:3]:
                 out.append('        %8.2f ms %9d calls  from %s (%s)' % (c['ms'], c['calls'], c['method'],
@@ -392,19 +496,58 @@ def text_report(p, by, top):
                                                        'command %s' % r['command'] if r['command'] is not None
                                                        else '(line not known)'))
     elif by == 'task':
-        out.append('by task root (the top-level script runs, timed: the task\'s bottom method; an MSCI task\'s script)')
+        out.append('by task root (the top-level script runs, timed: the task\'s bottom method; an MSCI task\'s script; '
+                   'client: the engine\'s runs at once - per frame -, world: the scheduler\'s - per game second)')
+        split = p.split()
+        frames = max(1, p.d.get('frames', 0))
         for r in p.by_task()[:top]:
-            out.append('  %8.2f ms %8d runs  max %7.2f ms  %s' % (r['ms'], r['runs'], r['maxMs'], r['root']))
+            per = ''
+            if r['part'] == 'client':
+                per = '  %.4f ms a frame' % (r['ms'] / frames)
+            elif r['part'] == 'world' and split is not None and split['gameS'] > 0:
+                per = '  %.3f ms a game second' % (r['ms'] / split['gameS'])
+            out.append('  %8.2f ms %8d runs  max %7.2f ms  %-6s %s%s' % (r['ms'], r['runs'], r['maxMs'],
+                                                                       r['part'] or '', r['root'], per))
     return out
 
 
-def text_frames(p, top):
-    out = [p.header(), 'the slowest frames (a frame with a debugger stop is left out)']
+def text_hist(p, series='scripts'):
+    """the per-frame histogram of one series as text rows (4 rows an octave, the empty ones left out)"""
+    h = p.d.get('frameHist')
+    if not h or series not in h:
+        return ['no per-frame histogram in this profile']
+    sub, min_ns = h.get('sub', 16), h.get('minNs', 250)
+    step = max(1, sub // 4)
+    rows = {}
+    for b, c in h[series].get('buckets', []):
+        k = 0 if b == 0 else 1 + (b - 1) // step * step
+        rows[k] = rows.get(k, 0) + c
+    n = sum(rows.values())
+    out = ['per-frame %s ms (%d frames; %% of the frames, the cumulative %%)' % (series, n)]
+    if not n:
+        return out
+    peak = max(rows.values())
+    seen = 0
+    for k in sorted(rows):
+        lo = bucket_ms(k, sub, min_ns)[0]
+        hi = bucket_ms(k + step - 1, sub, min_ns)[1] if k > 0 else bucket_ms(0, sub, min_ns)[1]
+        seen += rows[k]
+        out.append('  %9.4f - %9.4f  %7d  %5.1f%%  %5.1f%%  %s' % (lo, hi, rows[k], 100.0 * rows[k] / n,
+                                                                 100.0 * seen / n, '#' * max(1, 50 * rows[k] // peak)))
+    return out
+
+
+def text_frames(p, top, hist=None):
+    out = [p.header()]
+    if hist:
+        out.extend(text_hist(p, hist))
+    out.append('the slowest frames (a frame with a debugger stop is left out)')
     for f in p.frames(top):
-        out.append('  frame %d: %.2f ms, scripts %.2f ms (%d runs), natives %.2f ms, %d samples' % (
-            f['frame'], f['ms'], f['scriptMs'], f['runs'], f['nativeMs'], f['samples']))
+        out.append('  frame %d: %.2f ms, scripts %.2f ms (%d runs; client %.2f ms), natives %.2f ms, %d samples' % (
+            f['frame'], f['ms'], f['scriptMs'], f['runs'], f['clientMs'], f['nativeMs'], f['samples']))
         for r in f['topRuns']:
-            out.append('      run    %7.2f ms x%-5d %s' % (r['ms'], r['runs'], r['root']))
+            out.append('      run    %7.2f ms x%-5d %s%s' % (r['ms'], r['runs'], r['root'],
+                                                            ' (%s)' % r['part'] if r['part'] else ''))
         for r in f['topNatives']:
             out.append('      native %7.2f ms x%-5d %s at %s' % (r['ms'], r['calls'], r['native'], r['at']))
         for r in f['topLeaves']:

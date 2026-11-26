@@ -89,6 +89,45 @@ class DbgProf(unittest.TestCase):
             self.assertTrue(dbgprof.text_report(p, by, 10))
         self.assertTrue(dbgprof.text_frames(p, 5))
 
+    def test_status_split_distribution(self):
+        # a status reply: the counts of nodes and stacks, no lists (it crashed the header before)
+        d = self.dump()
+        d['nodes'], d['stacks'], d['samples'] = 6, 5, 51
+        d.update({'clientTicks': 21000, 'clientRuns': 100, 'gameMsStart': 6000000, 'gameMsEnd': 6004000,
+                  'gameFrameStart': 1000, 'gameFrameEnd': 1100,
+                  'frameHist': {'sub': 16, 'minNs': 250, 'scripts': {'maxTicks': 900, 'buckets': [[0, 10], [129, 89],
+                                                                                                   [161, 1]]}}})
+        p = dbgprof.Profile(d)
+        self.assertEqual(p.samples, 51)
+        self.assertIn('0.210 ms a frame', p.header())
+        sp = p.split()
+        self.assertAlmostEqual(sp['worldPerGameS'], 30.0 / 4.0)
+        st = p.distribution()['scripts']
+        # (bucket 129: 0.25 us * 2^8 = 64 us .. 66.8 us; bucket 161: 256 us ..; the max is exact)
+        self.assertEqual(st['frames'], 100)
+        self.assertTrue(0.064 <= st['median'] <= 0.0669)
+        self.assertTrue(0.064 <= st['p90'] <= 0.0669)
+        self.assertAlmostEqual(st['max'], 0.9)
+        self.assertTrue(dbgprof.text_hist(p, 'scripts')[1:])
+
+    def test_fork_and_profiler_nodes(self):
+        d = self.dump()
+        s_pc = self.sum.lines[-1][0] + 1
+        t_pc = self.twice.lines[0][0] + 1
+        # Twice forked from Sum (the parent's frames below a fork node); a sample in the profiler's hooks above Sum
+        d['nodes'] = [[1, s_pc, 0], [5], [1, t_pc, 0], [6]]
+        d['stacks'] = [[8, 0, 1, 2], [2, 0, 3]]
+        d['roots'] = [[self.sum.entry, '', 400, 51000, 900, 'client']]
+        p = dbgprof.Profile(d, self.info)
+        rows = {r['method']: r for r in p.by_method()}
+        self.assertEqual(rows['Thing::Sum']['incl'], 10)        # (the forked child's samples and the hooks')
+        self.assertEqual(rows['Thing::Sum']['excl'], 0)
+        self.assertEqual(rows['Thing::Twice']['excl'], 8)
+        self.assertIn('Thing::Sum;[fork];Thing::Twice 8', p.folded())
+        self.assertIn('Thing::Sum;[profiler] 2', p.folded())
+        self.assertEqual(p.by_task()[0]['part'], 'client')
+        self.assertTrue(dbgprof.text_report(p, 'task', 10))
+
     def test_flame(self):
         p = self.profile()
         folded = p.folded()

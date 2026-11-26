@@ -147,7 +147,7 @@ stop's frame 0), `true`: a resume pc (callers, a waiting task): its line is pc -
 | `break` | `object`, `size`, `crc32` (must be the loaded object's), `pc`; options `log`, `paths`, `labels`, `depth`, `if` [{path, op (== != < <= > >=), value (number, string, null)}], `count`, `once`, `this`, `tag` | `bp` (id), `applied`, `unbound` [the native bindings unbound for it] |
 | `clear` | `bp` or `all` | `cleared` |
 | `list` | | `breakpoints` [...], `patched` (pcs), `unboundBindings` |
-| `events` | `max` (16) | `events` [...], `dropped`, `state`, `stop` (when stopped) |
+| `events` | `max` (16) | `events` [...], `more` (events left in the queue), `dropped` (events dropped since the last `events`: the queue full or one too large), `droppedKinds` {kind: count} (by the event's `event`; past 15 kinds: `other`), `state`, `stop` (when stopped) |
 | `tasks` | `max` | `object`, `tasks` [{task, state (ready / waiting / stopped), object, frames, + the top frame}], `count` |
 | `stack` | `task` | `frames` |
 | `read` | `paths`, `depth`, `items`, `chars`, `task` | `values` (one per path) |
@@ -246,8 +246,8 @@ or clear of the VM (a `profileEnded` event: the pcs were that code's).
 
 | `op` | arguments | reply |
 |---|---|---|
-| `start` | `hz` (samples a second, 0..20000, default 2000; 0: no samples, the timing only), `frames` (collect N frames, then stop collecting: `state` `done`, `ended` `frames`; the data stays until `stop`), `untimed` (no exact times: the samples only) | the status |
-| `status` | | `state` (`none`, `running`, `done`) and the counters below |
+| `start` | `hz` (samples a second, 0..20000, default 2000; 0: no samples, the timing only), `frames` (collect N frames, then stop collecting: `state` `done`, `ended` `frames`; the data stays until `stop`), `untimed` (no exact times: the samples only); armed, one of: `atFrame` (the engine's frame count, `m_clock.frameCount()`), `atGameMs` (game time in ms), `afterFrames` (the debugger's frames from now) - collecting starts at the first frame boundary where it holds | the status (`armed`: `armedAt` `frame` / `gameMs` / `debuggerFrame`, `armedValue`, `gameFrameNow`, `gameMsNow`, `debuggerFrameNow`, `hz`, `frameLimit`, `timed`) |
+| `status` | | `state` (`none`, `armed`, `running`, `done`) and the counters below |
 | `dump` | | the status + the tables below (one reply, up to 256 MB) |
 | `stop` | | `had`, `samples`, `freed` (bytes), `bytes` (left: 0) |
 
@@ -262,7 +262,16 @@ pending), `coalesced` (ticks counted while one was pending: in the next sample's
 while no script ran), `heldSamplerTicks` (its ticks during a hold), `skipped` (ticks of a debugger code run's sample),
 `lost` (ticks asked after a run's last point or before a run), `dropped` (over a table's limit), `sitesDropped`,
 `latencySumTicks` / `latencyMaxTicks` (per walk: the ask to the sample; a sample asked during a native is taken at its
-end), `overheadTicks` (the samples' own cost), `nodes`, `stacks`, `bytes`. `hello` gives `frames` (the main loop's
+end), `overheadTicks` (the samples' own cost), `hookSamples` (samples whose first tick asked in the profiler's own
+work: the hooks' bookkeeping after a native's / body's / case's end, a sample's walk - recorded with a `[6]` leaf),
+`spansMissed` (asked before every native / body / case span the game still keeps: placed where taken; a sample is
+placed by its first tick's time, x3_src `src/script/README.md` "the profiler"), `gameFrameStart` /
+`gameFrameEnd`, `gameMsStart` / `gameMsEnd` (the engine's frame count and game time at the start and the last frame's
+end; -1: no clock), `clientTicks` / `clientRuns` (the part of `scriptTicks` / `runs` the engine made at once: a
+top-level `Task::runTaskNow` - Client::Input ...; the rest is the scheduler's: world), `frameHist` {`sub` (16),
+`minNs` (250), `frame` / `scripts` / `client` / `world`: {`maxTicks`, `buckets` [[bucket, frames]]}} (the frames without
+a stop: bucket 0 below minNs, bucket b >= 1 from minNs * 2^((b-1)/sub) to minNs * 2^(b/sub), the last one open),
+`nodes`, `stacks`, `bytes`. `heldTicks` is frozen when collecting ends. `hello` gives `frames` (the main loop's
 iterations: two hellos give the frame rate) and `profile` (the state); `list` gives `profile`, `profileBytes`,
 `profileSampler`.
 
@@ -271,17 +280,20 @@ The dump's tables (pcs are code offsets; KC pcs of stack frames are resume pcs, 
 - `nodes`: `[1, pc, mark]` a KC frame (mark 1: the sample was in the method's native body C++, 2: in its native case
   C++; a body's own node has the method's entry as pc), `[2, group, command, name]` a native, `[3, script, index]` an
   MSCI script and the code index of its line (above its `__runScript` frame), `[4]` the frames deeper than 96 (or below
-  a native whose task is gone).
+  a native whose task is gone), `[5]` a fork (the forked child's frames above, the parent's at the fork below), `[6]`
+  the profiler's own work (a leaf: above the frames it interrupted).
 - `stacks`: `[samples (weighted), node, node, ...]` root first. A sample in a script run a native made (a native running scripts at
-  once) has that native and its caller's frames below the run's frames, out to the scheduler's task.
+  once) has that native and its caller's frames below the run's frames, a sample in a forked child (fork runs it at
+  once, nested) a `[5]` and the parent's frames at the fork below, each out to the outermost run.
 - `natives`: `[site pc (the native instruction), group, command, name, calls, ticks, nested, max, samples]` - ticks are
   the native's own (without the script runs it made: `nested`) and without debugger stops.
 - `bodies`, `cases`: `[method entry, calls, ticks, max, samples]` (a body's time holds the bodies and methods it runs).
-- `roots`: `[root method entry, MSCI script ("" none), runs, ticks, max]` - the top-level runs by their task's bottom
-  frame (a `__runScript` task: the first script the walk saw it run).
-- `slowest`: the 32 slowest frames: `index`, `ticks`, `scriptTicks`, `nativeTicks`, `runs`, `samples`, `topRuns`
-  [[root entry, script, ticks, runs]], `topNatives` [[site pc, ticks, calls]], `topLeaves` [[node, samples]] (six each:
-  a key that adds up from small parts may be missing).
+- `roots`: `[root method entry, MSCI script ("" none), runs, ticks, max, part]` - the top-level runs by their task's
+  bottom frame (a `__runScript` task: the first script the walk saw it run) and origin, `part` `client` (the engine's
+  run at once) or `world` (the scheduler's); the same root may have a row of each.
+- `slowest`: the 32 slowest frames: `index`, `ticks`, `scriptTicks`, `nativeTicks`, `runs`, `samples`, `clientTicks`,
+  `topRuns` [[root entry, script, ticks, runs, part]], `topNatives` [[site pc, ticks, calls]], `topLeaves` [[node,
+  samples]] (six each: a key that adds up from small parts may be missing).
 
 The client's saved file is the dump plus `sidecar` (the path it symbolized with) and `msciLines` {script: {index:
 [editor line, command id]}} (read from the loaded scripts while the game runs).
@@ -429,7 +441,7 @@ The game: `--pid`, else the only pipe `x3dbg-*`. A reply is awaited `--deadline 
 | `msci break SCRIPT LINE [...]` | an MSCI breakpoint: script name + the editor's line (as ScriptDatabase counts lines: its code array, the commands with flag 131072, the comments), the script loaded in ScriptDatabase.scripts |
 | `msci vars [--frame N]` / `msci stack` | the MSCI script's variables (`$name = value (type)`) / the scripts of the stack's `__runScript` frames |
 | `wait [--timeout S] [--all]` | the next queued stop, log or hang; at once when stopped |
-| `events` | every queued event |
+| `events [--all]` | the queued events (1000 at most and a note when more are queued; `--all`: until the queue is empty); `events` and `wait` warn on stderr when the game dropped events since the last read (count and kinds) |
 | `stack [--task ID]`, `locals [--frame N] [--depth N]`, `print PATH... [--frame N] [--depth N] [--items N]` | |
 | `tasks [--max N]` | the main VM's tasks with their top location (MSCI script and code index) |
 | `continue`, `step [over|into|out|msci]`, `pause`, `detach`, `clear [ID | --all]`, `list`, `config --stop-timeout S` | |
@@ -443,10 +455,10 @@ The game: `--pid`, else the only pipe `x3dbg-*`. A reply is awaited `--deadline 
 | `history start #ID \| this \| PATH [--depth N] [--size N] [--fields a,b] [--if EXPR]` | an object's change history, recorded by the game without stopping (Object histories); `this`: the stop's receiver, PATH: a print path that holds an object |
 | `history show #ID \| this \| PATH [--last N] [--field F] [--changed]` | the records, oldest first: `t=<game s> f<frame> <field>: old -> new  by File.kc:line Class::Method <- caller  msci SCRIPT:editor line  task N`; a container's `field [level] table #id set [key] old -> new (size)`; `native NAME at ...`, `engine x3 exe+0x... (function from the .map)`; `--json`: the reply with `text` per record |
 | `history stop #ID \| --all`, `history list`, `history dump -o FILE` | stop frees the ring; dump writes every history (one JSON line each, records symbolized) |
-| `profile start [--hz N] [--frames N] [--untimed]` | the script profiler (Script profiler) |
+| `profile start [--hz N] [--frames N] [--untimed] [--at-frame N \| --at-game-ms T \| --after-frames N]` | the script profiler (Script profiler); `--at-*` / `--after-frames` arm it: it starts at that frame boundary (`status`: `armed`, the clock now; `stop` gives it up) |
 | `profile stop [-o FILE]`, `profile dump -o FILE`, `profile status` | stop saves the profile (default `%TEMP%\x3kc_dbg\profile-<pid>.json`, MSCI lines resolved), then frees the game's; dump saves without stopping |
 | `profile report [--by method\|native\|msci\|task\|body] [--top N] [--from FILE]` | method: exclusive (its bytecode, or its body / case C++ marked `[body]` / `[case]`), `+nat` (natives it calls itself), inclusive, in % of the samples and ms (the share of the measured script time), with the method's source; native: timed calls, ms, avg / max and the calling methods with their lines; msci: per script, editor line, command id; task: the timed top-level runs by task root; body: the bodies and cases timed. The game's profile, else `--from`, else the newest saved one; `--json` |
-| `profile frames [--top N] [--from FILE]` | the slowest frames: ms, scripts, natives, the runs, natives and sample leaves that filled them |
+| `profile frames [--top N] [--hist [--series frame\|scripts\|client\|world]] [--from FILE]` | the slowest frames: ms, scripts (client part), natives, the runs (with their part), natives and sample leaves that filled them; `--hist`: the per-frame histogram of a series first. Every report's header has the per-frame distribution (median, p90, p95, p99, max of frame / scripts / client / world ms) and the client / world split (client ms a frame, world ms a game second, the game-time span) |
 | `profile flame -o FILE [--format folded\|speedscope] [--from FILE]` | `.json`: a speedscope file (checked against the format's rules before it is written; open it at speedscope.app), else folded stacks (`root;...;leaf count`: flamegraph.pl, inferno, speedscope) |
 
 `--if` takes one KC expression (compiled against the sidecar in the hit frame; all `--if` of a breakpoint hold; read-only

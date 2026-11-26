@@ -977,12 +977,26 @@ class Cli:
             obj, text = self.describe_event(info, e)
             self.emit(obj, text)
 
-    def c_events(self, a):
-        r = self.session().conn.call('events', max=1000)
-        self.print_events(r['events'])
+    @staticmethod
+    def warn_dropped(r):
+        """the game's dropped-event count of a reply (since the last read; by kind) as a warning on stderr"""
         if r.get('dropped'):
-            print('(%d events dropped: the queue was full)' % r['dropped'], file=sys.stderr)
-        return 0
+            kinds = r.get('droppedKinds') or {}
+            print('warning: %d events dropped since the last read (the game\'s queue was full)%s' % (
+                r['dropped'], ': ' + ', '.join('%s %d' % kv for kv in sorted(kinds.items(), key=lambda kv: -kv[1]))
+                if kinds else ''), file=sys.stderr)
+
+    def c_events(self, a):
+        conn = self.session().conn
+        while True:
+            r = conn.call('events', max=1000 if not a.all else 1000000)
+            self.print_events(r['events'])
+            self.warn_dropped(r)
+            if not r.get('more'):
+                return 0
+            if not a.all:
+                print('(more events are queued: x3kc dbg events --all reads them all)', file=sys.stderr)
+                return 0
 
     def c_wait(self, a):
         # one connection per poll: the game serves one client at a time, so another x3kc dbg command (a clear, a
@@ -1010,6 +1024,7 @@ class Cli:
                 return 2
             finally:
                 c.close()
+            self.warn_dropped(r)
             events = r['events'] or ([dict(r['stop'], event='stop')] if r['state'] == 'stopped' else [])
             if events:
                 for e in events:
@@ -1423,7 +1438,7 @@ class Cli:
         None when the game has none"""
         s = self.session()
         st = s.conn.call('profile', op='status')
-        if st.get('state') == 'none':
+        if st.get('state') in ('none', 'armed'):
             return None
         d = s.conn.call('profile', op='dump', deadline=max(Conn.reply_timeout, 120.0))
         for k in ('id', 'ok'):
@@ -1475,7 +1490,20 @@ class Cli:
     def c_profile(self, a):
         from . import dbgprof
         if a.what == 'start':
-            r = self.session().conn.call('profile', op='start', hz=a.hz, frames=a.frames, untimed=a.untimed)
+            args = {'hz': a.hz, 'frames': a.frames, 'untimed': a.untimed}
+            arms = [(k, v) for k, v in (('atFrame', a.at_frame), ('atGameMs', a.at_game_ms),
+                                        ('afterFrames', a.after_frames)) if v is not None]
+            if len(arms) > 1:
+                raise DbgError('profile start: one of --at-frame, --at-game-ms, --after-frames')
+            if any(v < 0 for _, v in arms):
+                raise DbgError('profile start: --at-frame, --at-game-ms, --after-frames take 0 or more')
+            args.update(arms)
+            r = self.session().conn.call('profile', op='start', **args)
+            if r.get('state') == 'armed':
+                self.emit(r, 'profile armed: it starts %s (now: frame %d, game time %d ms), %s, %d Hz%s' % (
+                    self.armed_text(r), r.get('gameFrameNow', -1), r.get('gameMsNow', -1),
+                    'timed' if r.get('timed') else 'untimed', r['hz'], ', %d frames' % a.frames if a.frames else ''))
+                return 0
             self.emit(r, 'profile started: %s, %d Hz%s' % ('timed' if r.get('timed') else 'untimed', r['hz'],
                                                             ', %d frames' % a.frames if a.frames else ''))
             return 0
@@ -1484,8 +1512,13 @@ class Cli:
             if r['state'] == 'none':
                 self.emit(r, 'no profile')
                 return 0
+            if r['state'] == 'armed':
+                self.emit(r, 'profile armed: it starts %s (now: frame %d, game time %d ms, debugger frame %d)' % (
+                    self.armed_text(r), r.get('gameFrameNow', -1), r.get('gameMsNow', -1),
+                    r.get('debuggerFrameNow', -1)))
+                return 0
             p = dbgprof.Profile(r)
-            self.emit(r, '%s; %d nodes, %d stacks, %d bytes' % (p.header(), r['nodes'], r['stacks'], r['bytes']))
+            self.emit(r, '%s\n%d nodes, %d stacks, %d bytes' % (p.header(), r['nodes'], r['stacks'], r['bytes']))
             return 0
         if a.what in ('stop', 'dump'):
             s = self.session()
@@ -1517,9 +1550,11 @@ class Cli:
             return 0
         if a.what == 'frames':
             if self.json:
-                print(json.dumps({'header': p.header(), 'frames': p.frames(a.top)}, ensure_ascii=False))
+                print(json.dumps({'header': p.header(), 'distribution': p.distribution(), 'split': p.split(),
+                                  'frameHist': p.d.get('frameHist') if a.hist else None, 'frames': p.frames(a.top)},
+                                 ensure_ascii=False))
                 return 0
-            print('\n'.join(dbgprof.text_frames(p, a.top)))
+            print('\n'.join(dbgprof.text_frames(p, a.top, a.series if a.hist else None)))
             return 0
         if a.what == 'flame':
             if not a.output:
@@ -1542,6 +1577,12 @@ class Cli:
                       % (n, a.output, fmt))
             return 0
         raise DbgError('profile %s' % a.what)
+
+    @staticmethod
+    def armed_text(r):
+        at, v = r.get('armedAt'), r.get('armedValue', 0)
+        return ('at the engine\'s frame %d' % v if at == 'frame' else 'at game time %d ms' % v if at == 'gameMs'
+                else 'at the debugger\'s frame %d' % v)
 
     def map_symbol(self, offset):
         """an exe offset -> the function the .map beside the game's exe names (None: no map)"""
@@ -1917,7 +1958,8 @@ def build_parser():
     p.add_argument('id', type=int, nargs='?')
     p.add_argument('--all', action='store_true')
     sub.add_parser('list', help='the breakpoints')
-    sub.add_parser('events', help='the queued events (no wait)')
+    p = sub.add_parser('events', help='the queued events (no wait; 1000 at most, a note when more are queued)')
+    p.add_argument('--all', action='store_true', help='every queued event (reads until the queue is empty)')
     p = sub.add_parser('wait', help='the next stop or log (at once when stopped)')
     p.add_argument('--timeout', type=float, default=60.0)
     p.add_argument('--all', action='store_true', help='every queued event, not only the next')
@@ -1993,6 +2035,14 @@ def build_parser():
     p.add_argument('--hz', type=int, default=2000, help='start: samples a second (0: the timing only; at most 20000)')
     p.add_argument('--frames', type=int, default=0, help='start: collect N frames, then stop collecting (the data '
                    'stays until stop)')
+    p.add_argument('--at-frame', type=int, help='start: armed - collecting starts at the engine\'s frame N (the '
+                   'frame count histories show as fN; deterministic on the stand)')
+    p.add_argument('--at-game-ms', type=int, help='start: armed - collecting starts at the first frame whose game '
+                   'time is T ms or later')
+    p.add_argument('--after-frames', type=int, help='start: armed - collecting starts N frames from now')
+    p.add_argument('--hist', action='store_true', help='frames: the per-frame histogram of a series (--series)')
+    p.add_argument('--series', default='scripts', choices=['frame', 'scripts', 'client', 'world'],
+                   help='frames --hist: the series (default: the script time a frame)')
     p.add_argument('--untimed', action='store_true', help='start: the samples only - no exact times of natives, '
                    'bodies, cases and task runs (less overhead: docs/debugging.md "Script profiler")')
     p.add_argument('--top', type=int, default=25, help='report / frames: the rows shown')
