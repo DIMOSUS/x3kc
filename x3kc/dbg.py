@@ -564,6 +564,34 @@ class Cli:
             return e, 'watch bp %d (no frame to stop in): %s' % (e.get('bp', 0), change_text(info, e.get('change', {})))
         if kind == 'error':
             return e, 'bp %d: its compiled condition / log failed: %s' % (e.get('bp', 0), e.get('error'))
+        if kind == 'hang':
+            # (the watchdog's first safepoint of a hang: the task's stack there, its innermost frame first)
+            e = dict(e)
+            lines = []
+            for i, f in enumerate(e.get('stack', [])):
+                where = location_text(info, f['pc'], f.get('resume', i != 0))
+                ms = ' msci=%s:%d' % (f['msci']['script'], f['msci']['index']) if f.get('msci') else ''
+                lines.append('  #%d %s%s' % (i, where, ms))
+            if e.get('frames', 0) > len(e.get('stack', [])):
+                lines.append('  ... %d more frames' % (e['frames'] - len(e['stack'])))
+            # (a hang inside a native's script run: the natives in progress outside, each with its calling task)
+            for o in e.get('outer', []):
+                if o.get('gone'):
+                    lines.append('  in native %s of task %d (gone)' % (o['native'], o['task']))
+                    continue
+                for i, f in enumerate(o.get('stack', [])):
+                    where = location_text(info, f['pc'], f.get('resume', i != 0))
+                    ms = ' msci=%s:%d' % (f['msci']['script'], f['msci']['index']) if f.get('msci') else ''
+                    lines.append(('  in native %s of task %d at %s%s' % (o['native'], o['task'], where, ms)) if i == 0
+                                 else '    %s%s' % (where, ms))
+            e['location'] = location_text(info, e['pc'], False) if 'pc' in e else '?'
+            # (stalledMs: the run's time since its last frame, stop or hold - the running task may be newer)
+            outer = e.get('outer') or []
+            text = 'hang: a script run has gone %.1f s without waiting, running task %d at %s%s%s' % (
+                e.get('stalledMs', 0) / 1000.0, e['task'], e['location'],
+                ' inside native %s of task %d' % (outer[0]['native'], outer[0]['task']) if outer else '',
+                ' (stopping there)' if e.get('stopping') else ' (served: pause stops it)')
+            return e, '\n'.join([text] + lines)
         if kind == 'resumed':
             return e, 'resumed (%s)' % e.get('reason')
         if kind == 'stepEnded':
@@ -1033,7 +1061,8 @@ class Cli:
         s = self.session()
         info = s.main_info()
         frame = None
-        stopped = self.stop_state() is not None
+        r = self.session().conn.call('events', max=0)
+        stopped = r.get('state') in ('stopped', 'hung')     # (a hang served: its frames stand for a stop's)
         if stopped or a.task:
             _, frame = self.frame_of(a.task, a.frame)
         comp = PathCompiler(s, info, frame, dynamic=True, task=a.task)
@@ -1117,6 +1146,26 @@ class Cli:
             args['stopTimeout'] = a.stop_timeout
         r = self.session().conn.call('config', **args)
         self.emit(r, 'stop timeout %d s' % r['stopTimeout'])
+        return 0
+
+    def c_hang(self, a):
+        # the hang watchdog (the game's): a run with no frame for the threshold is served at its next instruction
+        args = {}
+        if a.stop and a.log_only:
+            raise DbgError('hang: --stop or --log-only')
+        if a.stop or a.log_only:
+            args['stopOnHang'] = bool(a.stop)
+        if a.threshold is not None:
+            if a.threshold < 0:
+                raise DbgError('hang --threshold S: seconds (0: no watchdog)')
+            args['hangThreshold'] = a.threshold
+        r = self.session().conn.call('config', **args)
+        if not r.get('hangWatch'):
+            text = 'hang watchdog off (--threshold S starts it)'
+        else:
+            text = 'hang watchdog: threshold %g s, %s' % (r['hangThresholdMs'] / 1000.0, 'a hang stops there' if
+                                                         r['stopOnHang'] else 'a hang is logged and served')
+        self.emit(r, text + '; %d hangs so far' % r.get('hangs', 0))
         return 0
 
     # ---- stage 2b -----------------------------------------------------------------------------------------------
@@ -1886,11 +1935,19 @@ def build_parser():
     sub.add_parser('continue')
     p = sub.add_parser('step')
     p.add_argument('mode', nargs='?', default='over', choices=['over', 'into', 'out', 'msci'])
-    sub.add_parser('pause', help='stop at the next method a task enters')
+    sub.add_parser('pause', help='stop at the next method a task enters (a hung task: at its next instruction, once '
+                   'the hang watchdog serves it)')
     sub.add_parser('detach', help='clear every breakpoint and go on')
     p = sub.add_parser('config')
     p.add_argument('--stop-timeout', type=int, default=0, help='seconds without a request at a stop before the '
                    'game clears the breakpoints and goes on (default 120)')
+    p = sub.add_parser('hang', help='the hang watchdog: a task that runs without waiting for the threshold is '
+                       'logged, served (stack, locals, print, eval, pause answer) and with --stop stopped')
+    p.add_argument('--stop', action='store_true', help='stop at a hang\'s first safepoint as at a breakpoint (until '
+                   'clear --all, detach or a stop\'s timeout)')
+    p.add_argument('--log-only', action='store_true', help='log and serve a hang, no stop (the default)')
+    p.add_argument('--threshold', type=float, help='seconds without a frame in one script run (default 2; 0: the '
+                   'watchdog off)')
     p = sub.add_parser('run', help='a batch of commands, one per line')
     p.add_argument('file')
     p = sub.add_parser('eval', help='a KC expression / block run in the stopped frame (or --on #ID, or the globals)')

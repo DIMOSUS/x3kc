@@ -143,7 +143,7 @@ stop's frame 0), `true`: a resume pc (callers, a waiting task): its line is pc -
 | cmd | arguments | reply |
 |---|---|---|
 | `hello` | | `protocol`, `pid`, `edition`, `state` (running / stopped), `stopTimeout`, `objects` [{name, build, size, crc32, file, main}], `msciHead` (the MSCI line loop's head pc, 0: unknown build), `breakpoints` |
-| `config` | `stopTimeout` (s), `syncNatives` [names] (the session's at-once natives, kept until detach), `pureNatives` [names] (the natives a read-only run may call: below) | `stopTimeout`, `syncNatives`, `pureNatives` (counts) |
+| `config` | `stopTimeout` (s), `syncNatives` [names] (the session's at-once natives, kept until detach), `pureNatives` [names] (the natives a read-only run may call: below), `hangThreshold` (s, 0: no watchdog), `stopOnHang` (bool, until detach) | `stopTimeout`, `syncNatives`, `pureNatives` (counts), `hangThresholdMs`, `stopOnHang`, `hangWatch`, `hangs` (also in `hello`) |
 | `break` | `object`, `size`, `crc32` (must be the loaded object's), `pc`; options `log`, `paths`, `labels`, `depth`, `if` [{path, op (== != < <= > >=), value (number, string, null)}], `count`, `once`, `this`, `tag` | `bp` (id), `applied`, `unbound` [the native bindings unbound for it] |
 | `clear` | `bp` or `all` | `cleared` |
 | `list` | | `breakpoints` [...], `patched` (pcs), `unboundBindings` |
@@ -153,7 +153,7 @@ stop's frame 0), `true`: a resume pc (callers, a waiting task): its line is pc -
 | `read` | `paths`, `depth`, `items`, `chars`, `task` | `values` (one per path) |
 | `continue` | | (stopped only) |
 | `step` | `targets` [{pc, depth: "le" / "lt" / "any"}], `into` | `targets` (set) |
-| `pause` | | stops the next task that enters a method |
+| `pause` | | stops the next task that enters a method; a hung task at its next safepoint (Hang watchdog) |
 | `detach` | | `cleared`: every breakpoint removed, the game goes on |
 | `eval` | a compiled block (below), `low`, `high`, `frame` N (at a stop) or `on` ID (an object; a class id: its statics) or neither (the globals), `write` [cells it assigns], `readOnly` (not with `write`), `budget` (instructions, 10 M), `ms` (2000), `depth`, `items`, `chars` | `value`, `instructions`; a failed run: `failed` (why), `pc` (in the block) |
 | `watch` | `object`, `on` ID + `slot` (a field) or `global` SLOT, or `path` (a path to an array or table, read as `read` reads it: the stop's frames) + `key` (`[["index", N]]` or `[["key", TEXT]]`: one element / key) or `all` (any element / key, the size); `change`, the breakpoint options (`log`, `paths`, `labels`, `ifCode`, `logCode`, `count`, `once`, `tag`, `writableParts`) | as `break` (`watch`: field / global / element / container, `on`, `slot`; `container` (id), `kind` (array / table), `key`) |
@@ -353,12 +353,54 @@ the task enters. The client computes the targets (below). Any breakpoint's stop 
     {"event": "resumed", "seq", "reason": "timeout"}     the client was silent for stopTimeout at a stop
     {"event": "dropped", "seq", "bp", "reason"}          another build of the object was loaded
     {"event": "stepEnded", "seq", "reason": "task gone"} the stepping task ended before a target
+    {"event": "hang", "seq", "task", "outerTask", "object", "stalledMs", "noFrameMs", "thresholdMs", "hangs", "native",
+     <frame 0>, "frames", "stack": [<frame>...], "outer": [{"native", "task", "frames", "stack" | "gone"}...], "stopping"}
+                                                         a run with no frame for the threshold (Hang watchdog)
+
+A stop's `reason` is also `"hang"` (stopOnHang). `events` gives `"state": "hung"` and `"hang": {...}` (the event's
+members) while the game serves the pipe at a hang's safepoint.
 
 ### The stop
 
 The game thread stays in the breakpoint: the world does not advance, the window's messages are pumped (keyboard and
 mouse dropped, the mouse released), the pipe is served. No request for `stopTimeout` seconds (default 120; `config`,
 the environment variable `X3_DBG_STOP_TIMEOUT`): every breakpoint is cleared and the game goes on (a `resumed` event).
+
+### Hang watchdog
+
+The pipe is served between frames and at a stop; a task that loops without waiting holds both. The ScriptDebug game
+runs a watchdog thread (threshold `config hangThreshold` / `X3_DBG_HANG` seconds, default 2; 0 ends it). When one
+outermost script run (the scheduler's run of a task, or a run the engine starts) has lasted the threshold with no frame
+and no stop, the game thread is asked to break in at its next instruction (the interpreter loop's one poll test; every
+100 ms while that run lasts). There:
+
+- the first time per hang: a `hang` event (the running task, its stack from that instruction, how long no frame
+  came; inside a native's script run each native in progress outside with its calling task's frames from the call,
+  `outer`, the outermost native's calling task `outerTask`) and one game-log entry `script hang kc[...]: a script run
+  has gone S s without waiting (...), running task B[ inside native NAME of task A] ...` with `script hang   at kc[...]` and `script hang   in native NAME of task N at kc[...]` lines (x3kc
+  symbolize reads them); the log counts hangs: 1..10, then the 100th, 1000th ...;
+- every time: the task's live state is saved into it (`tasks` and `snapshot` show it `hung` at its instruction, reload
+  refuses a method any of its frames is in, no eval kills it or the outer tasks or deletes their frames' objects) and
+  the pipe is served - `stack`, `locals`, `print` (the hang's frames, as a stop's), `eval` on an object or the globals
+  (`--read-only` advised: the run is mid-way; read-only anyway inside a native), `tasks`, `history`, `profile`,
+  `break`, `pause` answer. Each command is answered at another safepoint (the loop runs between them): a view that
+  holds across commands needs a stop;
+- a `pause` (sent while hung or before) or `stopOnHang` at the hang's first safepoint stops there as a breakpoint does
+  (reason `pause` / `hang`): stack, locals, `eval --frame` / `--write`, step, continue; the stop's timeout applies.
+  A stop or a writable eval ends the hang: still looping after it is a new hang after the threshold (a new event, log
+  entry and stopOnHang stop). `stopOnHang` lasts until `clear --all`, `detach` or a stop's timeout. The stopped
+  instruction runs untested after the stop: a breakpoint on it stops the next time round, its log point does not
+  fire for that pass. The safepoint may
+  be inside a statement: a value it already loaded is stored after the stop and overwrites an `eval --write` of that
+  variable - `step over` to the next statement's start first. The event's `stalledMs` is the run's time counted (since
+  its last frame, stop or hold), `noFrameMs` the time since the last frame.
+
+Without a client the game logs the hang once and stays in the loop (the player's log names the task). A hang in C++ (a
+native, a native body or case, the engine: no script instruction is reached) cannot be served: the watchdog logs
+`script hang: ... it runs C++ (native NAME)` once, the natives the interpreter calls named; when the C++ returns,
+that stall gives no `script hang` (a loop after it counts anew). The runs after an object load until the next frame
+(an Init, a new game's start, a save's Restart) have a threshold of 30 s at least - a new game's first run lasts over
+2 s -: a loop in set-up code is reported late, never not. Another run that is legitimately longer than the threshold is reported as a hang too.
 
 ### Mechanism (engine side)
 
@@ -386,11 +428,12 @@ The game: `--pid`, else the only pipe `x3dbg-*`. A reply is awaited `--deadline 
 | `break LOC [--if PATH OP VALUE]... [--log PATHS] [--depth N] [--count N] [--once] [--this ID] [--object NAME]` | LOC: `File.kc:LINE` (one source file of the sidecar: a folder prefix tells equal names apart; the line's first statement, or the next line with code within 20), `Class::Method` / `Function` (its first statement), `0xPC` |
 | `msci break SCRIPT LINE [...]` | an MSCI breakpoint: script name + the editor's line (as ScriptDatabase counts lines: its code array, the commands with flag 131072, the comments), the script loaded in ScriptDatabase.scripts |
 | `msci vars [--frame N]` / `msci stack` | the MSCI script's variables (`$name = value (type)`) / the scripts of the stack's `__runScript` frames |
-| `wait [--timeout S] [--all]` | the next queued stop or log; at once when stopped |
+| `wait [--timeout S] [--all]` | the next queued stop, log or hang; at once when stopped |
 | `events` | every queued event |
 | `stack [--task ID]`, `locals [--frame N] [--depth N]`, `print PATH... [--frame N] [--depth N] [--items N]` | |
 | `tasks [--max N]` | the main VM's tasks with their top location (MSCI script and code index) |
 | `continue`, `step [over|into|out|msci]`, `pause`, `detach`, `clear [ID | --all]`, `list`, `config --stop-timeout S` | |
+| `hang [--stop \| --log-only] [--threshold S]` | the hang watchdog (Hang watchdog): `--stop` stops at a hang's first safepoint (until clear --all, detach or a stop's timeout), `--log-only` logs and serves it (the default), `--threshold 0` ends the watchdog; `wait` prints a hang event with its stack |
 | `run FILE` | the commands of FILE, one per line (`#` comments); stops at the first error |
 | `eval EXPR [--block] [--file F] [--frame N] [--on ID] [--write \| --read-only] [--budget N] [--ms N] [-v]` | a KC expression / block (`return X;`) in the stopped frame, on an object, or in the globals' context; prints its value; `--read-only`: a write the run did not make for itself ends it before it is done (Read-only runs) |
 | `watch this.FIELD \| #ID.FIELD \| class.CLASS.FIELD \| global.NAME \| PATH[N] \| PATH["KEY"] \| PATH[*] [--change] [--if ...] [--log ...] [--once] [--count N] [--writable]` | a watchpoint: stop / log at the write (the writer's location, old and new value); `PATH[...]`: an element, a key or all of the array / table PATH holds now (Container watchpoints) |
