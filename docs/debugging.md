@@ -143,7 +143,7 @@ stop's frame 0), `true`: a resume pc (callers, a waiting task): its line is pc -
 | cmd | arguments | reply |
 |---|---|---|
 | `hello` | | `protocol`, `pid`, `edition`, `state` (running / stopped), `stopTimeout`, `objects` [{name, build, size, crc32, file, main}], `msciHead` (the MSCI line loop's head pc, 0: unknown build), `breakpoints` |
-| `config` | `stopTimeout` (s), `syncNatives` [names] (the session's at-once natives, kept until detach) | `stopTimeout`, `syncNatives` (count) |
+| `config` | `stopTimeout` (s), `syncNatives` [names] (the session's at-once natives, kept until detach), `pureNatives` [names] (the natives a read-only run may call: below) | `stopTimeout`, `syncNatives`, `pureNatives` (counts) |
 | `break` | `object`, `size`, `crc32` (must be the loaded object's), `pc`; options `log`, `paths`, `labels`, `depth`, `if` [{path, op (== != < <= > >=), value (number, string, null)}], `count`, `once`, `this`, `tag` | `bp` (id), `applied`, `unbound` [the native bindings unbound for it] |
 | `clear` | `bp` or `all` | `cleared` |
 | `list` | | `breakpoints` [...], `patched` (pcs), `unboundBindings` |
@@ -155,8 +155,8 @@ stop's frame 0), `true`: a resume pc (callers, a waiting task): its line is pc -
 | `step` | `targets` [{pc, depth: "le" / "lt" / "any"}], `into` | `targets` (set) |
 | `pause` | | stops the next task that enters a method |
 | `detach` | | `cleared`: every breakpoint removed, the game goes on |
-| `eval` | a compiled block (below), `low`, `high`, `frame` N (at a stop) or `on` ID (an object; a class id: its statics) or neither (the globals), `write` [cells it assigns], `budget` (instructions, 10 M), `ms` (2000), `depth`, `items`, `chars` | `value`, `instructions`; a failed run: `failed` (why), `pc` (in the block) |
-| `watch` | `object`, `on` ID + `slot` (a field) or `global` SLOT, `change`, the breakpoint options (`log`, `labels`, `ifCode`, `logCode`, `count`, `once`, `tag`) | as `break` (`watch`, `on`, `slot`) |
+| `eval` | a compiled block (below), `low`, `high`, `frame` N (at a stop) or `on` ID (an object; a class id: its statics) or neither (the globals), `write` [cells it assigns], `readOnly` (not with `write`), `budget` (instructions, 10 M), `ms` (2000), `depth`, `items`, `chars` | `value`, `instructions`; a failed run: `failed` (why), `pc` (in the block) |
+| `watch` | `object`, `on` ID + `slot` (a field) or `global` SLOT, or `path` (a path to an array or table, read as `read` reads it: the stop's frames) + `key` (`[["index", N]]` or `[["key", TEXT]]`: one element / key) or `all` (any element / key, the size); `change`, the breakpoint options (`log`, `paths`, `labels`, `ifCode`, `logCode`, `count`, `once`, `tag`, `writableParts`) | as `break` (`watch`: field / global / element / container, `on`, `slot`; `container` (id), `kind` (array / table), `key`) |
 | `snapshot` | `classes` [ids] (only their objects, no containers), `chars` | `object`, `state`, `f` (globals), `classes` [{id, f}], `objects` [{id, c, f}], `arrays` [{id, v}], `tables` [{id, v: [[k, v]]}], `tasks` (as `tasks`); values: a number, null, {"s"}, {"d"}, {"l"}, {"o"}, {"a"}, {"m"}, {"r"} |
 | `reload` | `object`, `size`, `crc32`, `methods` [{entry, end (the loaded method), frame, a compiled block, revert (its bytes are the loaded ones: undone)}], `sidecar` | `placed` [{entry, placement, size, inPlace}], `reloaded`, `serial` |
 
@@ -166,7 +166,56 @@ placement, size}] (the game's whole reload table); `break` takes `ifCode` (a com
 `logCode` (a block whose value, an array, is logged: the `log` event's `value`); `list` adds `codeBlocks`, `codeBlockBytes`,
 `poolTailBytes`, `reloads`, `retiredBindings`; events: `stop` with `reason` `watch` and `old` / `new`, `log` with
 `old` / `new` for a watchpoint, `{"event": "error", "bp", "error"}` (a compiled condition failed: once per breakpoint,
-it then counts as false), `dropped` with `tag` (a reload replaced the breakpoint's method).
+it then counts as false), `dropped` with `tag` (a reload replaced the breakpoint's method). Container watches: `stop` /
+`log` carry `change` (below), `{"event": "watch", "seq", "bp", "change", "tag"}` (a hit with no frame to stop in: an
+engine write, a native whose task is gone; no `--if`), `dropped` (the watched container was freed, or a load or clear of
+the VM: every container watch).
+`break` and `watch` take `writableParts` (their compiled condition / log run writable; by default read-only).
+
+### Container watchpoints
+
+Arrays and tables are shared by reference: a container watch is on the container object the path reaches when it is
+set (its pointer and id), not on the path - every other path to the same container hits it, and the path set later to
+another container does not. A freed container drops its watch (`dropped`). At most 64 at once.
+
+The writes seen: every change of an array or table, where it is made - the Cell primitives (`arraySetElement`, through
+it `arraySetString`, `arrayOrTableSetKey`, `arrayMergeContainedSpheres`; `arrayOrTableMoveSet`'s element move;
+`arrayInsert`, `arrayRemove`, `arrayResize`, `arraySortRangeByInt` / `ByString`; `tableInsertAndGrow`, through it
+`arrayOrTableSetKey` / `MoveSet` and `tableAppendNextKey`; `tableRemoveKey`; `tableClear`), SE_ScriptComputeExpression's
+result pair and the MSCI line loop case's token store (the two C++ writes past them). Each is a hit before the change,
+with its writer: a bytecode store (the store opcodes, the native bodies' setKey / moveSet: the stop's frame is the
+writer's, its pc the store), the MSCI case (its frame), a native (the innermost one in progress: the stop's frame is
+its caller's, its pc the native instruction; when the native freed its task: an event, no stop), or the engine (the
+outermost primitive's C++ caller as an offset in the exe, the `.map` names it: an event, no stop). Every such stop is
+inside the change (the primitive, the native hold pointers into the container): `eval` there runs read-only, and so it
+does at any stop while a native or a store is in progress. A lazy array's first touch (its cells allocated as zeros) is no change. Cost while a
+watch exists: one pointer test per watched container (at most 64) at each change of any container; no watch: one bool
+test per primitive call.
+
+    "change": {"container": ID, "kind": "array" | "table", "op": "set" | "insert" | "remove" | "resize" | "sort" |
+               "clear", "key": K (an array's index, a table's key), "newSize": N (resize), "size": N (now),
+               "old": V | {"error": "absent"} (set, remove), "new": V (set, insert),
+               "writer": {"bytecode": true} | {"case": true} | {"native": NAME} | {"engine": "x3 exe+0xOFFSET"}}
+
+An element / key watch is hit by a set or remove of its key, an insert (an append: at the old size) or remove at or
+before its index, a resize across it, a sort, a clear. `--change` drops a set of the value the element has (frame-free
+events too). `--if` / `--log` run in the writer's frame (its receiver's class is not known before: the globals' names),
+always read-only (`--writable` is refused for a container watch).
+
+### Read-only runs
+
+`eval` with `readOnly`, and the compiled conditions and log expressions of every breakpoint and watchpoint unless it
+was set with `writableParts`, run read-only: the run may write its own scratch locals (the frame cells it read are
+copies) and the arrays and tables it created itself (their ids were handed out after its start); any other write ends
+the run with `read-only: ...` before it is done - a store into a field or global, a store into another container, a
+new or a deleted object, a call of a native the client did not name side-effect-free (`config pureNatives`). A container
+is checked in the primitive that changes it, whoever the writer (the run's bytecode, a native it calls, a method's):
+a native that only writes into containers it is given may be called, its write into one the run did not create is
+refused there. Methods the run calls are under the same rule; native bodies run as bytecode in it. After the run the
+string, array, table, object and task id counters are set back (a save writes the same ids as without the run). The
+client's list: `x3kc/native_effects.txt` (every at-once native by its spec text: `pure`, `writes:N` - its only effect is
+a write into argument N, sent with the pure ones: the primitives check that write -, `mutating`); x3kc refuses a snippet
+that calls a `mutating` native itself before sending it. A native left out of the list counts as mutating.
 
 ### Debugger code (compiled blocks)
 
@@ -259,14 +308,14 @@ The game: `--pid`, else the only pipe `x3dbg-*`. A reply is awaited `--deadline 
 | `tasks [--max N]` | the main VM's tasks with their top location (MSCI script and code index) |
 | `continue`, `step [over|into|out|msci]`, `pause`, `detach`, `clear [ID | --all]`, `list`, `config --stop-timeout S` | |
 | `run FILE` | the commands of FILE, one per line (`#` comments); stops at the first error |
-| `eval EXPR [--block] [--file F] [--frame N] [--on ID] [--write] [--budget N] [--ms N] [-v]` | a KC expression / block (`return X;`) in the stopped frame, on an object, or in the globals' context; prints its value |
-| `watch this.FIELD \| #ID.FIELD \| class.CLASS.FIELD \| global.NAME [--change] [--if ...] [--log ...] [--once] [--count N]` | a watchpoint: stop / log at the write (the writer's location, old and new value) |
+| `eval EXPR [--block] [--file F] [--frame N] [--on ID] [--write \| --read-only] [--budget N] [--ms N] [-v]` | a KC expression / block (`return X;`) in the stopped frame, on an object, or in the globals' context; prints its value; `--read-only`: a write the run did not make for itself ends it before it is done (Read-only runs) |
+| `watch this.FIELD \| #ID.FIELD \| class.CLASS.FIELD \| global.NAME \| PATH[N] \| PATH["KEY"] \| PATH[*] [--change] [--if ...] [--log ...] [--once] [--count N] [--writable]` | a watchpoint: stop / log at the write (the writer's location, old and new value); `PATH[...]`: an element, a key or all of the array / table PATH holds now (Container watchpoints) |
 | `snapshot -o FILE.json [--objects CLASS,...] [--chars N]` | the script world with the sidecar's names (objects, globals, statics, arrays, tables, tasks) |
 | `diff A.json B.json [--max N]` | what changed between two snapshots (no game needed) |
 | `reload [File.kc \| Class::Method] --src PROJECT` | Hot reload (above) |
 
-`--if` takes one KC expression (compiled against the sidecar in the hit frame; all `--if` of a breakpoint hold), or the
-old form `PATH OP VALUE` (a path compare); `--log` takes paths or KC expressions (comma-separated at the top level:
+`--if` takes one KC expression (compiled against the sidecar in the hit frame; all `--if` of a breakpoint hold; read-only
+unless `--writable`), or the old form `PATH OP VALUE` (a path compare); `--log` takes paths or KC expressions (comma-separated at the top level:
 when one is not a path they all run as one compiled array).
 
 Locations print as `File.kc:line Class::Method`. PATH: a base - `NAME` (a live variable of the frame, else a field of

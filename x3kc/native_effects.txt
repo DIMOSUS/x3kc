@@ -1,0 +1,850 @@
+# The side effects of the natives that answer at once (sync_natives_*.txt), for the live debugger's read-only runs
+# (x3kc dbg eval --read-only, the compiled --if / --log of break and watch: docs/debugging.md "Read-only runs").
+# One line per native: NAME<TAB>CLASS<TAB>why. CLASS:
+#   pure      answers a value and changes nothing anyone can observe later (no game, world, engine, VM, file, setting,
+#             random generator, sound, render, UI or log state); a new array / table / string it returns is no change
+#   writes:N  its only effect is a write into the array / table given as argument N (1: the first; comma-separated);
+#             a read-only run may call it (sent with the pure ones): the game's container primitives refuse its write
+#             into a container the run did not create. Kept apart from pure so the client and the reader know which
+#             natives change a container they are given (x3kc refuses no call of them before sending)
+#   mutating  anything else, or not sure (the rule: when the spec leaves a doubt, mutating)
+# A native not listed here (one that may wait) counts as mutating: a debugger code run calls none of them anyway.
+# Classified from docs/natives/spec_*.jsonl (semantics, the FL and x3_src columns: the union of their effects), each
+# at-once native read by its spec text, a few checked against the x3_src engine's handlers. pure 475, writes 18,
+# mutating 343 (of 836).
+B3D_CameraAddToScene	mutating	attaches camera to scene camera list
+B3D_CameraAlloc	mutating	allocates camera node and handle
+B3D_CameraCalcDist	pure	computes distance from width/fov/scale; camera only checked
+B3D_CameraCalcFOV	pure	computes fov from width/dist/scale; camera only checked
+B3D_CameraCalcOrientation	pure	reads arrays, answers new [yaw, pitch] array
+B3D_CameraDeleteFromScene	mutating	detaches camera from scene, frees viewport state
+B3D_CameraFind	pure	answers next camera handle in scene list
+B3D_CameraFree	mutating	releases camera, resumes waiting J3D task
+B3D_CameraGetFlags	pure	answers camera flags
+B3D_CameraGetFocus	pure	answers camera focus
+B3D_CameraGetViewPort	pure	answers new 4-element viewport array
+B3D_CameraSetAspect	mutating	sets camera view scale X/Y
+B3D_CameraSetAspectRatio	mutating	sets camera view scale
+B3D_CameraSetBackgroundColor	mutating	sets camera clear colour
+B3D_CameraSetCausticAnim	mutating	frees/builds camera caustic animation record
+B3D_CameraSetEnvironmentSource	mutating	sets camera environment source
+B3D_CameraSetFadeValue	mutating	sets camera overlay colour
+B3D_CameraSetFlags	mutating	sets camera flags
+B3D_CameraSetFocus	mutating	sets camera focus
+B3D_CameraSetFog	mutating	sets camera fog and flag
+B3D_CameraSetOrientation	mutating	writes camera rotation
+B3D_CameraSetPri	mutating	sets camera layer
+B3D_CameraSetViewPort	mutating	sets camera viewport rect, rebuilds viewport
+B3D_CameraShake	mutating	jitters camera rotation; draws random numbers
+B3D_ClearEngineFlags	mutating	clears RenderManager engine flag bits
+B3D_ClearScreenOverlay	mutating	frees screen overlay image name
+B3D_DisableAllObjects3D	mutating	releases render resources of all enabled scenes
+B3D_DumpUsedBodies	mutating	releases loaded bodies with no use
+B3D_EnableAllObjects3D	mutating	rebuilds viewports and body GPU meshes, reloads bodies
+B3D_ExitRecording	mutating	stops frame recording, writes and closes file
+B3D_ExitReplay	mutating	stops frame playback, releases its scenes and nodes
+B3D_FindBody	pure	lookup in loaded-body hash, answers 1 or 0
+B3D_FreeAllBodies	mutating	unloads all bodies and reloads every visible body
+B3D_GetBodyFilename	pure	answers new string with body name
+B3D_GetBodyID	mutating	registers a new dynamic body slot for unknown names
+B3D_GetCutFilename	pure	answers new string with cut name
+B3D_GetCutID	mutating	registers unknown cut names in the name table
+B3D_GetEngineFlags	pure	answers RenderManager engine flags
+B3D_GetFlags	pure	answers RenderManager engine flags
+B3D_GetGammaValue	pure	answers stored gamma level
+B3D_GetIconData	pure	atlas entry lookup, answers new array or 0
+B3D_GetTextureID	mutating	registers unknown texture names, may set entry flags
+B3D_InitRecording	mutating	opens recording file, sets engine flag
+B3D_InitReplay	mutating	opens replay file, sets engine flag, creates player
+B3D_InstAddToInst	mutating	attaches child node to parent, acquires render resources
+B3D_InstAddToScene	mutating	attaches node to scene, acquires render resources
+B3D_InstAlloc	mutating	allocates node and handle
+B3D_InstCopyRot	mutating	copies rotation into destination node
+B3D_InstDeleteFromScene	mutating	detaches node from scene, releases resources
+B3D_InstDistanceToNearestVertex	mutating	mesh::getBody loads the body if not loaded
+B3D_InstFind	pure	answers next root node handle of scene
+B3D_InstFindByBodyID	pure	walks root node list, answers first node with body id
+B3D_InstFree	mutating	releases node subtree, resumes waiting J3D task
+B3D_InstGetAbsPos	pure	answers new array of world position
+B3D_InstGetAbsZDir	pure	answers new array of world rotation third row
+B3D_InstGetAlphaOverride	pure	answers node override parameter
+B3D_InstGetBody	pure	answers node body id
+B3D_InstGetChildren	pure	answers new array of direct children handles
+B3D_InstGetCollCenterX	pure	answers node hit point X
+B3D_InstGetCollCenterY	pure	answers node hit point Y
+B3D_InstGetCollCenterZ	pure	answers node hit point Z
+B3D_InstGetFlags	pure	answers node flags
+B3D_InstGetFlags2	pure	answers node flags2
+B3D_InstGetPathNr	pure	answers node animation path index
+B3D_InstGetPos	pure	answers new array of local position
+B3D_InstGetQualityModifier	pure	FL only: answers node quality field
+B3D_InstGetScale	pure	answers new array of node scale
+B3D_InstGetSize	pure	answers node size
+B3D_InstGetTotalSize	pure	subtree radius; lazy cache recomputed when invalid, same answers
+B3D_InstGetZDir	pure	answers new array of local rotation third row
+B3D_InstMakeRapidBox	mutating	builds node collision tree, sets flag
+B3D_InstSetAlphaOverride	mutating	sets node override parameter
+B3D_InstSetAlphaOverrideRecursive	mutating	sets override parameter on node subtree
+B3D_InstSetAnimTextureCoords	mutating	creates/sets node UV animation record
+B3D_InstSetAnimTextureIndex	mutating	sets frame index of node UV animation records
+B3D_InstSetBody	mutating	sets node body, loads body, rebuilds resources
+B3D_InstSetColorModifier	mutating	sets node hue/saturation modifiers
+B3D_InstSetFlags	mutating	sets node flags
+B3D_InstSetFlags2	mutating	sets node flags2
+B3D_InstSetIcon	mutating	sets atlas texture override, scale and flags2
+B3D_InstSetInvis	mutating	sets/clears Hidden flag on node and children
+B3D_InstSetName	mutating	clears or assigns node name
+B3D_InstSetOverrideEffect	mutating	sets override effect on subtree, resets parameter
+B3D_InstSetOverrideEffectPar	pure	parameter ignored, nothing stored; answers whether node found
+B3D_InstSetPass	mutating	sets node layer
+B3D_InstSetPos	mutating	sets node position
+B3D_InstSetQualityModifierRecursive	mutating	FL only: sets quality field on node subtree
+B3D_InstSetRot	mutating	sets node rotation
+B3D_InstSetScale	mutating	sets node scale, invalidates radius
+B3D_InstSetSize	mutating	sets node and children sizes
+B3D_InstSetSizeUsed	mutating	sets NoLod flag and LOD index
+B3D_LightAddToScene	mutating	attaches light to scene, allocates light record
+B3D_LightAlloc	mutating	allocates light node and handle
+B3D_LightDeleteFromScene	mutating	detaches light from scene
+B3D_LightFree	mutating	releases light node subtree
+B3D_LightSetAttenuation	mutating	sets light attenuation, refreshes record
+B3D_LightSetColor	mutating	sets light colour, refreshes record
+B3D_LightSetParameters	mutating	sets light type flags
+B3D_LightSetPos	mutating	sets light position, refreshes record
+B3D_LightSetRange	mutating	sets light range, refreshes record
+B3D_OpenFont	mutating	loads font into a slot, rebuilds style tables
+B3D_PreCacheTexture	mutating	registers name if new, sets keep flag on texture
+B3D_ReloadStaticData	pure	common answer-0 tail; nothing happens
+B3D_SceneAlloc	mutating	creates scene and handle
+B3D_SceneClear	mutating	detaches all nodes and cameras from scene
+B3D_SceneDisable	mutating	releases scene render resources
+B3D_SceneEnable	mutating	acquires scene render resources
+B3D_SceneFree	mutating	destroys scene, releases its nodes and cameras
+B3D_SceneGetCamera	pure	answers first camera handle of scene
+B3D_SceneGetFlags	pure	answers scene flags
+B3D_SceneSetFlags	mutating	sets scene flags
+B3D_SceneSetName	mutating	sets scene name
+B3D_SceneSetSystemScale	mutating	sets scene scale
+B3D_SceneSetViewPort	mutating	sets first camera viewport rect
+B3D_ScreenGetAspectX	pure	answers display mode view scale X
+B3D_ScreenGetAspectY	pure	answers display mode view scale Y
+B3D_ScreenGetBorderX	pure	answers display mode view X offset
+B3D_ScreenGetBorderY	pure	answers display mode view Y offset
+B3D_ScreenGetHeight	pure	answers display height
+B3D_ScreenGetWidth	pure	answers display width
+B3D_SetEngineFlags	mutating	sets RenderManager engine flag bits
+B3D_SetFadeValue	mutating	sets lens overlay colour
+B3D_SetFlags	mutating	writes RenderManager engine flags
+B3D_SetGammaValue	mutating	stores gamma level, builds gamma ramp
+B3D_SetScreenOverlay	mutating	stores screen overlay image name and tiling
+B3D_SetShadowAlpha	mutating	writes RenderManager shadow alpha field
+B3D_TexBltBlock	mutating	copies block into destination texture
+B3D_TexBltBlockAlpha	mutating	blends block into destination texture
+B3D_TexBltImage	mutating	loads cached image, copies into texture
+B3D_TexBltTiles	mutating	tiles block into destination texture
+B3D_TexBltTilesAlpha	mutating	blends tiles into destination texture
+B3D_TexCircle	mutating	draws circle into texture
+B3D_TexCircleFill	mutating	draws filled circle into texture
+B3D_TexGetHeight	mutating	getObjectById may load the texture on demand
+B3D_TexGetTextArray	mutating	texture width lookup via getObjectById may load the texture
+B3D_TexGetWidth	mutating	getObjectById may load the texture on demand
+B3D_TexLine	mutating	draws line into texture
+B3D_TexNearestPen	pure	answers raw arg2
+B3D_TexRectFill	mutating	fills rectangle in texture
+B3D_TexSetTextBGColor	mutating	sets font slot shadow colour
+B3D_TexTextBlock	mutating	draws text into texture
+B3D_TexTextBlockCentered	mutating	draws centered text into texture
+B3D_TexTextBlockHeight	mutating	getObjectById may load the texture on demand
+B3D_TexTextHeight	pure	measures font height; style pass list is a keyed cache
+B3D_TexTextWidth	pure	measures text width; no texture involved
+INS_BuildGalaxyMap	mutating	builds galaxy map nodes in scene, moves camera, runs script callbacks
+INS_BuildGalaxyMapPos	mutating	builds galaxy map nodes, sets camera position, runs script callbacks
+INS_ClearGalaxyMap	mutating	releases galaxy map nodes, clears built flag
+INS_CockpitAlloc	mutating	allocates cockpit, scene, camera and lights; registers handle
+INS_CockpitChangeView	mutating	sets cockpit target view angles
+INS_CockpitDisplayMessage	mutating	shows or hides cockpit text panel
+INS_CockpitDisplayMessageWithDuration	mutating	shows text panel and sets its duration
+INS_CockpitDoEnemyTracking	mutating	sets tracking state 4, plays sound
+INS_CockpitDoTracking	mutating	sets tracking state 1, plays sound, changes registry alert flags
+INS_CockpitEnable2DDraw	mutating	sets cockpit enable2DDraw
+INS_CockpitEnableCamera	mutating	attaches or detaches cockpit scene camera
+INS_CockpitEnableCockpitBody	mutating	sets cockpitBodyEnabled
+INS_CockpitEnableDisplayBody	mutating	sets displayBodyEnabled
+INS_CockpitEnableRadarBody	mutating	sets radarBodyEnabled
+INS_CockpitEnableTargetBodies	mutating	sets target overlay bodies switch, hides nodes
+INS_CockpitFree	mutating	destroys cockpit and its scene, frees handle
+INS_CockpitGetCamera	pure	answers cockpit scene camera handle
+INS_CockpitGetCockpitNumber	pure	answers cockpitNumber
+INS_CockpitGetCockpitRefObject	pure	answers cockpit ship id
+INS_CockpitGetCursorAim	pure	read-only aim search; crashes with point and no sector camera (AP/FL)
+INS_CockpitGetDistanceToObj	pure	computes distance from view origin to object
+INS_CockpitGetDustCamera	pure	answers dust camera handle
+INS_CockpitGetEnemyAim	pure	read-only nearest hostile search
+INS_CockpitGetFlags	pure	answers cockpit flags
+INS_CockpitGetGalaxyCamera	pure	answers galaxy camera handle
+INS_CockpitGetGrid	pure	answers gridEnabled
+INS_CockpitGetMenuPosByTargetOverlayIconPos	pure	hit test, answers new 5-element array or 0
+INS_CockpitGetMonitorNumber	pure	answers monitorNumber
+INS_CockpitGetObjectByTargetOverlayIconPos	pure	hit test of target icons, answers object id
+INS_CockpitGetRadarMode	pure	answers radarMode
+INS_CockpitGetRadarRange	pure	answers radarRange
+INS_CockpitGetRefObject	pure	answers refObject id
+INS_CockpitGetRefPos	pure	answers new array with refPos
+INS_CockpitGetRefViewPos	pure	answers new array with refViewPos
+INS_CockpitGetScene	pure	answers cockpit scene handle
+INS_CockpitGetSectorCamera	pure	answers sector camera handle
+INS_CockpitGetTracking	pure	answers tracked object id
+INS_CockpitGetViewAlpha	pure	answers current view yaw
+INS_CockpitGetViewBeta	pure	answers current view pitch
+INS_CockpitGetViewCameraOffsetX	pure	answers viewCameraOffset x
+INS_CockpitGetViewCameraOffsetY	pure	answers viewCameraOffset y
+INS_CockpitGetViewCameraOffsetZ	pure	answers viewCameraOffset z
+INS_CockpitGetViewGamma	pure	answers current view roll
+INS_CockpitGetViewPointPos	pure	answers new array with viewPointPos
+INS_CockpitGetViewPos	pure	answers new array with viewPos
+INS_CockpitIsEnemyTracking	pure	answers trackingState == 4
+INS_CockpitIsTracking	pure	answers trackingState == 1
+INS_CockpitLockView	mutating	sets lockViewTarget, copies target angles to view angles
+INS_CockpitMoveCockpit	mutating	sets all three cockpit body flags
+INS_CockpitNoDecay	mutating	sets noDecay
+INS_CockpitProjectPosition	pure	unprojects point, new array; AP/FL crash without sector camera
+INS_CockpitRefreshViewConnectMode	mutating	recomputes and writes viewPos in connect mode 5
+INS_CockpitSetCameraMessage	mutating	shows or clears cockpit camera message
+INS_CockpitSetCinematicLoopTime	mutating	sets cinematicLoopTime
+INS_CockpitSetCockpitNumber	mutating	sets cockpitNumber
+INS_CockpitSetCockpitRefObject	mutating	sets cockpit ship
+INS_CockpitSetCurrentMissile	mutating	sets HUD missile fields
+INS_CockpitSetDustCamera	mutating	sets dust camera, camera flags and focus
+INS_CockpitSetFlags	mutating	sets cockpit flags
+INS_CockpitSetGalaxyCamera	mutating	sets galaxy camera and its focus
+INS_CockpitSetGrid	mutating	sets gridEnabled, hides grid node
+INS_CockpitSetMonitorNumber	mutating	sets monitorNumber
+INS_CockpitSetNavMap	mutating	shows or hides nav-map panel
+INS_CockpitSetPosAngle1	mutating	sets posAngle1
+INS_CockpitSetPosAngle2	mutating	sets posAngle2
+INS_CockpitSetPosDuration	mutating	sets posDuration and restarts clock
+INS_CockpitSetRadarMode	mutating	sets radarMode and radarRange
+INS_CockpitSetRefObject	mutating	sets refObject
+INS_CockpitSetRefPos	mutating	sets refPos
+INS_CockpitSetRefViewObject	mutating	sets refViewObject
+INS_CockpitSetRefViewPos	mutating	sets refViewPos
+INS_CockpitSetSectorCamera	mutating	sets sector camera and its focus
+INS_CockpitSetSectorSpace	mutating	sets cockpit sector and scene ambient colour
+INS_CockpitSetShading	mutating	sets model shading
+INS_CockpitSetViewAngle1	mutating	sets viewAngle1
+INS_CockpitSetViewAngle2	mutating	sets viewAngle2
+INS_CockpitSetViewCameraOffset	mutating	sets viewCameraOffset
+INS_CockpitSetViewCameraOffset2	mutating	sets viewCameraOffset2
+INS_CockpitSetViewConnectMode	mutating	sets connectMode and start times
+INS_CockpitSetViewDuration	mutating	sets viewDuration and restarts clock
+INS_CockpitSetViewMode	mutating	sets viewMode
+INS_CockpitSetViewPointOffset	mutating	sets viewPointOffset1
+INS_CockpitSetViewPointOffset2	mutating	sets viewPointOffset2
+INS_CockpitSetViewPos	mutating	sets viewPos
+INS_CockpitSetZooming	mutating	sets or clears zoom request bit
+INS_CockpitTargetOverlayTrackPrevNext	mutating	cycles the current target
+INS_DisplayCameraMessage	pure	empty stub, answers 0
+INS_DrawObjectSymbol	mutating	draws icon into a texture
+INS_DrawObjectSymbol3D	mutating	draws orientation glyph into a texture
+INS_DrawRadar	mutating	sets registry drawRadar
+INS_GalaxyMapFindSector	pure	hit test, new array; AP/FL crash on scene without camera
+INS_GetAmmunitionIcon	pure	answers icon id from fixed table
+INS_GetGalaxyMapNextSector	mutating	runs script callback GetMapSectorVisibility (up to 480 calls)
+INS_GetGalaxyMapPos	writes:2	writes camera position into passed array elements 0..2
+INS_GetObjectIcon	pure	answers icon id from type tables
+INS_GetTooltipVisibleTime	pure	answers tooltip showTime
+INS_GetUnitDisplay	pure	answers unitDisplay switch
+INS_GetWeaponIcon	pure	answers type icon id
+INS_HideOverlayBrackets	mutating	clears registry overlayBrackets (saved)
+INS_HideTooltip	mutating	hides tooltip, clears owner
+INS_InitDustScene	mutating	adds light and 512 dust nodes at random positions
+INS_IsTooltipVisible	pure	answers tooltip visible and delay elapsed
+INS_SetActiveControlCockpit	mutating	sets activeControlCockpit
+INS_SetExternalView	pure	empty stub, answers 0
+INS_SetFocus	mutating	sets registry baseFov
+INS_SetSidebarInstance	mutating	sets registry sidebarInstance
+INS_SetTimeWarpFactor	mutating	sets registry timeWarpFactor (saved)
+INS_SetUnitDisplay	mutating	sets unitDisplay
+INS_ShowOverlayBrackets	mutating	sets registry overlayBrackets (saved)
+INS_ShowTooltip	mutating	shows or hides cockpit tooltip
+INS_UpdateDustScene	mutating	updates dust scene colour, plates, camera motion
+P_CaptureJoyAxis	mutating	start 1 stores axis positions for later polls
+P_GetJoyDevice	pure	answers device key of a slot
+P_GetJoyRole	pure	answers role source string
+P_GetJoyRoleName	pure	answers role display name
+P_ResetJoyBindings	mutating	clears joystick binding profile
+P_SetJoyDevice	mutating	sets device slot
+P_SetJoyRole	mutating	binds role to axis
+SA_AllocObject	mutating	allocates and registers a new world object
+SA_AllocTake	mutating	creates a CutHandle owned by the sector
+SA_AllocTextInst	mutating	creates a 3D text scene node
+SA_BgTypeFromBody	pure	read-only lookup of object/type data
+SA_CanShipTypeInstallMissileType	pure	read-only lookup of object/type data
+SA_CanShipTypeTurretInstallLaserType	pure	read-only lookup of object/type data
+SA_CheckDistances	pure	answers int 0, no side effects
+SA_CheckRing	pure	read-only lookup of object/type data
+SA_CleanUpObjects	mutating	destroys every unplaced non-sector object
+SA_CollisionObject	pure	read-only lookup of object/type data
+SA_CreateFactoryConnections	mutating	spawns connector objects into the hub sector
+SA_CreateObjectCutScene	mutating	builds scene nodes from a body/cut
+SA_DamageObject	mutating	applies shield/hull damage, events, possible destruction
+SA_DeleteAllEffects	mutating	releases running effect nodes of the sector scenes
+SA_Distance	pure	read-only lookup of object/type data
+SA_DistanceFromCockpit	pure	read-only lookup of object/type data
+SA_DoObjectSound	mutating	plays a positional sound effect
+SA_DumpObject	mutating	prints object tree to debug output
+SA_DumpSectorScene	pure	answers int 0, no arguments read
+SA_FastTrace	pure	raycast against sector objects, returns first hit id
+SA_FindIndexInCut	mutating	draws random numbers (rand(5)); loads cut scene
+SA_FindNearestDockPort	pure	read-only lookup of object/type data
+SA_FindNearestDockPortRendezvous	pure	read-only lookup of object/type data
+SA_FindNearestEnemy	pure	read-only lookup of object/type data
+SA_FindNearestEnemyByStrength	pure	read-only lookup of object/type data
+SA_FindNearestEnemyFromPos	pure	read-only lookup of object/type data
+SA_FindNearestRockInDebris	pure	read-only lookup of object/type data
+SA_FindObject	pure	read-only lookup of object/type data
+SA_FindObjectByPathBody	pure	read-only lookup of object/type data
+SA_FindObjectByPathClass	pure	read-only lookup of object/type data
+SA_FindObjectByPathSerial	pure	read-only lookup of object/type data
+SA_FindObjectSubTypeInContainer	pure	read-only lookup of object/type data
+SA_FindObjectTypeInContainer	pure	read-only lookup of object/type data
+SA_FindVideo	pure	reads video record into a new array
+SA_FinishTake	mutating	completes all running node animations
+SA_FireAhead	mutating	fires the ship guns
+SA_FireOnObject	mutating	fires the ship guns at target
+SA_ForceMove	mutating	sets/clears ExternallyMoved object flag
+SA_FreeAllBodies	mutating	purges and reloads all bodies, rebuilds collision trees, ticks clock
+SA_FreeCutScene	mutating	frees a loaded cut scene
+SA_FreeObject	mutating	frees object, notifies references and waiting tasks
+SA_FreeTake	mutating	destroys the take (cut handle)
+SA_GetAbsPosRot	pure	returns new array of world position and angles
+SA_GetAcceleration	pure	read-only lookup of object/type data
+SA_GetAsteroidDensity	pure	read-only lookup of object/type data
+SA_GetBgTypeAmbientColor	pure	read-only lookup of object/type data
+SA_GetBgTypeBodyFamilyName	pure	returns new string copied from background row
+SA_GetBgTypeDustBodyRate	pure	read-only lookup of object/type data
+SA_GetBgTypeFogFar	pure	read-only lookup of object/type data
+SA_GetBgTypeFogNear	pure	read-only lookup of object/type data
+SA_GetBgTypeHueModifier	pure	read-only lookup of object/type data
+SA_GetBgTypeNebulaBodyID	pure	read-only lookup of object/type data
+SA_GetBgTypeNumBgNebulaBodies	pure	read-only lookup of object/type data
+SA_GetBgTypeNumBgStarBodies	pure	read-only lookup of object/type data
+SA_GetBgTypeNumDustInstances	pure	read-only lookup of object/type data
+SA_GetBgTypeNumNebulaOuterBodies	pure	read-only lookup of object/type data
+SA_GetBgTypeStarBodyID	pure	read-only lookup of object/type data
+SA_GetBgTypeStardustColor	pure	read-only lookup of object/type data
+SA_GetBgTypeStardustDensity	pure	read-only lookup of object/type data
+SA_GetBody	pure	read-only lookup of object/type data
+SA_GetBulletTypeAmmunition	pure	read-only lookup of object/type data
+SA_GetBulletTypeEnergyConsumption	pure	read-only lookup of object/type data
+SA_GetBulletTypeFlyFX	pure	read-only lookup of object/type data
+SA_GetBulletTypeHalfZ	pure	read-only lookup of object/type data
+SA_GetBulletTypeHullDamage	pure	read-only lookup of object/type data
+SA_GetBulletTypeOfLaserType	pure	read-only lookup of object/type data
+SA_GetBulletTypeSectorHullDamage	pure	read-only lookup of object/type data
+SA_GetBulletTypeSectorShieldDamage	pure	read-only lookup of object/type data
+SA_GetBulletTypeShieldDamage	pure	read-only lookup of object/type data
+SA_GetCameraObject	pure	answers int 0, no arguments read
+SA_GetClientDataFlags	pure	read-only lookup of object/type data
+SA_GetCollisionObjects	pure	returns new array of collision object ids
+SA_GetCompBody	pure	read-only lookup of object/type data
+SA_GetCount	pure	read-only lookup of object/type data
+SA_GetCourseType	pure	read-only lookup of object/type data
+SA_GetCutID	pure	read-only lookup of object/type data
+SA_GetDebrisDensity	pure	read-only lookup of object/type data
+SA_GetDesiredDistance	pure	read-only lookup of object/type data
+SA_GetDesiredSpeed	pure	read-only lookup of object/type data
+SA_GetDestination	pure	read-only lookup of object/type data
+SA_GetDirX	pure	read-only lookup of object/type data
+SA_GetDirY	pure	read-only lookup of object/type data
+SA_GetDirZ	pure	read-only lookup of object/type data
+SA_GetDockPortPosInst	pure	read-only lookup of object/type data
+SA_GetDockPortRendezvousPos	pure	returns new array of approach point position
+SA_GetDockingSpeed	mutating	getMaxSpeed may clear an expired slowdown on the ship
+SA_GetEnvironment	pure	read-only lookup of object/type data
+SA_GetEventObject	pure	read-only lookup of object/type data
+SA_GetFactoryTypeScaleFactor	pure	read-only lookup of object/type data
+SA_GetFlags	pure	read-only lookup of object/type data
+SA_GetFlags2	pure	read-only lookup of object/type data
+SA_GetGTypeCodeByName	pure	read-only lookup of object/type data
+SA_GetGlobalParameter	pure	read-only lookup of object/type data
+SA_GetGlobalParameterNames	pure	builds a new table of parameter names
+SA_GetGroup	pure	read-only lookup of object/type data
+SA_GetHueModifier	pure	read-only lookup of object/type data
+SA_GetHull	pure	read-only lookup of object/type data
+SA_GetInst3D	pure	read-only lookup of object/type data
+SA_GetLaser	pure	read-only lookup of object/type data
+SA_GetLaserFired	pure	read-only lookup of object/type data
+SA_GetLaserHits	pure	read-only lookup of object/type data
+SA_GetLaserPosition	pure	read-only lookup of object/type data
+SA_GetLaserTypeAmmunition	pure	read-only lookup of object/type data
+SA_GetLaserTypeEnergyMax	pure	read-only lookup of object/type data
+SA_GetLaserTypeFlyFX	pure	read-only lookup of object/type data
+SA_GetLaserTypeHullDamage	pure	read-only lookup of object/type data
+SA_GetLaserTypeRange	pure	read-only lookup of object/type data
+SA_GetLaserTypeReloadTime	pure	read-only lookup of object/type data
+SA_GetLaserTypeSectorHullDamage	pure	read-only lookup of object/type data
+SA_GetLaserTypeSectorShieldDamage	pure	read-only lookup of object/type data
+SA_GetLaserTypeShieldDamage	pure	read-only lookup of object/type data
+SA_GetLaserTypeSpeed	pure	read-only lookup of object/type data
+SA_GetMainType	pure	read-only lookup of object/type data
+SA_GetMass	pure	read-only lookup of object/type data
+SA_GetMaxHull	pure	read-only lookup of object/type data
+SA_GetMaxLaser	pure	reads object, type table or world state; no side effects
+SA_GetMaxShield	pure	reads object, type table or world state; no side effects
+SA_GetMaxShipTypeLasers	pure	reads object, type table or world state; no side effects
+SA_GetMaxSpeed	mutating	clears an expired timed slow effect as a side effect
+SA_GetMissileAim	pure	reads object, type table or world state; no side effects
+SA_GetMissileFired	pure	reads object, type table or world state; no side effects
+SA_GetMissileHits	pure	reads object, type table or world state; no side effects
+SA_GetMissileTypeGuidance	pure	reads object, type table or world state; no side effects
+SA_GetMissileTypeLaunchDelay	pure	reads object, type table or world state; no side effects
+SA_GetMissileTypeMaxDamage	pure	reads object, type table or world state; no side effects
+SA_GetMissileTypeRange	pure	reads object, type table or world state; no side effects
+SA_GetMissileTypeSpeed	pure	reads object, type table or world state; no side effects
+SA_GetNumCockpits	pure	reads object, type table or world state; no side effects
+SA_GetNumFactoryConnectionPoints	pure	reads object, type table or world state; no side effects
+SA_GetNumSubTypes	pure	reads object, type table or world state; no side effects
+SA_GetObjectTextID	pure	reads object, type table or world state; no side effects
+SA_GetParentObject	pure	reads object, type table or world state; no side effects
+SA_GetPlanetTypeColor	pure	reads object, type table or world state; no side effects
+SA_GetPosAndRot	writes:2	writes position and rotation into the passed array arg 2 in place
+SA_GetPosRotAndDirection	writes:2	writes position, rotation, forward axis into passed array arg 2
+SA_GetPosX	pure	reads object, type table or world state; no side effects
+SA_GetPosY	pure	reads object, type table or world state; no side effects
+SA_GetPosZ	pure	reads object, type table or world state; no side effects
+SA_GetRelation	pure	reads object, type table or world state; no side effects
+SA_GetRelativePos	pure	returns a new array; reads object or argument state only
+SA_GetRotAlpha	pure	reads object, type table or world state; no side effects
+SA_GetRotBeta	pure	reads object, type table or world state; no side effects
+SA_GetRotGamma	pure	reads object, type table or world state; no side effects
+SA_GetRotationMatrix	pure	returns a new array; reads object or argument state only
+SA_GetSafePos	mutating	moves object temporarily, random retries draw from the game RNG
+SA_GetSaturationModifier	pure	reads object, type table or world state; no side effects
+SA_GetSectorBackgroundNebulasIndex	pure	reads object, type table or world state; no side effects
+SA_GetSectorBackgroundStarsIndex	pure	reads object, type table or world state; no side effects
+SA_GetSectorBackgroundType	pure	reads object, type table or world state; no side effects
+SA_GetSectorSize	pure	reads object, type table or world state; no side effects
+SA_GetShield	pure	reads object, type table or world state; no side effects
+SA_GetShieldTypeEfficiency	pure	reads object, type table or world state; no side effects
+SA_GetShieldTypeEnergyMax	pure	reads object, type table or world state; no side effects
+SA_GetShieldTypeMaxPowerUsed	pure	reads object, type table or world state; no side effects
+SA_GetShipRotAccel	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeClass	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeCockpitBody	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeCockpitTextID	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeLaserPosFromTurretID	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeLaserPowerMax	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeLaserPowerReload	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeMaxExtraRotSpeed	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeMaxExtraSpeed	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeMaxMissileType	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeMaxNumMissiles	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeMaxNumShields	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeMaxShieldType	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeMaxTKClass	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeMaxTradeContainerSize	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeMissileMask	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeNumCockpits	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeNumGunsInTurret	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeNumLasersInTurret	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeNumTurrets	pure	reads object, type table or world state; no side effects
+SA_GetShipTypePredefinedWareCount	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeTradeContainerSize	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeTurretIDFromCockpitID	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeTurretIDFromLaserPos	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeTurretLaserMask	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeTurretTextID	pure	reads object, type table or world state; no side effects
+SA_GetShipTypeVariation	pure	reads object, type table or world state; no side effects
+SA_GetSize	pure	reads object, type table or world state; no side effects
+SA_GetSpaceDustScene	pure	reads object, type table or world state; no side effects
+SA_GetSpaceFlags	pure	reads object, type table or world state; no side effects
+SA_GetSpaceGalaxyScene	pure	reads object, type table or world state; no side effects
+SA_GetSpaceScene	pure	reads object, type table or world state; no side effects
+SA_GetSpawnInst	pure	reads object, type table or world state; no side effects
+SA_GetSpeed	pure	reads object, type table or world state; no side effects
+SA_GetStepX	pure	reads object, type table or world state; no side effects
+SA_GetStepY	pure	reads object, type table or world state; no side effects
+SA_GetStepZ	pure	reads object, type table or world state; no side effects
+SA_GetStrength	pure	reads object, type table or world state; no side effects
+SA_GetSubType	pure	reads object, type table or world state; no side effects
+SA_GetSubTypeByName	pure	reads object, type table or world state; no side effects
+SA_GetSubTypeFormCutIndex	mutating	Scene::LoadCutScene loads the cut file into the cut cache
+SA_GetTakeRemainingTime	pure	reads object, type table or world state; no side effects
+SA_GetTimer	pure	reads object, type table or world state; no side effects
+SA_GetTotalDistance	pure	reads object, type table or world state; no side effects
+SA_GetTotalSize	pure	reads object, type table or world state; no side effects
+SA_GetType	pure	reads object, type table or world state; no side effects
+SA_GetTypeAcceleration	pure	reads object, type table or world state; no side effects
+SA_GetTypeBody	pure	reads object, type table or world state; no side effects
+SA_GetTypeCanUseDockPort	pure	reads object, type table or world state; no side effects
+SA_GetTypeCodeByName	pure	reads object, type table or world state; no side effects
+SA_GetTypeCompBody	pure	reads object, type table or world state; no side effects
+SA_GetTypeCut	pure	reads object, type table or world state; no side effects
+SA_GetTypeDebrisMapCutID	pure	reads object, type table or world state; no side effects
+SA_GetTypeDefaultRace	pure	reads object, type table or world state; no side effects
+SA_GetTypeDensity	pure	reads object, type table or world state; no side effects
+SA_GetTypeDockBaySize	pure	reads object, type table or world state; no side effects
+SA_GetTypeDockPortAnimFlags	pure	reads object, type table or world state; no side effects
+SA_GetTypeDockPortFlags	pure	reads object, type table or world state; no side effects
+SA_GetTypeGSubType	pure	reads object, type table or world state; no side effects
+SA_GetTypeIsDockingPossibleOf	pure	reads object, type table or world state; no side effects
+SA_GetTypeMaxHull	pure	reads object, type table or world state; no side effects
+SA_GetTypeMaxSpeed	pure	reads object, type table or world state; no side effects
+SA_GetTypeMinNotoriety	pure	reads object, type table or world state; no side effects
+SA_GetTypeNumDockPorts	pure	reads object, type table or world state; no side effects
+SA_GetTypePlayerRelValue	pure	reads object, type table or world state; no side effects
+SA_GetTypePosAndDirectionInCut	mutating	loads the cut scene into the cut cache like SA_GetSubTypeFormCutIndex
+SA_GetTypePriMaxP	pure	reads object, type table or world state; no side effects
+SA_GetTypeRelValue	pure	reads object, type table or world state; no side effects
+SA_GetTypeSecMaxP	pure	reads object, type table or world state; no side effects
+SA_GetTypeShieldPowerGeneration	pure	reads object, type table or world state; no side effects
+SA_GetTypeSkin	pure	reads type header skinId
+SA_GetTypeStepX	pure	reads type header yaw rate cap
+SA_GetTypeStepY	pure	reads type header pitch rate cap
+SA_GetTypeStepZ	pure	reads type header roll rate cap
+SA_GetTypeSubTypeName	pure	answers new string copy of type id string
+SA_GetTypeTK	pure	reads type header transport class
+SA_GetTypeTextID	pure	reads type header name text id
+SA_GetTypeVideoID	pure	reads type header video id
+SA_GetTypeVolume	pure	reads type row volume field
+SA_GetTypeWreckType	pure	computes wreck class/subtype of a type
+SA_GetWareListWareCount	pure	counts ware amount in a ware list
+SA_GetWreckDensity	pure	reads wreck payload density
+SA_IsCollectible	pure	reads Ship::IsExpendable for the object
+SA_IsDockingBlocked	pure	looks up ids, always answers 0, no side effects
+SA_IsDummyBody	pure	tests body membership in scene dummy tables
+SA_IsEnemy	pure	hostility test between two objects
+SA_IsInApproach	pure	distance and CanWarpDockTest check, read only
+SA_IsObjectBeforeContainer	pure	geometry test of ship against port approach
+SA_IsPlayerLand	pure	reads landing mode state
+SA_IsSafePos	pure	tests whether a sphere offset is free
+SA_IsSpecialBody	pure	tests body membership in special body lists
+SA_IsTargetInFiringRangeOfTurret	mutating	TestWeaponRange calls mesh::getBody: may load bodies, resets idle timers
+SA_IsWarpOutSlotAvailable	pure	reads gate exit slots, does not reserve
+SA_KillObject	mutating	destroys object, effects, sounds, blast damage
+SA_LandAllObjectsInHangar	mutating	moves approaching objects into the carrier
+SA_LoadCutScene	mutating	loads cut into shared cache and places it
+SA_MatchType	pure	searches match-result table
+SA_MatchTypeAndRace	pure	searches match-result table by race
+SA_MaxDistance	pure	Chebyshev distance of two objects
+SA_MaxDistanceFromCockpit	pure	max axis distance from cockpit to target
+SA_MoveLaserIntoContainer	mutating	relinks laser into ship, sets slot, shows gun node
+SA_MoveObjectIntoContainer	mutating	relinks object into container lists
+SA_ObjectTypeFromBody	pure	scans type tables for body id
+SA_ObjectTypeFromCut	pure	scans type tables for cut id
+SA_PauseVideo	mutating	pauses or resumes all sector videos
+SA_RecalculateRot	mutating	rewrites object angles and rotation matrix
+SA_ReloadGlobalParameters	mutating	reloads global parameters table
+SA_ReloadShipLasers	mutating	sets ship laser energy to type maximum
+SA_RemoteDetonateMissile	mutating	detonates the ship's missiles
+SA_ResetSectorBackground	mutating	applies background row to sector scene
+SA_RestartObjectCut	mutating	ends and restarts cut instances on object
+SA_SaveBackgroundTypes	mutating	debug dump of background types to output
+SA_SetAsPlayerObject	mutating	sets or clears player ship state
+SA_SetAutopilot	mutating	sets object autopilot flag and input bit
+SA_SetBgTypeData	mutating	edits or appends background table row, registers bodies
+SA_SetCameraB3DCamera	mutating	binds camera object to B3D camera node
+SA_SetCameraConnectMode	mutating	writes camera follow axis
+SA_SetClientDataFlags	mutating	writes World.universeFlags
+SA_SetCount	mutating	writes object quantity
+SA_SetDebrisDensity	mutating	writes debris density
+SA_SetDesiredDistance	mutating	writes camera follow offset
+SA_SetDesiredSpeed	mutating	writes desired speed, may clear input bit
+SA_SetDestination	mutating	writes order target of ship/missile/camera
+SA_SetDirection	mutating	sets object orientation
+SA_SetEnemyOfEnabled	mutating	writes enemy-of flag
+SA_SetEventObject	mutating	writes object script object id
+SA_SetExtraRotSpeed	mutating	writes ship rotation rate bonus
+SA_SetExtraSpeed	mutating	writes ship speed bonus
+SA_SetFactoryConnectionParent	mutating	writes factory connection target
+SA_SetFlags	mutating	writes object flags
+SA_SetFlags2	mutating	writes object flags2
+SA_SetFlightMode	mutating	sets ship flight mode and attitude
+SA_SetGlide	mutating	writes slip velocity
+SA_SetGroup	mutating	sets owner race, logo parts, node flags
+SA_SetGroupRelation	mutating	writes race friend/enemy stance bits
+SA_SetHueModifier	mutating	stores hue, updates scene nodes
+SA_SetHull	mutating	writes object hull
+SA_SetLaser	mutating	writes laser energy
+SA_SetLight	mutating	sets sun/planet light colours
+SA_SetMass	mutating	writes spatial base radius
+SA_SetMaxAvoidShield	mutating	writes ship max avoid shield
+SA_SetMaxSpeedOverride	mutating	writes ship speed override
+SA_SetMaxStrafeSpeedOverride	mutating	writes ship strafe speed override
+SA_SetNebulaProperties	mutating	writes nebula data fields
+SA_SetPlanetFogParameter	mutating	writes planet fog parameter
+SA_SetPlayerControl	mutating	sets or clears ManualControl flag
+SA_SetPlayerLand	mutating	sets landing order, target, port
+SA_SetPos	mutating	writes object position, sun/planet side effects
+SA_SetPosAndDirection	mutating	sets position and orientation from array
+SA_SetPosAndRot	mutating	sets position and angles from array
+SA_SetRelation	mutating	writes friend/enemy race masks
+SA_SetRelativePos	mutating	writes root node position
+SA_SetRenderLast	mutating	sets render-last node flag
+SA_SetRot	mutating	writes object angles and rotation
+SA_SetSafePos	mutating	places object, random tries draw random numbers
+SA_SetSafePosAndDirection	mutating	places object with random tries, sets orientation
+SA_SetSafePosAndRot	mutating	places object with random tries, sets angles
+SA_SetSaturationModifier	mutating	stores saturation, updates scene nodes
+SA_SetSectorBackgroundNebulasIndex	mutating	writes sector background body index
+SA_SetSectorBackgroundStarsIndex	mutating	writes sector background body index
+SA_SetSectorBackgroundType	mutating	writes sector background index
+SA_SetSectorSize	mutating	writes sector size
+SA_SetShield	mutating	writes shield charges
+SA_SetShipAtDockPort	mutating	attaches ship to dock port
+SA_SetShipDockPortNr	mutating	writes requested port index
+SA_SetShipRotAccel	mutating	writes ship rotation acceleration factor
+SA_SetSpaceDustScene	mutating	writes sector space dust scene
+SA_SetSpaceFlags	mutating	writes sector flags
+SA_SetSpaceGalaxyScene	mutating	writes sector background scene
+SA_SetSpaceScene	mutating	sets sector space scene
+SA_SetSpecialParameter1	mutating	writes parameter, creates or releases marker nodes
+SA_SetSpeed	mutating	writes object speed
+SA_SetSpeedLimit	mutating	writes ship speed limit
+SA_SetSubType	mutating	changes subtype, rebuilds scene node
+SA_SetTakeReplaceBody	mutating	writes global take replacement body id
+SA_SetVideoChannel	mutating	sets video cue and UV frame, may draw random
+SA_SetWreckDensity	mutating	writes wreck density
+SA_ShootMissile	mutating	launches a missile object
+SA_ShootMissileOnObject	mutating	launches a missile object
+SA_ShowObjectEffect	mutating	spawns linked effect on object
+SA_ShowRelativeExplosion	mutating	spawns timed model node effect
+SA_StartDockPortAnim	mutating	animates port door parts
+SA_StartInGameScene	mutating	starts in-game scene playback
+SA_StartInGameScene2	mutating	starts in-game scene
+SA_StartObjectInSpace	mutating	adds object into a sector
+SA_StartVideo	mutating	plays a video
+SA_StopObject	mutating	stops object order, wakes waiting task
+SA_StopObjectTurret	mutating	clears turret target, resumes waiting task
+SA_StopTake	mutating	finishes take cut instance
+SA_StopVideo	mutating	stops a video
+SA_TractorConnect	mutating	releases and attaches tractor beams, script calls
+SA_TractorDisconnect	mutating	releases tractor beam, notifies script
+SA_TransformPosAndRot	pure	answers a new array from two input arrays
+SA_TypeCreatesDebris	mutating	Scene::EnsureCutLoaded may load the debris cut
+SA_TypeCreatesWreck	mutating	Mesh::IsBodyAvailable may load the wreck body
+SE_AllocatedMem	pure	reads tracked allocation byte counter
+SE_AllocatedMemGeneral	pure	reads generic allocation byte counter
+SE_ArrayAlloc	pure	returns a new lazy array
+SE_ArrayAppend	writes:1	appends a copy of value to the passed array
+SE_ArrayClone	pure	returns a new shallow copy; source materialisation not observable
+SE_ArrayCopy	writes:1	copies src elements into dst array (arg 1)
+SE_ArrayFind	pure	linear search, returns index or -1
+SE_ArrayInsert	writes:1	inserts a copy of value into the passed array
+SE_ArrayRead	pure	returns copy of element; lazy materialisation not observable
+SE_ArrayRemove	writes:1	removes element from the passed array
+SE_ArrayResize	writes:1	resizes the passed array
+SE_ArraySize	pure	returns array size
+SE_ArraySubClone	pure	returns a new array of a sub-range
+SE_ArrayWrite	writes:1	sets an element of the passed array
+SE_Assert	mutating	x3_src writes assertion failure to the game log
+SE_CTime	pure	formats wall-clock or given time as string
+SE_CalcGalaxyEscortOffset	pure	math on ints, returns a new array
+SE_CallStackDump	pure	read-only stack scan; unknown task id dereferences NULL (crash)
+SE_CallerEngine	pure	reads task owner group
+SE_CallerNumber	pure	reads task owner argument
+SE_ChangeDir	mutating	_chdir changes the process current directory
+SE_CompressRangeData	writes:1	compacts sphere pairs in place in the passed array
+SE_ConvertFormatString	pure	expands {page,id} text references into a new string
+SE_ConvertTextString	pure	unescapes a copy, returns new string
+SE_Cos	pure	fixed-point cosine table lookup
+SE_CubicPoly	pure	float math on ints
+SE_DMprintf	mutating	x3_src writes the formatted text to the game log
+SE_DeleteFile	mutating	deletes a file on disk
+SE_Disable	pure	returns its argument
+SE_Distance3	pure	vector length math
+SE_DistanceA3	pure	distance math; lazy materialisation not observable
+SE_DistanceAA	pure	distance math; lazy materialisation not observable
+SE_DivFix	pure	16.16 divide (AP #DE crash on overflow)
+SE_Dprintf	mutating	x3_src writes the formatted text to the game log
+SE_DumpAllocatedObjects	pure	only materialises a lazy array (not observable)
+SE_DumpValues	pure	release stub, returns 0
+SE_Enable	pure	returns its argument
+SE_ExistsText	pure	text table lookup
+SE_ExpFunc	pure	exponential interpolation math
+SE_ExportPrivateInfo	pure	reads task/class/object counts
+SE_FClose	mutating	closes and forgets a VM file handle
+SE_FOpen	mutating	opens file, adds handle to VM map, may create file, sets cfg flag
+SE_FPrintf	mutating	writes text to an open file
+SE_FSize	pure	reads file size (catalogue or stat)
+SE_FTime	pure	reads file modification time
+SE_FreeText	mutating	frees all loaded script text pages
+SE_GGT	pure	gcd math (AP hangs on zero/negative input)
+SE_GetAnglesFromRotMatrix	pure	matrix to Euler angles, returns new array
+SE_GetAnglesFromVector	pure	direction to yaw/pitch, returns new array
+SE_GetClass	pure	reads object class id
+SE_GetDir	pure	reads directory listing into a new array
+SE_GetExprType	pure	returns cell type byte
+SE_GetFramerate	pure	reads engine fps
+SE_GetLanguage	pure	reads current language id
+SE_GetMemUsage	pure	reads tracked memory in MB
+SE_GetNum	pure	reads VM flags
+SE_GetRotMatrixFromAngles	pure	angles to matrix, returns new arrays
+SE_GetStoryTasks	pure	reads task count
+SE_GetSuperClass	pure	reads parent class id
+SE_GetTaskID	pure	reads calling task id
+SE_GetTaskPC	pure	reads task pc
+SE_IsClass	pure	class chain check
+SE_IsPosInRange3	pure	point-in-spheres test
+SE_IsPosInRangeA	pure	point-in-spheres test
+SE_IsString	pure	type check
+SE_KGV	pure	lcm math (AP hangs on zero/negative input)
+SE_LinFunc	pure	clamped linear interpolation
+SE_LinFuncSum	pure	trapezoid sum math
+SE_LoadAllTexts	mutating	loads text pages from file into VM text tables
+SE_LoadText	pure	release stub, returns 0
+SE_LoadTextPage	pure	release stub, returns 0
+SE_LogFunc	pure	logarithmic interpolation math
+SE_MakeDir	mutating	creates a directory on disk
+SE_MatrixMultiply	pure	returns new product matrix
+SE_MatrixMultiplyInv	pure	returns new product matrix
+SE_MatrixMultiplySelfLeft	mutating	writes result into nested row arrays of arg 1
+SE_MatrixMultiplySelfRight	mutating	writes result into nested row arrays of arg 1
+SE_MemStatistics	pure	reads VM memory counters into new array
+SE_MoveFile	mutating	renames a file on disk
+SE_MulDivFix	pure	integer muldiv (AP #DE crash on overflow)
+SE_MulFix	pure	16.16 multiply
+SE_ObjectExists	pure	object validity check
+SE_ObjectFunctionExists	pure	method lookup in class chain
+SE_QSortByInt	writes:1	permutes elements of arg 1; keys not modified
+SE_QSortByName	writes:1	writes sorted copies back into arg 1; keys not modified
+SE_Random	mutating	draws a random number (RNG state)
+SE_RandomLowNorm	mutating	draws random numbers (RNG state)
+SE_ReadFile	mutating	reads file; AP/FL set EngineConfig cfg flag 0x4000
+SE_ReadText	pure	text table lookup or built placeholder string
+SE_RegComp	mutating	compiles regex and adds a handle to the VM regex map
+SE_RegExec	mutating	stores capture groups in the regex; later RegSub answers differ
+SE_RegFree	mutating	removes and frees a compiled regex
+SE_RegSub	pure	expands template from stored groups into new string
+SE_RegSubGlobal	mutating	re-runs regex matching, overwrites its stored capture groups
+SE_RotateVector	writes:1	rotates the passed vector array in place
+SE_RotateVectorInv	writes:1	rotates the passed vector array in place
+SE_SPrintf	pure	formats into a new string
+SE_SaveAllTexts	mutating	writes all text pages to a file
+SE_ScriptComputeExpression	mutating	also writes arg 1; + on non-numbers calls script method __scriptOpAddString
+SE_SetDebugOutputFile	mutating	sets or frees EngineConfig.debugOutputPath
+SE_SetMaxOpCount	mutating	sets VM op budget and resets the counter
+SE_SetProfiling	pure	release stub, returns 0
+SE_ShowCallStack	pure	release stub, returns 0
+SE_SignData	pure	release stub, returns 0
+SE_SignGameStats	mutating	CryptoAPI signing creates a key container
+SE_Sin	pure	fixed-point sine table lookup
+SE_SmoothInterpolate	pure	sigmoid interpolation math
+SE_Sqrt	pure	integer square root
+SE_StackDump	pure	read-only frame scan; unknown task id dereferences NULL (crash)
+SE_StringCat	pure	returns copy of the process command line
+SE_StringChr	pure	string search
+SE_StringLen	pure	string length
+SE_StringMul	pure	XOR of string bytes
+SE_StringNextCharPos	pure	UTF-8 position math
+SE_StringNumChars	pure	character count
+SE_StringPrevCharPos	pure	UTF-8 position math
+SE_StringRChr	pure	string search
+SE_StringReadChar	pure	reads a byte of the string
+SE_StringSplit	pure	returns new array of pieces (AP hangs on empty separator)
+SE_StringStr	pure	substring search
+SE_StringSub	pure	returns new substring
+SE_StringSubst	pure	returns new string with replacements
+SE_StringToInt	pure	atol conversion
+SE_StringWriteChar	pure	modifies a copy, input string unchanged
+SE_StringXMLEncode	pure	returns new encoded string
+SE_StringXMLEscape	pure	returns new escaped string
+SE_StringXMLQueryDecode	pure	returns new decoded string
+SE_StringXMLQueryToUTF8	pure	returns new converted string
+SE_TableAdd	writes:1	inserts or overwrites a key in the passed table
+SE_TableAlloc	pure	returns a new empty table
+SE_TableClear	writes:1	clears the passed table
+SE_TableClone	pure	returns a new shallow copy table
+SE_TableData	pure	returns new array of values
+SE_TableExists	pure	key lookup
+SE_TableFind	pure	key lookup, returns value copy
+SE_TableKeys	pure	returns new array of keys
+SE_TableNew	writes:1	appends value under a new auto key, bumps table counter
+SE_TableNext	pure	iteration step, returns next key
+SE_TableNumberedKey	pure	returns n-th key
+SE_TableRandomKey	mutating	draws a random number (RNG state)
+SE_TableRemove	writes:1	removes key from the passed table
+SE_TableSize	pure	returns entry count
+SE_TaskExists	pure	task table lookup
+SE_TaskList	pure	reads tasks into new arrays
+SE_Time	pure	reads clock
+SE_TimeString	pure	strftime of a time into new string
+SE_ToInt	pure	type conversion
+SE_Trace	pure	release stub, returns 0
+SE_UpdateStory	pure	release stub, returns 0
+SE_VSPrintf	pure	formats into a new string
+SE_VerifyData	mutating	CryptoAPI verification creates a CSP key container
+SE_WriteFile	mutating	creates/overwrites a file, sets cfg flag 0x4000
+SE_XMLExportValue	pure	serialises value to new XML string
+SE_XMLImport	pure	parses XML text into new arrays
+SE_XMLImportText	mutating	loads parsed text pages into VM text tables
+SE_XMLImportValue	pure	parses XML text into a new value
+SE_strcmp	pure	string compare
+SE_stricmp	pure	string compare
+STA_DIDTransition	pure	stub without Steam layer, answers 0 or empty string
+STA_GetAchievement	pure	stub without Steam layer, answers 0 or empty string
+STA_GetAchievementDescription	pure	stub without Steam layer, answers 0 or empty string
+STA_GetAchievementDisplayName	pure	stub without Steam layer, answers 0 or empty string
+STA_GetAvgRateStat	pure	stub without Steam layer, answers 0 or empty string
+STA_GetCommunityUserName	pure	stub without Steam layer, answers 0 or empty string
+STA_GetDIDMessage	pure	stub without Steam layer, answers 0 or empty string
+STA_GetDIDState	pure	stub without Steam layer, answers 0 or empty string
+STA_GetStat	pure	stub without Steam layer, answers 0 or empty string
+STA_IndicateAchievementProgress	pure	stub without Steam layer, answers 0 or empty string
+STA_IsConnected	pure	stub without Steam layer, answers 0 or empty string
+STA_IsDLCInstalled	pure	stub without Steam layer, answers 0 or empty string
+STA_IsEnabled	pure	stub without Steam layer, answers 0 or empty string
+STA_IsReady	pure	stub without Steam layer, answers 0 or empty string
+STA_LoadAchievementIcon	pure	stub without Steam layer, answers 0 or empty string
+STA_LoadDIDSaveData	pure	stub without Steam layer, answers 0 or empty string
+STA_ResetAchievement	pure	stub without Steam layer, answers 0 or empty string
+STA_SetStat	pure	stub without Steam layer, answers 0 or empty string
+STA_UnlockAchievement	pure	stub without Steam layer, answers 0 or empty string
+STA_UpdateAvgRateStat	pure	stub without Steam layer, answers 0 or empty string
+TI_AddTime	pure	answers a + b
+TI_CmpTime	pure	answers t1 - t2
+TI_GetAbsTime	pure	reads game clock
+TI_GetRealTime	pure	reads real clock
+TI_GetTimeWarpFactor	pure	reads time-warp factor
+TI_Interrupt	mutating	wakes waiting tasks, removes timer nodes
+TI_SetTimeWarpFactor	mutating	sets game time-warp factor
+X2_CaptureFrame	mutating	requests screenshot file write
+X2_GetControlMatrix	pure	answers axis binding
+X2_GetDefaultProfile	pure	answers constant "default"
+X2_GetGameState	pure	answers gameState
+X2_GetInputModeMask	pure	answers inputModeMask
+X2_GetLastGamepadTextInput	pure	stub, answers 0
+X2_GetModName	pure	answers copy of mod name
+X2_GetSaveDevices	pure	temporary empty array destroyed, answers 0
+X2_GetScreenDebugLine	pure	answers copy of debug line
+X2_GetStoryBuild	pure	reads story object build id from file
+X2_GetStringParameter	pure	answers copy, does not clear
+X2_GraphicSettings	pure	dead stub, answers 0
+X2_IsRunInBackground	pure	answers run-in-background flag
+X2_IsStartModeAvailable	pure	tests start-mode bits
+X2_IsXboxPadConnected	pure	queries gamepad connection
+X2_LoadSaveNames	pure	reads save headers into new arrays (AP leaks path strings)
+X2_ReadIntFromRegistry	pure	reads registry DWORD
+X2_ReadStringFromRegistry	pure	reads registry string
+X2_Save	mutating	queues a savegame write
+X2_SaveIntToRegistry	mutating	writes registry DWORD
+X2_SaveStringToRegistry	mutating	writes registry string
+X2_SetControlMatrix	mutating	sets axis binding
+X2_SetDefaultProfile	mutating	stores profile name in engine config
+X2_SetGameState	mutating	sets gameState
+X2_SetInputModeMask	mutating	sets inputModeMask
+X2_SetModified	mutating	sets session modified flag
+X2_SetModifierButton	mutating	sets joystick modifier mask
+X2_SetNextLocation	mutating	sets next session start mode and place
+X2_SetPause	mutating	requests pause, stops all media
+X2_SetRunInBackground	mutating	sets flag and writes registry
+X2_SetScreenDebugLine	mutating	sets on-screen debug line
+X2_SetStartModeAvailable	mutating	sets or clears start-mode bits
+X2_SetStringParameter	mutating	sets global string parameter
+X2_ShowGamepadTextInput	pure	stub, answers 0
+X2_SoundSettings	pure	dead stub, answers 0
+X2_StartBenchmarkScene	mutating	starts benchmark measurement (benchmark mode)
+X2_StopBenchmarkScene	mutating	ends benchmark, writes FPS slots
+X2_UpdateCursorSteering	mutating	sets cursor marker, aim flag, cursor position
+X2_XMLImportGalaxy	pure	parses XML text into new nested arrays

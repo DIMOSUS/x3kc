@@ -134,11 +134,19 @@ class Session:
         self.out = out
         self.hello = conn.call('hello')
         self.infos = {}
-        if self.hello.get('stage', 0) >= 2 and not self.hello.get('syncNatives'):
-            # the session's natives a debugger code run may call: the edition's at-once list, sent once (the game keeps
-            # it until detach)
+        if self.hello.get('stage', 0) >= 2:
+            # the session's natives a debugger code run may call: the edition's at-once list, and for read-only runs
+            # the side-effect-free ones (native_effects.txt: pure, and writes:N - the game's container primitives refuse
+            # their write into a container the run did not create); sent once (the game keeps them until detach)
             from . import targets
-            conn.call('config', syncNatives=sorted(targets.sync('x3_src-' + self.hello.get('edition', 'AP').lower())))
+            args = {}
+            if not self.hello.get('syncNatives'):
+                args['syncNatives'] = sorted(targets.sync('x3_src-' + self.hello.get('edition', 'AP').lower()))
+            if self.hello.get('pureNatives') == 0:
+                eff = targets.effects()
+                args['pureNatives'] = sorted(n for n, v in eff.items() if v == 'pure' or isinstance(v, tuple))
+            if args:
+                conn.call('config', **args)
 
     def objects(self):
         return self.hello.get('objects', [])
@@ -257,6 +265,30 @@ def format_value(info, v, indent=0):
         more = ', ... (%d)' % v['size'] if v['size'] > len(items) else ''
         return '{%s%s}' % (', '.join(items), more)
     return '<type %s>' % v.get('type')
+
+
+def change_text(info, c):
+    """a container watch's change (the event's `change`, made before the write): the container, its operation, the
+    writer, the element / key's old -> new value, the size"""
+    def fv(v):
+        return format_value(info, v).replace('\n', ' ')
+    w = c.get('writer') or {}
+    who = ('native %s' % w['native'] if 'native' in w else 'the MSCI case' if w.get('case') else
+           'engine %s' % w['engine'] if 'engine' in w else 'bytecode')
+    head = '%s #%s %s by %s' % (c.get('kind', 'container'), c.get('container', '?'), c.get('op', 'set'), who)
+    parts = []
+    key = c.get('key')
+    ktext = fv(key) if isinstance(key, dict) else json.dumps(key) if key is not None else None
+    if 'old' in c or 'new' in c:
+        parts.append('%s%s -> %s' % ('[%s] ' % ktext if ktext else '', fv(c['old']) if 'old' in c else '-',
+                                     fv(c['new']) if 'new' in c else '-'))
+    elif ktext:
+        parts.append('[%s]' % ktext)
+    if 'newSize' in c:
+        parts.append('size %d -> %d' % (c.get('size', 0), c['newSize']))
+    elif 'size' in c:
+        parts.append('size %d' % c['size'])
+    return head + (': ' + ', '.join(parts) if parts else '')
 
 
 # ---- paths ----------------------------------------------------------------------------------------------------------
@@ -498,6 +530,8 @@ class Cli:
                 if 'old' in e:
                     vals.insert(0, 'write %s -> %s' % (format_value(info, e['old']).replace('\n', ' '),
                                                        format_value(info, e['new']).replace('\n', ' ')))
+                if 'change' in e:
+                    vals.insert(0, change_text(info, e['change']))
                 return e, 'log bp %d task %d at %s%s%s' % (e['bp'], e['task'], where,
                                                            ': ' if vals else '', ', '.join(vals))
             text = 'stopped (%s%s) task %d at %s' % (e.get('reason', 'stop'),
@@ -507,7 +541,11 @@ class Cli:
             if 'old' in e:
                 text += ': write %s -> %s' % (format_value(info, e['old']).replace('\n', ' '),
                                               format_value(info, e['new']).replace('\n', ' '))
+            if 'change' in e:
+                text += ': ' + change_text(info, e['change'])
             return e, text
+        if kind == 'watch':
+            return e, 'watch bp %d (no frame to stop in): %s' % (e.get('bp', 0), change_text(info, e.get('change', {})))
         if kind == 'error':
             return e, 'bp %d: its compiled condition / log failed: %s' % (e.get('bp', 0), e.get('error'))
         if kind == 'resumed':
@@ -570,9 +608,11 @@ class Cli:
         ed = self.session().hello.get('edition', 'AP').lower()
         return sorted(targets.sync('x3_src-' + ed))
 
-    def snippet(self, info, text, frame=None, cls=None, block=False):
+    def snippet(self, info, text, frame=None, cls=None, block=False, read_only=False):
         """a KC expression / block compiled against the sidecar (kcsnip): frame - its variables are the snippet's
-        outer names, its method's class `this`; cls - the class without a frame"""
+        outer names, its method's class `this`; cls - the class without a frame; read_only - its own native calls
+        must be side-effect-free or write only into containers (native_effects.txt; the game checks the rest: the
+        methods it calls, the containers' owners)"""
         from . import kcsnip
         outer = {}
         if frame is not None:
@@ -594,6 +634,13 @@ class Cli:
         waits = [n for n in snip['natives'] if n not in sync]
         if waits:
             raise DbgError('<eval>: %s may wait: debugger code calls only natives that answer at once' % ', '.join(waits))
+        if read_only:
+            eff = targets.effects()
+            bad = [n for n in snip['natives'] if not (eff.get(n) == 'pure' or isinstance(eff.get(n), tuple))]
+            if bad:
+                raise DbgError('<eval>: read-only: %s %s side effects (x3kc/native_effects.txt); a writable run: '
+                               'eval without --read-only, break / watch --writable'
+                               % (', '.join(bad), 'has' if len(bad) == 1 else 'have'))
         graph = self.call_graph(info)
         why = graph.refusal(snip, sync, known) if graph is not None else None
         if why:
@@ -635,6 +682,9 @@ class Cli:
         """--if (one KC expression, or the old PATH OP VALUE) and --log (paths, or KC expressions) of a breakpoint /
         watchpoint into its request"""
         conds = []
+        ro = not getattr(a, 'writable', False)  # (compiled conditions and log expressions run read-only by default)
+        if not ro:
+            req['writableParts'] = True
         for words in a.cond or []:
             if len(words) == 3 and words[1] in ('==', '!=', '<', '<=', '>', '>='):
                 try:
@@ -644,8 +694,8 @@ class Cli:
                     pass
             if 'ifCode' in req:
                 raise DbgError('one --if expression (join them with &&)')
-            s = self.snippet(info, ' '.join(words), frame, cls)
-            req['ifCode'] = {k: s[k] for k in ('code', 'jumps', 'strings', 'low', 'high')}
+            s = self.snippet(info, ' '.join(words), frame, cls, read_only=ro)
+            req['ifCode'] ={k: s[k] for k in ('code', 'jumps', 'strings', 'low', 'high')}
         if conds:
             req['if'] = conds
         if a.log:
@@ -657,7 +707,7 @@ class Cli:
                 req['paths'] = [comp.compile(x) for x in items]
             except DbgError:
                 # not all paths: the items as one KC array, compiled and run at each hit
-                s = self.snippet(info, '{%s}' % ', '.join(items), frame, cls)
+                s = self.snippet(info, '{%s}' % ', '.join(items), frame, cls, read_only=ro)
                 req['logCode'] = {k: s[k] for k in ('code', 'jumps', 'strings', 'low', 'high')}
 
     def resolve_location(self, info, text):
@@ -1073,10 +1123,14 @@ class Cli:
             req['budget'] = a.budget
         if a.ms:
             req['ms'] = a.ms
-        snip = self.snippet(info, text, frame, cls if frame is None else None, block)
+        if a.write and a.read_only:
+            raise DbgError('eval: --write and --read-only together (a read-only run writes nothing back)')
+        snip = self.snippet(info, text, frame, cls if frame is None else None, block, read_only=a.read_only)
         req.update({k: snip[k] for k in ('code', 'jumps', 'strings', 'low', 'high')})
         if a.write:
             req['write'] = snip['written']      # (only the variables it assigns)
+        if a.read_only:
+            req['readOnly'] = True
         r = s.conn.call('eval', **req)
         if 'failed' in r:
             line = kcsnip_line(snip, r.get('pc'))
@@ -1090,7 +1144,21 @@ class Cli:
         return 0
 
     def watch_target(self, info, text):
-        """this.FIELD | #ID.FIELD | class.CLASS.FIELD | global.NAME -> (request part, class of the object, label)"""
+        """this.FIELD | #ID.FIELD | class.CLASS.FIELD | global.NAME -> (request part, class of the object); a container's
+        element or key PATH[N] / PATH["KEY"], or all of it PATH[*] (PATH: any print path that holds an array or table:
+        this.cargo, #ID.table, global.gX, a local at a stop) -> the path and the key (the game watches the container
+        the path reaches now, whatever path reaches it later)"""
+        m = re.match(r'^(.+)\[\s*(\*|-?\d+|0x[0-9a-fA-F]+|"(?:[^"\\]|\\.)*")\s*\]$', text)
+        if m:
+            base, key = m.groups()
+            frame = None
+            if self.stop_state() is not None:
+                _, frame = self.frame_of(None, 0)
+            steps = PathCompiler(self.session(), info, frame).compile(base)
+            if key == '*':
+                return {'path': steps, 'all': True}, None
+            k = json.loads(key) if key.startswith('"') else int(key, 0)
+            return {'path': steps, 'key': [['key', k] if isinstance(k, str) else ['index', k]]}, None
         m = re.match(r'^global\.([A-Za-z_]\w*)$', text)
         if m:
             if m.group(1) not in info.globals:
@@ -1098,7 +1166,8 @@ class Cli:
             return {'global': info.globals.index(m.group(1))}, None
         m = re.match(r'^(this|#-?\d+|class\.[A-Za-z_]\w*)\.([A-Za-z_]\w*)$', text)
         if not m:
-            raise DbgError('watch this.FIELD | #ID.FIELD | class.CLASS.FIELD | global.NAME')
+            raise DbgError('watch this.FIELD | #ID.FIELD | class.CLASS.FIELD | global.NAME | PATH[N] | PATH["KEY"] | '
+                           'PATH[*]')
         base, field = m.groups()
         pc = PathCompiler(self.session(), info)
         if base == 'this':
@@ -1120,6 +1189,9 @@ class Cli:
         info = s.main_info()
         obj = s.main_object()
         part, cid = self.watch_target(info, a.target)
+        if 'path' in part and a.writable:
+            raise DbgError("watch %s: a container watch's --if / --log run read-only (its hit is inside the container's "
+                           "change): no --writable" % a.target)
         req = {'object': obj['name'], 'tag': 'watch ' + a.target}
         req.update(part)
         if a.change:
@@ -1133,7 +1205,12 @@ class Cli:
         comp = PathCompiler(s, info, None, dynamic=False)
         self.compiled_parts(a, info, req, None, comp, cls=cid or 0)
         r = s.conn.call('watch', **req)
-        self.emit(r, 'watchpoint %d on %s%s' % (r['bp'], a.target, ' (log)' if r.get('log') else ''))
+        what = ''
+        if r.get('container') is not None:
+            # (containers are shared by reference: the watch is on this container, not on the path)
+            what = ' (%s #%d%s)' % (r.get('kind'), r['container'], '' if r.get('watch') == 'container' else
+                                   ' [%s]' % json.dumps(r.get('key')))
+        self.emit(r, 'watchpoint %d on %s%s%s' % (r['bp'], a.target, what, ' (log)' if r.get('log') else ''))
         return 0
 
     def c_snapshot(self, a):
@@ -1405,6 +1482,9 @@ def add_bp_options(p):
     p.add_argument('--count', type=int, default=0, help='only from the Nth hit on (the hits that pass --if/--this)')
     p.add_argument('--once', action='store_true', help='removed after its first stop / log')
     p.add_argument('--this', type=int, default=0, metavar='ID', help='only when the receiver is object #ID')
+    p.add_argument('--writable', action='store_true', help='--if / --log expressions may write (fields, globals, '
+                   'containers, natives with side effects); by default they run read-only: such a write ends the run '
+                   'before it is done (an error event, the condition false)')
 
 
 def build_parser():
@@ -1458,12 +1538,16 @@ def build_parser():
     p.add_argument('--frame', type=int, default=0, help='the frame of the stop (0: the innermost)')
     p.add_argument('--on', type=int, help='run on object #ID (its fields, this->Method()) instead of a frame')
     p.add_argument('--write', action='store_true', help='write the frame variables the block assigned back')
+    p.add_argument('--read-only', action='store_true', help='refuse every write but into the snippet\'s own locals and '
+                   'the containers it creates: a field, a global, another container, a new / deleted object or a '
+                   'native with side effects ends the run before it is done')
     p.add_argument('--depth', type=int, default=1)
     p.add_argument('--items', type=int, default=50)
     p.add_argument('--budget', type=int, default=0, help='instructions (default 10 million)')
     p.add_argument('--ms', type=int, default=0, help='wall time (default 2000)')
     p.add_argument('--verbose', '-v', action='store_true')
-    p = sub.add_parser('watch', help='a watchpoint: this.FIELD | #ID.FIELD | class.CLASS.FIELD | global.NAME')
+    p = sub.add_parser('watch', help='a watchpoint: this.FIELD | #ID.FIELD | class.CLASS.FIELD | global.NAME | '
+                       'PATH[N] | PATH["KEY"] | PATH[*] (an array / table element or key, all of it)')
     p.add_argument('target')
     p.add_argument('--change', action='store_true', help='only writes that change the value')
     add_bp_options(p)

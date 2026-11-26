@@ -60,6 +60,22 @@ def sync(target=None):
     return s | read('sync_natives_x3src.txt') if engine(t) == 'x3_src' else s
 
 
+def effects():
+    """the side effects of the at-once natives (native_effects.txt, the live debugger's read-only runs): name ->
+    'pure', a tuple of the 1-based arguments it writes into (its only effect), or 'mutating'; a native not listed
+    (one that may wait) counts as mutating"""
+    if 'effects' not in _cache:
+        out = {}
+        with open(os.path.join(HERE, 'native_effects.txt'), encoding='utf-8') as f:
+            for line in f:
+                if not line.strip() or line.startswith('#'):
+                    continue
+                name, cls = line.split('\t')[:2]
+                out[name] = tuple(int(x) for x in cls[7:].split(',')) if cls.startswith('writes:') else cls
+        _cache['effects'] = out
+    return _cache['effects']
+
+
 def where(name):
     """which exes have the native: a subset of {'ap', 'fl', 'x3_src'}"""
     out = set()
