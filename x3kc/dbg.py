@@ -198,6 +198,22 @@ class Session:
         return self.info(self.object_named(name))
 
 
+def undecorate(name):
+    """a decorated MSVC name from the .map (?f@ns@@...) -> scope::name (dbghelp's UnDecorateSymbolName); else as is,
+    marked (mangled) when it cannot be read"""
+    if not name.startswith('?'):
+        return name
+    try:
+        import ctypes
+        buf = ctypes.create_string_buffer(1024)
+        n = ctypes.windll.dbghelp.UnDecorateSymbolName(name.encode('latin-1'), buf, 1024, 0x1000)  # UNDNAME_NAME_ONLY
+        if n:
+            return buf.value.decode('latin-1')
+    except (OSError, AttributeError):
+        pass
+    return name + ' (mangled)'
+
+
 def location_text(info, pc, resume):
     loc = info.location(pc, resume) if info is not None else None
     if loc is None:
@@ -918,6 +934,9 @@ class Cli:
             print('debugger code: %d blocks (%d bytes), %d bytes of added strings, %d reloaded methods, %d bindings '
                   'retired by reloads' % (r['codeBlocks'], r['codeBlockBytes'], r['poolTailBytes'], r['reloads'],
                                           r['retiredBindings']))
+        if 'histories' in r:
+            print('object histories: %d (%d records kept, %d bytes), write hook %s'
+                  % (r['histories'], r['historyRecords'], r['historyBytes'], 'on' if r.get('writeHook') else 'off'))
         return 0
 
     def print_events(self, events):
@@ -1084,7 +1103,8 @@ class Cli:
 
     def c_detach(self, a):
         r = self.session().conn.call('detach')
-        self.emit(r, 'detached: %d breakpoints cleared, the game runs' % r['cleared'])
+        self.emit(r, 'detached: %d breakpoints cleared, %d histories stopped, the game runs'
+                  % (r['cleared'], r.get('histories', 0)))
         return 0
 
     def c_config(self, a):
@@ -1212,6 +1232,205 @@ class Cli:
                                    ' [%s]' % json.dumps(r.get('key')))
         self.emit(r, 'watchpoint %d on %s%s%s' % (r['bp'], a.target, what, ' (log)' if r.get('log') else ''))
         return 0
+
+    # ---- object histories -----------------------------------------------------------------------------------------
+    def history_target(self, text):
+        """#ID | this (the stop's receiver) | PATH (a print path that holds an object) -> the object's id"""
+        m = re.match(r'^#(-?\d+)$', text.strip())
+        if m:
+            return int(m.group(1))
+        s = self.session()
+        info = s.main_info()
+        frame = None
+        if self.stop_state() is not None:
+            _, frame = self.frame_of(None, 0)
+        if text.strip() == 'this' and frame is None:
+            raise DbgError('this: at a stop (else #ID or a path)')
+        steps = PathCompiler(s, info, frame).compile(text)
+        v = s.conn.call('read', paths=[steps], depth=0)['values'][0]
+        if v.get('t') != 'obj' or v.get('null') or v.get('deleted'):
+            raise DbgError('%s: not a live object (%s)' % (text, format_value(info, v)))
+        return v['id']
+
+    def c_history(self, a):
+        s = self.session()
+        info = s.main_info()
+        if a.what == 'list':
+            r = s.conn.call('history', op='list')
+            if self.json:
+                print(json.dumps(r, ensure_ascii=False))
+                return 0
+            if not r['histories']:
+                print('no history')
+            for h in r['histories']:
+                print(self.history_head(info, h))
+            return 0
+        if a.what == 'dump':
+            if not a.output:
+                raise DbgError('history dump -o FILE')
+            hs = s.conn.call('history', op='list')['histories']
+            with open(a.output, 'w', encoding='utf-8') as out:
+                for h in hs:
+                    r = s.conn.call('history', op='show', on=h['on'])
+                    for c in r['changes']:
+                        c['text'] = self.change_line(info, r, c)
+                    out.write(json.dumps(r, ensure_ascii=False) + '\n')
+            self.emit({'histories': len(hs), 'file': a.output}, '%d histories written to %s' % (len(hs), a.output))
+            return 0
+        if a.what == 'stop' and a.all:
+            r = s.conn.call('history', op='stop', all=True)
+            self.emit(r, 'stopped %d histories (%d records, %d bytes freed)' % (r['stopped'], r['records'], r['freed']))
+            return 0
+        if not a.target:
+            raise DbgError('history %s #ID | this | PATH' % a.what)
+        oid = self.history_target(a.target)
+        if a.what == 'start':
+            cid = self.object_class(oid)
+            req = {'op': 'start', 'object': s.main_object()['name'], 'on': oid, 'depth': a.depth, 'size': a.size}
+            if a.fields:
+                comp = PathCompiler(s, info)
+                req['slots'] = [comp.field_slot(cid, f.strip()) for f in a.fields.split(',') if f.strip()]
+            if a.cond:
+                # (run read-only on the object before each change: its fields by name, this->Method(), natives)
+                snip = self.snippet(info, ' '.join(sum(a.cond, [])), None, cid, read_only=True)
+                req['ifCode'] = {k: snip[k] for k in ('code', 'jumps', 'strings', 'low', 'high')}
+            r = s.conn.call('history', **req)
+            self.emit(r, 'history of #%d (%s): %d records kept, depth %d, %d containers tracked%s'
+                      % (oid, info.class_name(cid) or cid, r['size'], r['depth'], r['containers'],
+                         ', capped %d' % r['capped'] if r.get('capped') else ''))
+            return 0
+        if a.what == 'stop':
+            r = s.conn.call('history', op='stop', on=oid)
+            self.emit(r, 'stopped the history of #%d (%d records, %d bytes freed)' % (oid, r['records'], r['freed']))
+            return 0
+        # show
+        req = {'op': 'show', 'on': oid}
+        if a.last:
+            req['last'] = a.last
+        if a.changed:
+            req['changed'] = True   # (the game leaves out the records it flagged `same`; --last counts after it)
+        r0 = None
+        if a.field:
+            r0 = s.conn.call('history', op='show', on=oid, last=0)
+            req['slot'] = PathCompiler(s, info).field_slot(r0['class'], a.field)
+        r = s.conn.call('history', **req)
+        if self.json:
+            for c in r['changes']:
+                c['text'] = self.change_line(info, r, c)
+            print(json.dumps(r, ensure_ascii=False))
+            return 0
+        print(self.history_head(info, r))
+        for c in r['changes']:
+            print('  ' + self.change_line(info, r, c))
+        return 0
+
+    def history_head(self, info, h):
+        kept = h.get('kept', 0)
+        text = '#%d %s: %s, %d changes recorded, the last %d kept (ring %d), depth %d, %d containers tracked' % (
+            h['on'], info.class_name(h['class']) or h['class'], h['state'], h['records'], kept, h['size'],
+            h['depth'], h['containers'])
+        if h.get('capped'):
+            text += ' (%d left out: the limits)' % h['capped']
+        if h.get('filtered'):
+            text += ', %d left out by --if' % h['filtered']
+        if h.get('ifError'):
+            text += ', --if failed: %s' % h['ifError']
+        if h.get('slots'):
+            names = class_fields(info, h['class'])
+            text += ', fields ' + ','.join(names[x] if x < len(names) else 'f%d' % x for x in h['slots'])
+        return text + ', %d bytes' % h.get('bytes', 0)
+
+    def msci_editor_line(self, info, script, index):
+        """an MSCI script's code index -> its editor line (the loaded script; None: not known)"""
+        cache = self.__dict__.setdefault('_msci_lines', {})
+        if script not in cache:
+            try:
+                cache[script] = self.script_lines(info, self.loaded_script_path(info, script))
+            except DbgError:
+                cache[script] = None
+        lines = cache[script]
+        return lines[index] if lines and 0 <= index < len(lines) else None
+
+    def map_symbol(self, offset):
+        """an exe offset -> the function the .map beside the game's exe names (None: no map)"""
+        if not hasattr(self, '_map'):
+            self._map = None
+            exe = self.session().hello.get('exe')
+            path = os.path.splitext(exe)[0] + '.map' if exe else None
+            if path and os.path.isfile(path):
+                base, syms = 0x140000000, []
+                with open(path, encoding='latin-1') as h:
+                    for line in h:
+                        if 'Preferred load address is' in line:
+                            base = int(line.split()[-1], 16)
+                        p = line.split()
+                        if len(p) >= 3 and re.match(r'^[0-9a-f]{4}:[0-9a-f]{8}$', p[0], re.I) and \
+                                re.match(r'^[0-9a-f]{16}$', p[2], re.I):
+                            syms.append((int(p[2], 16) - base, p[1]))
+                syms.sort()
+                self._map = syms
+        if not self._map:
+            return None
+        import bisect
+        i = bisect.bisect_right(self._map, (offset, '￿')) - 1
+        return undecorate(self._map[i][1]) if i >= 0 else None
+
+    def change_line(self, info, h, c):
+        """one record: time, what changed (old -> new), the writer (its line, caller, MSCI script, native, engine)"""
+        def fv(v):
+            return format_value(info, v).replace('\n', ' ') if v is not None else '-'
+        names = class_fields(info, h['class'])
+        field = (names[c['slot']] if 0 <= c.get('slot', -1) < len(names) else 'f%d' % c.get('slot', -1))
+        head = 't=%.3fs f%d ' % (c['time'] / 1000.0, c['frame'])
+        k = c['kind']
+        if k == 'field':
+            what = '%s: %s -> %s' % (field, fv(c.get('old')), fv(c.get('new')))
+        elif k == 'container':
+            key = c.get('key')
+            ktext = fv(key) if isinstance(key, dict) else str(key) if key is not None else None
+            what = '%s%s %s #%d %s' % (field, '' if c['level'] == 1 else ' (level %d)' % c['level'], c['ctype'],
+                                       c['container'], c['op'])
+            if c['op'] in ('set', 'remove'):
+                what += ' [%s] %s -> %s' % (ktext, fv(c.get('old')), fv(c.get('new')) if 'new' in c else '-')
+            elif c['op'] == 'insert':
+                what += ' [%s] %s' % (ktext if ktext is not None and ktext != '-1' else 'end', fv(c.get('new')))
+            elif c['op'] == 'resize':
+                what += ' size %d -> %d' % (c['size'], c.get('newSize', 0))
+            what += ' (size %d)' % c['size'] if c['op'] != 'resize' else ''
+        elif k == 'deleted':
+            what = 'deleted'
+        else:
+            where = location_text(info, c['taskPc'], c['taskResume'])
+            what = 'task %d %s at %s' % (c['taskId'], 'started' if k == 'taskStart' else 'ended', where)
+        w = c.get('writer', {})
+        wk = w.get('kind')
+        if wk == 'none':
+            return head + what
+        if wk == 'engine':
+            e = w.get('engine', '')
+            sym = None
+            m = re.match(r'^x3 exe\+0x([0-9a-f]+)$', e)
+            if m:
+                sym = self.map_symbol(int(m.group(1), 16))
+            return head + what + '  by engine %s%s' % (e or '(C++)', ' (%s)' % sym if sym else '')
+        by = location_text(info, w['pc'], False) if 'pc' in w else '?'   # (the writer's instruction itself)
+        if wk == 'native':
+            by = 'native %s at %s' % (w.get('native'), by)
+        elif wk == 'case':
+            by = 'the MSCI case at %s' % by
+        elif wk == 'debugger':
+            by = 'a debugger run (eval) task %d%s' % (w.get('task', 0), ' at %s' % by if 'pc' in w else '')
+        text = head + what + '  by ' + by
+        if 'callerPc' in w and wk != 'debugger':
+            text += ' <- ' + location_text(info, w['callerPc'], True)
+        if w.get('msci'):
+            line = self.msci_editor_line(info, w['msci']['script'], w['msci']['index'])
+            text += '  msci %s:%s' % (w['msci']['script'], line if line is not None else 'index %d' % w['msci']['index'])
+        if wk != 'debugger' and w.get('task'):
+            text += '  task %d' % w['task']
+        if w.get('this') and w['this'] != h['on']:
+            text += ' this=#%d' % w['this']
+        return text
 
     def c_snapshot(self, a):
         s = self.session()
@@ -1551,6 +1770,23 @@ def build_parser():
     p.add_argument('target')
     p.add_argument('--change', action='store_true', help='only writes that change the value')
     add_bp_options(p)
+    p = sub.add_parser('history', help="an object's change history, recorded by the game without stopping: start, "
+                       'show, stop, list, dump')
+    p.add_argument('what', choices=['start', 'show', 'stop', 'list', 'dump'])
+    p.add_argument('target', nargs='?', help='#ID | this (the stop\'s receiver) | PATH (a print path to an object)')
+    p.add_argument('--depth', type=int, default=0, help='start: also the containers reachable from its fields, N '
+                   'levels deep (0: the fields only; at most 4)')
+    p.add_argument('--size', type=int, default=1024, help='start: the records kept (a ring; at most 16384)')
+    p.add_argument('--fields', help='start: only these fields (comma-separated; their containers with --depth)')
+    p.add_argument('--if', dest='cond', nargs='+', action='append', metavar='EXPR',
+                   help='start: record only when the KC expression is true, run read-only on the object before '
+                        'each change (its fields by name)')
+    p.add_argument('--last', type=int, default=0, help='show: the newest N records (default all kept)')
+    p.add_argument('--field', help='show: only the records of this field (and its containers)')
+    p.add_argument('--changed', action='store_true', help='show: only writes that changed the value (a store of '
+                   'the value the cell had is left out)')
+    p.add_argument('--all', action='store_true', help='stop: every history')
+    p.add_argument('-o', '--output', help='dump: the file (one JSON line per history, the records symbolized)')
     p = sub.add_parser('snapshot', help='the script world into a JSON file (objects, globals, containers, tasks)')
     p.add_argument('--objects', help='only the objects of these classes (and their subclasses), comma-separated')
     p.add_argument('--chars', type=int, default=400, help='the characters of a string kept')

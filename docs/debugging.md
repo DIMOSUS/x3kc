@@ -202,6 +202,42 @@ before its index, a resize across it, a sort, a clear. `--change` drops a set of
 events too). `--if` / `--log` run in the writer's frame (its receiver's class is not known before: the globals' names),
 always read-only (`--writable` is refused for a container watch).
 
+### Object histories
+
+`history` keeps a ring of one object's changes in the game, recorded without stopping (x3_src `src/script/README.md`
+"Script debugging: object histories"): its fields' writes, the changes of the containers reachable from its fields
+(`depth` levels), its deletion, the tasks on it starting and ending. At most 16 histories, one per object.
+
+| `op` | arguments | reply |
+|---|---|---|
+| `start` | `object` (the loaded object's name), `on` ID (an object; a class id: its statics; `#0`, the globals, refused), `depth` (0..4), `size` (records, 1..16384, default 1024), `slots` [field slots] (default all), `ifCode` (a compiled block run read-only on the object before each change: record only when true) | the history (below) |
+| `show` | `on`, `last` N (the newest N kept that pass the filters, default all), `slot` (only that field's records, its containers' too), `changed` (the records flagged `same` left out) | the history + `changes` [records, oldest first] |
+| `stop` | `on`, or `all` | `stopped`, `records`, `freed` (bytes) |
+| `list` | | `histories` [the history] |
+
+The history: `on`, `class`, `state` (`recording`, `deleted`: the object was deleted, the ring kept until stop), `depth`,
+`size`, `records` (made), `kept`, `filtered` (left out by the condition), `containers` (tracked now), `capped` (left out
+by the limits: 256 containers; or not followed: an expansion over its scan budget of 1 Mi elements), `bytes`,
+`recordBytes` (one record), `startTime`, `startFrame`, `slots`, `if`,
+`ifError` (the condition failed once: false from then on).
+
+A record: `seq` (the order over every history), `time` (game time, ms), `frame`, `kind` (`field`, `container`,
+`deleted`, `taskStart`, `taskEnd`), `slot` (the field, or the field the container hangs from), `old` / `new` (values as
+`read` writes them, depth 0; a string cut at 31 characters with its `length`; `{"error": "absent"}` for no element);
+a container: `level` (1: the field's own), `container` (id), `ctype` (array / table), `op` (set / insert / remove /
+resize / sort / clear), `key` (an array's index, a table's key value), `newSize`, `size` (before); `same` (true: the store wrote the value the cell had, compared on the full
+values); a task record:
+`taskId`, `taskPc`, `taskResume`, `taskClass`. `writer`: `kind` (`bytecode`, `case` - the MSCI line loop case -,
+`native` + `native` (its name), `engine` + `engine` (`x3 exe+0x...`, the primitive's C++ caller), `debugger` (a
+writable eval), `none` - a task that returned, or that the engine ended), and for a frame: `task`, `pc` (the writer's
+instruction or the native's call - its own offset, not a resume pc; none for a debugger run without a store note), `class`, `this`, `callerPc` (the caller's resume pc), `msci` {`script`, `index`} (the
+innermost MSCI script of the writer's task). A task start by a fork: `task` the parent, `pc` its fork; by
+resolveMethod: the native in progress (or the engine). A task end has a `native` writer only when the native
+freed it at its own interpreter depth (a task that returned inside a run the native started has none). `detach` stops every history (its reply: `histories`); `list`
+(the command) gives `histories`, `historyRecords`, `historyBytes`, `writeHook`; `hello` gives `exe` (the game's exe: an
+engine writer's offset is named by the `.map` beside it; the client undecorates the name with dbghelp, a name it
+cannot read is marked `(mangled)`).
+
 ### Read-only runs
 
 `eval` with `readOnly`, and the compiled conditions and log expressions of every breakpoint and watchpoint unless it
@@ -313,6 +349,9 @@ The game: `--pid`, else the only pipe `x3dbg-*`. A reply is awaited `--deadline 
 | `snapshot -o FILE.json [--objects CLASS,...] [--chars N]` | the script world with the sidecar's names (objects, globals, statics, arrays, tables, tasks) |
 | `diff A.json B.json [--max N]` | what changed between two snapshots (no game needed) |
 | `reload [File.kc \| Class::Method] --src PROJECT` | Hot reload (above) |
+| `history start #ID \| this \| PATH [--depth N] [--size N] [--fields a,b] [--if EXPR]` | an object's change history, recorded by the game without stopping (Object histories); `this`: the stop's receiver, PATH: a print path that holds an object |
+| `history show #ID \| this \| PATH [--last N] [--field F] [--changed]` | the records, oldest first: `t=<game s> f<frame> <field>: old -> new  by File.kc:line Class::Method <- caller  msci SCRIPT:editor line  task N`; a container's `field [level] table #id set [key] old -> new (size)`; `native NAME at ...`, `engine x3 exe+0x... (function from the .map)`; `--json`: the reply with `text` per record |
+| `history stop #ID \| --all`, `history list`, `history dump -o FILE` | stop frees the ring; dump writes every history (one JSON line each, records symbolized) |
 
 `--if` takes one KC expression (compiled against the sidecar in the hit frame; all `--if` of a breakpoint hold; read-only
 unless `--writable`), or the old form `PATH OP VALUE` (a path compare); `--log` takes paths or KC expressions (comma-separated at the top level:

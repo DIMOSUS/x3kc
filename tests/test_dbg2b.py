@@ -134,6 +134,30 @@ class Dbg2b(unittest.TestCase):
         self.assertIn('[1] 2 -> 3', text)
         self.assertIn('task 7 ended', text)
 
+    def test_history_records_symbolized(self):
+        # (an object history's records as the game sends them: the field by its slot, the writer's line and caller)
+        m = [x for x in self.info.methods if x.name == 'Sum'][0]
+        pc = m.lines[1][0]
+        cli_ = dbg.Cli(type('A', (), {'json': False, 'pid': None, 'dbg': []})())
+        h = {'on': -5, 'class': 10}
+        w = {'kind': 'bytecode', 'task': 9, 'pc': pc, 'resume': False, 'class': 10, 'this': -5}
+        field = {'time': 1500, 'frame': 3, 'kind': 'field', 'slot': 0, 'old': {'t': 'int', 'v': 1},
+                 'new': {'t': 'int', 'v': 2}, 'writer': w}
+        text = cli_.change_line(self.info, h, field)
+        self.assertTrue(text.startswith('t=1.500s f3 m0: 1 -> 2  by story.kc:'), text)
+        self.assertIn('Thing::Sum', text)
+        self.assertIn('task 9', text)
+        cont = {'time': 0, 'frame': 0, 'kind': 'container', 'slot': 0, 'level': 1, 'container': 77, 'ctype': 'table',
+                'op': 'set', 'key': {'t': 'str', 'v': 'k'}, 'size': 1, 'old': {'error': 'absent'},
+                'new': {'t': 'int', 'v': 4}, 'writer': dict(w, kind='native', native='SE_TableSet')}
+        text = cli_.change_line(self.info, h, cont)
+        self.assertIn('m0 table #77 set ["k"] <absent> -> 4 (size 1)  by native SE_TableSet at story.kc:', text)
+        end = {'time': 0, 'frame': 0, 'kind': 'taskEnd', 'taskId': 12, 'taskPc': pc, 'taskResume': True,
+               'taskClass': 10, 'writer': {'kind': 'none'}}
+        self.assertIn('task 12 ended at story.kc:', cli_.change_line(self.info, h, end))
+        self.assertEqual(dbg.undecorate('plain'), 'plain')
+        self.assertIn('arraySetElement', dbg.undecorate('?arraySetElement@Cell@script@x3@@QEAA_NHPEBV123@@Z'))
+
 
 if __name__ == '__main__':
     unittest.main()
