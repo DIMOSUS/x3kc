@@ -220,5 +220,48 @@ class Stock(unittest.TestCase):
         self.check(FL)
 
 
+class CueMap(unittest.TestCase):
+    """mdmap: each element's .xmd and XML line and its KC path from the cue (CueDirector.LoadTable's layout)"""
+
+    def test_demo(self):
+        import tempfile
+        from x3kc import mdmap
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'demo.xmd')
+            with open(p, 'w', encoding='utf-8') as h:
+                h.write(TEXT)
+            m = mdmap.MdMap.load([p], cache=False)
+        c = m.cues_named('Demo')[0]
+        self.assertEqual((c.line, c.xml_line), (2, 5))
+        got = [(e.line, e.xml_line, e.exec, e.kc_expr()) for e in c.elements()]
+        self.assertEqual(got[0], (4, 7, 'CheckCondition', 'conditionDef'))
+        self.assertEqual(got[1], (6, 10, 'DoAction', 'actionDef'))               # the implicit do_all: action {
+        self.assertEqual(got[2], (7, 11, 'DoAction', 'actionDef["data"][0]'))
+        self.assertEqual(got[6], (11, 15, 'DoAction', 'actionDef["data"][4]'))   # if/else: the do_choose
+        self.assertEqual(got[7], (11, 16, 'DoAll', 'actionDef["data"][4]["data"][0]'))
+        self.assertEqual(m.at('demo.xmd', 13)[1].kc_expr(), 'actionDef["data"][4]["data"][1]')   # } else if
+        self.assertEqual(m.at('demo.xml', 21, xml=True)[1].tag, 'reset_cue')
+        ref = m.cues_named('Lib')[0]
+        self.assertEqual((ref.ref, ref.parent.name), ('Lib', 'Demo'))
+
+    def test_references(self):
+        import tempfile
+        from x3kc import mdmap
+        text = ('#director refs\ncue Top {\n  cue Lib(library: 1) {\n    action {\n      cancel_cue(Top);\n    }\n'
+                '  }\n  cue User {\n    @action(ref: Lib);\n  }\n  cue(ref: Lib);\n  cue Twice {\n    cue Same;\n  }\n'
+                '  cue Other {\n    cue Same;\n  }\n}\n')
+        with tempfile.TemporaryDirectory() as d:
+            p = os.path.join(d, 'refs.xmd')
+            with open(p, 'w', encoding='utf-8') as h:
+                h.write(text)
+            m = mdmap.MdMap.load([p], cache=False)
+        lib = [c for c in m.cues_named('Lib') if c.library][0]
+        user = m.cues_named('User')[0]
+        self.assertIs(user.parts['action'], lib.parts['action'])   # (the library's table, under User's name)
+        self.assertEqual(sorted((c.ref or c.name) for c in m.runners(lib, 'action')), ['Lib', 'User'])
+        self.assertTrue(m.ambiguous('Same'))
+        self.assertFalse(m.ambiguous('Lib'))
+
+
 if __name__ == '__main__':
     unittest.main()

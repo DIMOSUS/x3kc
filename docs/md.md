@@ -220,6 +220,39 @@ Warnings (`file:line: warning: ...`, the XML is written):
 `x3kc md schema` from `director.xsd` + `dirobjdb.xsd` of AP and FL (attributes, attribute groups, type extensions
 resolved) united with what the stock files use: 446 elements. Children are not checked against the schema.
 
+## The cue map
+
+`x3kc/mdmap.py` maps the source to what the running game has (used by `x3kc dbg md`, `docs/debugging.md`). Each file
+is parsed in both forms (the `.xmd` text and its XML, or the XML and its `dis` text) and the two trees are paired element
+by element, so every element has its `.xmd` line and its XML line. The director (x3story `CueDirector.LoadArray` /
+`LoadTable`) makes each `<cue>` a Cue object whose fields hold tables of the XML nodes:
+
+- `conditionDef` = the first element inside `<condition>`, `actionDef` the first inside `<action>`, `forceDef`
+  `<force>`'s, `timingDef` `<timing>` itself; later elements of a `<condition>` / `<action>` are ignored by the loader
+  (the map notes them; none in the stock files);
+- a table is the node's attributes plus `code` (the tag, when it has a `_` after its first letter); a group node
+  (check_all, check_any, do_*, data) keeps its element children in `data` (`["data"][i]`, document order, comments
+  and text left out); any other node keeps them by tag (`["sector"]`, a repeated tag `["ware"][k]`);
+- so an element's identity at run time is the table at its path, e.g. `actionDef["data"][1]["data"][0]` (an
+  instance shares its static cue's tables); `Cue::CheckCondition` evaluates a condition element, `Cue::DoAction` runs
+  an action element, `Cue::DoAll` a do_when / do_otherwise branch (the children of a do_choose); a node under a
+  non-group element is an argument, never run itself;
+- the text's implicit `<do_all>` (`action { a; b; }`) has the `action {` line; `if (...) {` is the do_choose and its
+  first do_when (a breakpoint there: the do_choose), `} else {` a do_when or do_otherwise;
+- a `<cue ref="L">` runs the record of the cue L under the name L (Cue::GetLibrary: any entry of that name that is
+  not itself a reference, a library or a normal cue): its parts and sub-cues are L's; a part reference
+  (`<action ref="L"/>`, also condition, timing, force, cues, patch) puts L's part - the same table - into the
+  referencing cue, which runs it under its own name (`Cue.part_refs`, resolved in `resolve_refs`; `MdMap.runners(cue,
+  part)` lists every cue that runs a cue's tables). The map takes a cue L in the same file first (a library before a
+  normal cue), else the first in the map's files; the game searches the parent's sub-cues, then up the parents;
+- `MdMap.ambiguous(name)`: the name is used by cues that run different tables (references of one cue count as one).
+
+Checked against a running AP game (`x3kc dbg md verify`: the `code` at each path of every live cue): 4345 elements of
+392 cues, all as the map says; with the part references resolved, 3655 elements of 214 cues on another session, all as
+the map says. Building the map: AP 88 files, 2516 cues in about 1 s (cached after).
+
+    x3kc dbg md --md DIR map ["CUE" | FILE.xmd:LINE]    # no game needed
+
 ## Signature
 
 `<signature>` is kept verbatim (`signature "...";`). It cannot be recomputed: the director loader (KC

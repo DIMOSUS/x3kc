@@ -326,7 +326,9 @@ named back after the run. Natives: only the session's at-once list (`config sync
 held task (the stopped or hit one: it stays alive) or a delete of an object it runs in ends the run. The client refuses
 before sending when the snippet, or any method it can reach in the loaded `.obj` (calls by name: every method of that
 name), forks or calls a native that may wait (`kcsnip.CallGraph`, cached in `%TEMP%/x3kc_dbg`); what remains is a run the
-budget ends inside a game method, whose work stays half done. The snippet's names: the frame's params and locals, `this` and its fields (bare names), globals, constants,
+budget ends inside a game method, whose work stays half done. A read-only run is not checked for what its methods can
+reach (only the snippet's own natives are): it does nothing it could leave half done, and the game ends it at such a
+native or fork as at a write. The snippet's names: the frame's params and locals, `this` and its fields (bare names), globals, constants,
 methods, natives; a string literal is a heap string at run time (`"x" + ""`: the tail's strings can then be given back,
 and a save never stores a pool offset the original object lacks): no pool string of the tail reaches the
 game's state.
@@ -480,6 +482,32 @@ MSCI breakpoints are KC breakpoints at the line loop head of `702::__runScript` 
 statement of the method in the sidecar) with two conditions from the sidecar's `__runScript` variables by name:
 `script[0] == SCRIPT` and `pc == the code index`. They unbind the MSCI native case (every script then runs as bytecode
 while one exists).
+
+### Mission Director (`x3kc dbg md`)
+
+MD cues are KC objects (x3story class 308 Cue, the director class 307 CueDirector, its class object `#307` the root),
+their condition and action elements tables the director built from the XML: `md` is a client of the commands above,
+with the cue map (`docs/md.md` "The cue map", `x3kc/mdmap.py`) from the director sources. No MD request exists in the
+game. x3_src `docs/script_debugging.md` "Mission Director" has the model and a worked session.
+
+    x3kc dbg md [--md DIR]... <command>
+
+`--md`: the director files (`.xmd` or `.xml`, folders or files); default `X3KC_MD` (paths separated by `;`), else the
+x3_src checkout above the `-kc` object (`game/ap/addon/director`, FL `game/fl/addon2/director`). The map is cached in
+`%TEMP%/x3kc_dbg/mdmap-*.pickle` by the files' paths, sizes and times.
+
+| command | does |
+|---|---|
+| `tree [FILE] [--active] [--depth N]` | the live cues (a `snapshot` of the Cue classes, no containers): name, id, state, kind (cue / instantiating / instance), activation time, instances, source line; FILE: the cues of that file and their parents; `--active`: active cues and the cues directly under them |
+| `cue NAME \| #ID [--max N]` | the cue (NAME: the static cue and its instances): source (`.xmd` and XML lines), parents, check period, next check, event-driven, values / counters / context / objectRegistry (`read`, depth 2) |
+| `why NAME \| #ID` | a waiting cue: who checks it (the parent's state, the check period, event-driven), then each condition element evaluated read-only on the cue - `CheckCondition(SE_TableClone(<element>), 0, "", {})` (a shallow copy: the count_* checks write into the element's own table), events as the game's `CueDirector.IsEvent` says (asked once per tag: the edition's list), for check_value / check_age / check_time / check_distance the value and exact / min / max / list as the game reads them, for cue tests and cue events the cue named (`FindInstance` / `EvalInstance`) and its state (an event that already happened is flagged) - and the parts that make it false now and the events it waits for; an active / complete / cancelled cue: that; a cue with no object: its parent chain up to the first live one |
+| `break FILE.xmd:LINE \| FILE.xml:LINE \| NAME [--on activate\|complete\|cancel\|condition\|action] [--if EXPR] [--log ITEMS] [--count N] [--once] [--writable]` | a KC breakpoint (tag `md ...`): the cue's line or NAME -> `Cue::Activate`; `condition {` -> `Cue::Condition`, a condition element -> `Cue::CheckCondition`; `action {` -> `Cue::Action`, an action element -> `Cue::DoAction` (do_when / do_otherwise: `Cue::DoAll`); `--on` picks another; the compiled condition `cueName == "NAME" && <param> == <the element's path>` (table identity: every instance of the cue; an element several cues run - a `<cue ref>`, a part reference `action(ref: L)` - every one of their names ORed; a name that cues with different tables share: `&& parentCue.GetName() == "PARENT"` added), `--if` ANDed to it; `--in FILE\|PARENT` (break, why, cue, watch) picks one of such cues, the candidates are listed when it is needed; with a live cue the element's `code` at its path is checked against the map (a warning when they differ) |
+| `wait [--timeout S]` / `where` | `dbg wait`, then the stop's MD context: the md tag, the cue (the innermost Cue frame's receiver), what it is doing, its parents, every element of that cue on the stack (each Cue frame's element parameter, found by its table id among the cue's element tables) with its `.xmd` and XML line and text, its variables |
+| `watch NAME --state` / `events` | tracepoints at Activate, Complete, Cancel, InitData filtered on the name (logging the cue, its old state, the game time, activatedTime); `events` prints them `t=<s> NAME #ID: old -> new` (InitData: `new` or `<old>, reset`) and the other events as `dbg events` |
+| `map [NAME \| FILE.xmd:LINE] [--max N]` | the map: cues, their elements with kind, `.xmd` and XML line, the Cue method, the KC path; no game needed with `--md` |
+| `verify` | the map against the game: the `code` key of every mapped element of every live static cue at its path (`read`) |
+
+Paths have up to 32 steps (x3_src's limit; an MD element is up to 26 from its cue).
 
 ## Module API (`x3kc/kcdbg.py`)
 

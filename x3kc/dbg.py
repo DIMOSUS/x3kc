@@ -685,7 +685,10 @@ class Cli:
                 raise DbgError('<eval>: read-only: %s %s side effects (x3kc/native_effects.txt); a writable run: '
                                'eval without --read-only, break / watch --writable'
                                % (', '.join(bad), 'has' if len(bad) == 1 else 'have'))
-        graph = self.call_graph(info)
+        # (a read-only run is not checked for what the methods it calls can reach: the game ends it at a fork or a
+        # native that may wait as it ends it at a write, before anything is done - there is no work to leave half
+        # done; MD conditions reach GS_Route* through Cue::CheckCondition's switch, md why runs them read-only)
+        graph = self.call_graph(info) if not read_only else None
         why = graph.refusal(snip, sync, known) if graph is not None else None
         if why:
             raise DbgError('<eval>: refused before it runs: %s (the game would end the run inside that method, its work '
@@ -1750,6 +1753,10 @@ class Cli:
         raise DbgError('the object file of %s is not found (a -kc object, or the .obj beside its sidecar)'
                        % obj['name'])
 
+    def c_md(self, a):
+        from . import dbgmd
+        return dbgmd.run(self, a)
+
     def c_run(self, a):
         rc = 0
         with open(a.file, encoding='utf-8') as h:
@@ -2065,6 +2072,8 @@ def build_parser():
     p = sub.add_parser('reload', help='recompile and replace changed methods in the running game')
     p.add_argument('what', nargs='?', help='File.kc (its changed methods) or Class::Method; none: every changed one')
     p.add_argument('--src', required=True, help='the object\'s KC project (kc/ap/x3story: the folder or its .kcs)')
+    from . import dbgmd
+    dbgmd.add_parser(sub)
     return ap
 
 

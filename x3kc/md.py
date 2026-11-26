@@ -85,10 +85,13 @@ def parse_xml(data, name='<xml>'):
     doc.eol = '\r\n' if crlf and crlf * 2 >= s.count('\n') else '\n'
     pos, n = 0, len(s)
     stack, root, chunk = [], None, ''
+    line, lpos = 1, 0       # (the 1-based line at offset lpos: each node's start line, for the cue map)
     while pos < n:
         m = TOK_RX.match(s, pos)
         if not m:
             raise MdError('%s: unsupported XML at offset %d: %r' % (name, pos, s[pos:pos + 40]))
+        line += s.count('\n', lpos, m.start())
+        lpos = m.start()
         pos = m.end()
         if m.group(9) is not None:
             chunk += m.group(9)
@@ -102,6 +105,7 @@ def parse_xml(data, name='<xml>'):
             if root is not None and not stack:
                 raise MdError('%s: content after the root element' % name)
             node = Node('el', m.group(3)) if m.group(3) is not None else Node('com')
+            node.line = line
             if node.kind == 'com':
                 node.text = m.group(1)
             else:
