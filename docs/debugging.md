@@ -143,7 +143,7 @@ stop's frame 0), `true`: a resume pc (callers, a waiting task): its line is pc -
 | cmd | arguments | reply |
 |---|---|---|
 | `hello` | | `protocol`, `pid`, `edition`, `state` (running / stopped), `stopTimeout`, `objects` [{name, build, size, crc32, file, main}], `msciHead` (the MSCI line loop's head pc, 0: unknown build), `breakpoints` |
-| `config` | `stopTimeout` (s) | `stopTimeout` |
+| `config` | `stopTimeout` (s), `syncNatives` [names] (the session's at-once natives, kept until detach) | `stopTimeout`, `syncNatives` (count) |
 | `break` | `object`, `size`, `crc32` (must be the loaded object's), `pc`; options `log`, `paths`, `labels`, `depth`, `if` [{path, op (== != < <= > >=), value (number, string, null)}], `count`, `once`, `this`, `tag` | `bp` (id), `applied`, `unbound` [the native bindings unbound for it] |
 | `clear` | `bp` or `all` | `cleared` |
 | `list` | | `breakpoints` [...], `patched` (pcs), `unboundBindings` |
@@ -155,6 +155,54 @@ stop's frame 0), `true`: a resume pc (callers, a waiting task): its line is pc -
 | `step` | `targets` [{pc, depth: "le" / "lt" / "any"}], `into` | `targets` (set) |
 | `pause` | | stops the next task that enters a method |
 | `detach` | | `cleared`: every breakpoint removed, the game goes on |
+| `eval` | a compiled block (below), `low`, `high`, `frame` N (at a stop) or `on` ID (an object; a class id: its statics) or neither (the globals), `write` [cells it assigns], `budget` (instructions, 10 M), `ms` (2000), `depth`, `items`, `chars` | `value`, `instructions`; a failed run: `failed` (why), `pc` (in the block) |
+| `watch` | `object`, `on` ID + `slot` (a field) or `global` SLOT, `change`, the breakpoint options (`log`, `labels`, `ifCode`, `logCode`, `count`, `once`, `tag`) | as `break` (`watch`, `on`, `slot`) |
+| `snapshot` | `classes` [ids] (only their objects, no containers), `chars` | `object`, `state`, `f` (globals), `classes` [{id, f}], `objects` [{id, c, f}], `arrays` [{id, v}], `tables` [{id, v: [[k, v]]}], `tasks` (as `tasks`); values: a number, null, {"s"}, {"d"}, {"l"}, {"o"}, {"a"}, {"m"}, {"r"} |
+| `reload` | `object`, `size`, `crc32`, `methods` [{entry, end (the loaded method), frame, a compiled block, revert (its bytes are the loaded ones: undone)}], `sidecar` | `placed` [{entry, placement, size, inPlace}], `reloaded`, `serial` |
+
+Stage 2b additions: `hello` gives `stage` 2, `syncNatives` (0: the client sends them with `config`) and per object
+`codeSize`, `reloaded`, `sidecar` (the reloaded layout's sidecar the client wrote), `reloadSerial`, `reloads` [{entry,
+placement, size}] (the game's whole reload table); `break` takes `ifCode` (a compiled condition, with the path ones) and
+`logCode` (a block whose value, an array, is logged: the `log` event's `value`); `list` adds `codeBlocks`, `codeBlockBytes`,
+`poolTailBytes`, `reloads`, `retiredBindings`; events: `stop` with `reason` `watch` and `old` / `new`, `log` with
+`old` / `new` for a watchpoint, `{"event": "error", "bp", "error"}` (a compiled condition failed: once per breakpoint,
+it then counts as false), `dropped` with `tag` (a reload replaced the breakpoint's method).
+
+### Debugger code (compiled blocks)
+
+A compiled block is `{"code": hex, "jumps": [offsets], "strings": [[offset, text]], "low", "high"}`: one method in the
+object file's layout compiled at offset 0 (`x3kc/kcsnip.py`; a reload's methods `x3kc/kcreload.py`). The game puts it
+into a block of its code tail (1 MB past the object's code), adds the block's offset to the 4-byte targets at `jumps`,
+writes the pool offset of each text at its offset (a text the object's pool lacks goes into the pool's tail once,
+256 KB, given back when no block and no reload is left) and runs the loader's passes over it. Calls of the object's methods are their loaded
+entries. A run (eval, condition, log) is a scratch task: the cells R + low .. R + high of the frame (R its return
+cell, the sidecar's cell numbers) copied below a frame whose `this` is the frame's receiver; `write` copies the cells
+named back after the run. Natives: only the session's at-once list (`config syncNatives`); another, a fork, a kill of the
+held task (the stopped or hit one: it stays alive) or a delete of an object it runs in ends the run. The client refuses
+before sending when the snippet, or any method it can reach in the loaded `.obj` (calls by name: every method of that
+name), forks or calls a native that may wait (`kcsnip.CallGraph`, cached in `%TEMP%/x3kc_dbg`); what remains is a run the
+budget ends inside a game method, whose work stays half done. The snippet's names: the frame's params and locals, `this` and its fields (bare names), globals, constants,
+methods, natives; a string literal is a heap string at run time (`"x" + ""`: the tail's strings can then be given back,
+and a save never stores a pool offset the original object lacks): no pool string of the tail reaches the
+game's state.
+
+### Hot reload
+
+`x3kc dbg reload [File.kc | Class::Method] --src PROJECT` compiles the project (target x3_src-<edition>, the compile
+cache in `%TEMP%/x3kc_dbg/cache`), compares each method with the loaded object's `.obj` (its `-kc` file, or the `.obj`
+beside its sidecar) and refuses a new layout: classes, parents, every class's field slots, globals, the methods' set
+and parameter counts. A changed method goes relocatable (jumps relative, calls the loaded entries, strings by text; a
+literal the loaded pool lacks compiled as a heap string); a method the game runs reloaded is sent again even when it is
+back to the loaded bytes (a revert). The game refuses a method a task has a frame in. The reloaded layout's sidecar
+(the new compile's lines and variables at the pcs the game runs: unchanged methods at their entries, reloaded ones at
+their placement; `origin` the loaded entry, `reloaded`; the object's `reload` the serial) goes to
+`%TEMP%/x3kc_dbg/<object>-<pid>-r<serial>.kcdbg`, and the game names it in `hello`: every later command reads it. It is
+built from the game's whole reload table: a method reloaded before keeps its previous entry, one the game runs as loaded
+gets the new compile's lines when its bytes are the loaded ones, else the loaded sidecar's. A revert (the source back,
+reloaded again) puts the loaded bytes back and the bindings the reload unbound. The game refuses to save while a
+reload is active (a load drops every reload: saved pcs of reloaded code would resume nowhere): revert first. `x3kc symbolize` switches an object's
+sidecar at the log's `script debugger: reload N of <object>` line (by the log's process id and N, in `%TEMP%/x3kc_dbg`
+or a `--dbg` folder).
 
 Breakpoint options: `count N` - it fires from its Nth passing hit on; `once` - removed after it fired; `this ID` - only
 when the frame's receiver is #ID; `if` - every condition must hold (a path with no value equals null only; an object
@@ -211,6 +259,15 @@ The game: `--pid`, else the only pipe `x3dbg-*`. A reply is awaited `--deadline 
 | `tasks [--max N]` | the main VM's tasks with their top location (MSCI script and code index) |
 | `continue`, `step [over|into|out|msci]`, `pause`, `detach`, `clear [ID | --all]`, `list`, `config --stop-timeout S` | |
 | `run FILE` | the commands of FILE, one per line (`#` comments); stops at the first error |
+| `eval EXPR [--block] [--file F] [--frame N] [--on ID] [--write] [--budget N] [--ms N] [-v]` | a KC expression / block (`return X;`) in the stopped frame, on an object, or in the globals' context; prints its value |
+| `watch this.FIELD \| #ID.FIELD \| class.CLASS.FIELD \| global.NAME [--change] [--if ...] [--log ...] [--once] [--count N]` | a watchpoint: stop / log at the write (the writer's location, old and new value) |
+| `snapshot -o FILE.json [--objects CLASS,...] [--chars N]` | the script world with the sidecar's names (objects, globals, statics, arrays, tables, tasks) |
+| `diff A.json B.json [--max N]` | what changed between two snapshots (no game needed) |
+| `reload [File.kc \| Class::Method] --src PROJECT` | Hot reload (above) |
+
+`--if` takes one KC expression (compiled against the sidecar in the hit frame; all `--if` of a breakpoint hold), or the
+old form `PATH OP VALUE` (a path compare); `--log` takes paths or KC expressions (comma-separated at the top level:
+when one is not a path they all run as one compiled array).
 
 Locations print as `File.kc:line Class::Method`. PATH: a base - `NAME` (a live variable of the frame, else a field of
 `this`, else a global), `local.NAME` / `param.NAME`, `this`, `global.NAME`, `#ID`, `class.CLASS`, `@CELL` (a raw cell of
@@ -238,4 +295,10 @@ while one exists).
   `location(name, pc)`.
 - `find(name, dirs, size=, crc32=)` (the sidecar of that identity), `find_all(name, dirs)`, `head(path)` (the
   identity from the first line), `sidecar_path(obj)`, `identity(bytes)`; `collect` / `write` (the compiler's side).
-  `DebugInfo.load` reads plain and gzipped files.
+  `DebugInfo.load` reads plain and gzipped files. A method's `origin` is its loaded entry (a reload sidecar's tail
+  methods: `entry` is the placement), `reloaded` whether the game runs it reloaded.
+- `x3kc/kcsnip.py`: `symbols(info)` (the compiler's symbol table from a sidecar), `compile_snippet(info, text, block=,
+  cls=, outer={name: cell})` -> the compiled block plus `cells`, `lines`, `natives`; `relocations(code, pool)`.
+- `x3kc/kcreload.py`: `plan(info, obj, src, what, objpath)` (ReloadError: why not), `write_sidecar(path, plan,
+  placed, obj)`.
+- `x3kc/dbg.py`: `snapshot_diff(a, b, limit)`, `named_snapshot(info, reply)`.

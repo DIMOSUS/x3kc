@@ -143,7 +143,7 @@ class Method:
     file, line (its header), frame (the frame instruction's operand), params, lines [(pc, line, col, file)], vars
     [(name, kind, cell, start, end)]: cell relative to the frame's return-offset cell (docs/debugging.md "Frames")."""
     __slots__ = ('cls', 'cls_name', 'name', 'entry', 'end', 'file', 'line', 'frame', 'params', 'lines', 'vars',
-                 '_pcs')
+                 '_pcs', 'origin', 'reloaded')
 
     @property
     def qualname(self):
@@ -174,6 +174,10 @@ class DebugInfo:
             x.lines = [(r[0], r[1], r[2], self.files[r[3]] if len(r) > 3 else x.file) for r in m['lines']]
             x._pcs = [r[0] for r in x.lines]
             x.vars = [tuple(v) for v in m['vars']]
+            # a reload's sidecar (x3kc dbg reload): origin the loaded entry callers call (a method the reload put into
+            # the game's code tail has a jump there), reloaded its bytes replaced in the running game
+            x.origin = m.get('origin', x.entry)
+            x.reloaded = bool(m.get('reloaded'))
             self.methods.append(x)
         self.methods.sort(key=lambda x: x.entry)
         self._entries = [x.entry for x in self.methods]
@@ -294,6 +298,10 @@ RAW = re.compile(r'kc\[(?P<obj>[A-Za-z0-9_.-]+) 0x(?P<pc>[0-9a-fA-F]+)(?P<rest>[
 LOADED = re.compile(r'kc object (?P<obj>[A-Za-z0-9_.-]+) loaded: build (?P<build>\d+), (?P<size>\d+) bytes, '
                     r'crc32 (?P<crc>[0-9a-fA-F]{8})(?:, file (?P<file>.+?))?\s*$')
 _METHOD = re.compile(r'^\s*-?\d+:\S+')
+# the live debugger's reload lines (x3_src debugger.cpp): from there on the object runs the reloaded layout, whose sidecar
+# x3kc dbg reload wrote as <name>-<pid>-r<serial>.kcdbg (%TEMP%/x3kc_dbg, or a --dbg folder)
+RELOADED = re.compile(r'script debugger: reload (?P<serial>\d+) of (?P<obj>\w+):')
+STARTED = re.compile(r'x3rw log started .*, process (?P<pid>\d+)')
 
 
 class Symbolizer:
@@ -309,6 +317,8 @@ class Symbolizer:
         self.infos = {}         # (path, identity) -> DebugInfo | None
         self.found = {}         # (name, size, crc32) -> the sidecar in dirs (find), None: none
         self.warned = set()
+        self.pid = None
+        self.reload = {}        # object name -> the sidecar of its reloaded layout (its last reload line)
 
     def info(self, name):
         """the DebugInfo of an object as the log has it now, or None: the sidecar beside the loaded file, else the
@@ -316,6 +326,8 @@ class Symbolizer:
         line, the first one found, its identity unchecked (one warning)"""
         size, crc, path = self.loaded.get(name, (None, None, None))
         cands = []
+        if self.reload.get(name):
+            cands.append(self.reload[name])
         if path:
             cands.append(sidecar_path(path))
         if (name, size, crc) not in self.found:
@@ -363,6 +375,22 @@ class Symbolizer:
         m = LOADED.search(text)
         if m:
             self.loaded[m['obj']] = (int(m['size']), m['crc'].lower(), m['file'])
+            self.reload.pop(m['obj'], None)             # (a load: its own layout again)
+        m = STARTED.search(text)
+        if m:
+            self.pid = int(m['pid'])
+        m = RELOADED.search(text)
+        if m:
+            name = '%s-%s-r%s.kcdbg' % (m['obj'], self.pid, m['serial'])
+            import tempfile
+            dirs = [d for d in self.dirs if os.path.isdir(d)] + [os.path.join(tempfile.gettempdir(), 'x3kc_dbg')]
+            found = [os.path.join(d, name) for d in dirs if os.path.isfile(os.path.join(d, name))]
+            if found:
+                self.reload[m['obj']] = found[0]
+            else:
+                self.once(('reload', name), '%s was reloaded (reload %s): its sidecar %s is not found: locations of '
+                          'reloaded methods may be wrong' % (m['obj'], m['serial'], name))
+                self.reload.pop(m['obj'], None)
 
         def sub(r):
             loc = self.location(r['obj'], int(r['pc'], 16))

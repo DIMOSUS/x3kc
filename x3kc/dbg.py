@@ -134,6 +134,11 @@ class Session:
         self.out = out
         self.hello = conn.call('hello')
         self.infos = {}
+        if self.hello.get('stage', 0) >= 2 and not self.hello.get('syncNatives'):
+            # the session's natives a debugger code run may call: the edition's at-once list, sent once (the game keeps
+            # it until detach)
+            from . import targets
+            conn.call('config', syncNatives=sorted(targets.sync('x3_src-' + self.hello.get('edition', 'AP').lower())))
 
     def objects(self):
         return self.hello.get('objects', [])
@@ -159,6 +164,11 @@ class Session:
         if key in self.infos:
             return self.infos[key]
         cands = []
+        if obj.get('sidecar') and os.path.isfile(obj['sidecar']):
+            # a reload's sidecar (the reloaded layout, written by x3kc dbg reload): the one of the code as it runs now
+            info = kcdbg.DebugInfo.load(obj['sidecar'])
+            self.infos[key] = info
+            return info
         if obj.get('file'):
             cands.append(kcdbg.sidecar_path(obj['file']))
         found = kcdbg.find(obj['name'], self.dirs, obj['size'], obj['crc32'])
@@ -479,15 +489,27 @@ class Cli:
             e = dict(e)
             e['location'] = where
             if kind == 'log':
+                values = e.get('values', [])
+                if isinstance(e.get('value'), dict):        # (log expressions: one array of their values)
+                    v = e['value']
+                    values = v.get('items', []) if v.get('t') == 'array' else [v]
                 vals = ['%s = %s' % (l, format_value(info, v).replace('\n', ' '))
-                        for l, v in zip(e.get('labels', []), e.get('values', []))]
+                        for l, v in zip(e.get('labels', []), values)]
+                if 'old' in e:
+                    vals.insert(0, 'write %s -> %s' % (format_value(info, e['old']).replace('\n', ' '),
+                                                       format_value(info, e['new']).replace('\n', ' ')))
                 return e, 'log bp %d task %d at %s%s%s' % (e['bp'], e['task'], where,
                                                            ': ' if vals else '', ', '.join(vals))
             text = 'stopped (%s%s) task %d at %s' % (e.get('reason', 'stop'),
                                                       ' bp %d' % e['bp'] if 'bp' in e else '', e['task'], where)
             if e.get('msci'):
                 text += ' msci=%s:%d' % (e['msci']['script'], e['msci']['index'])
+            if 'old' in e:
+                text += ': write %s -> %s' % (format_value(info, e['old']).replace('\n', ' '),
+                                              format_value(info, e['new']).replace('\n', ' '))
             return e, text
+        if kind == 'error':
+            return e, 'bp %d: its compiled condition / log failed: %s' % (e.get('bp', 0), e.get('error'))
         if kind == 'resumed':
             return e, 'resumed (%s)' % e.get('reason')
         if kind == 'stepEnded':
@@ -533,17 +555,7 @@ class Cli:
         if method is not None:
             frame = Frame(info, {'pc': pc, 'resume': False}, 0)
         comp = PathCompiler(self.session(), info, frame, dynamic=False)
-        conds = []
-        for p, op, value in a.cond or []:
-            conds.append({'path': comp.compile(p), 'op': op, 'value': parse_literal(value)})
-        if conds:
-            req['if'] = conds
-        if a.log:
-            labels = [x.strip() for x in ','.join(a.log).split(',') if x.strip()]
-            req['log'] = True
-            req['paths'] = [comp.compile(x) for x in labels]
-            req['labels'] = labels
-            req['depth'] = a.depth
+        self.compiled_parts(a, info, req, frame, comp)
         if a.count:
             req['count'] = a.count
         if a.once:
@@ -551,6 +563,102 @@ class Cli:
         if a.this:
             req['this'] = a.this
         return req
+
+    def sync_natives(self):
+        """the natives a debugger code run may call: the at-once ones of the game's edition (x3kc/targets.py)"""
+        from . import targets
+        ed = self.session().hello.get('edition', 'AP').lower()
+        return sorted(targets.sync('x3_src-' + ed))
+
+    def snippet(self, info, text, frame=None, cls=None, block=False):
+        """a KC expression / block compiled against the sidecar (kcsnip): frame - its variables are the snippet's
+        outer names, its method's class `this`; cls - the class without a frame"""
+        from . import kcsnip
+        outer = {}
+        if frame is not None:
+            outer = {n: c for n, k, c in frame.vars() if k in ('param', 'local')}
+            if cls is None and frame.method is not None:
+                cls = frame.method.cls
+        try:
+            snip = kcsnip.compile_snippet(info, text, block=block, cls=cls or 0, outer=outer)
+        except kcsnip.SnipError as x:
+            raise DbgError(str(x))
+        from . import targets
+        known = targets.known('x3_src-' + self.session().hello.get('edition', 'AP').lower())
+        unknown = [n for n in snip['natives'] if n not in known]
+        if unknown:
+            # (a call of a name no method of the class chain, function or native has compiles as a native call)
+            raise DbgError('<eval>: %s: no method of %s, function or native of the exe has that name'
+                           % (', '.join(unknown), info.class_name(cls) if cls else 'the globals'))
+        sync = set(self.sync_natives())
+        waits = [n for n in snip['natives'] if n not in sync]
+        if waits:
+            raise DbgError('<eval>: %s may wait: debugger code calls only natives that answer at once' % ', '.join(waits))
+        graph = self.call_graph(info)
+        why = graph.refusal(snip, sync, known) if graph is not None else None
+        if why:
+            raise DbgError('<eval>: refused before it runs: %s (the game would end the run inside that method, its work '
+                           'half done)' % why)
+        return snip
+
+    def call_graph(self, info):
+        """the loaded object's call graph (kcsnip.CallGraph), cached in %TEMP%/x3kc_dbg by the object's identity"""
+        import pickle
+        import tempfile
+        from . import kcsnip
+        obj = self.session().object_named(info.name)
+        try:
+            path = self.object_file(obj, info)
+        except DbgError:
+            print('note: no object file: the methods the snippet calls are not checked (the game still refuses a '
+                  'waiting native or a fork when it gets there)', file=sys.stderr)
+            return None
+        d = os.path.join(tempfile.gettempdir(), 'x3kc_dbg')
+        os.makedirs(d, exist_ok=True)
+        cache = os.path.join(d, 'graph-%s-%s-%d.pickle' % (obj['name'], obj['crc32'], obj['size']))
+        if os.path.isfile(cache):
+            with open(cache, 'rb') as h:
+                g = pickle.load(h)
+        else:
+            g = kcsnip.CallGraph(info, path)
+            with open(cache + '.tmp', 'wb') as h:
+                pickle.dump(g, h, protocol=pickle.HIGHEST_PROTOCOL)
+            os.replace(cache + '.tmp', cache)
+        # the methods the game runs reloaded: their new bodies (written by x3kc dbg reload beside its sidecar)
+        from . import kcreload
+        if obj.get('reloads') and obj.get('sidecar') and os.path.isfile(kcreload.bodies_path(obj['sidecar'])):
+            with open(kcreload.bodies_path(obj['sidecar']), encoding='utf-8') as h:
+                g.overlay(json.load(h))
+        return g
+
+    def compiled_parts(self, a, info, req, frame, comp, cls=None):
+        """--if (one KC expression, or the old PATH OP VALUE) and --log (paths, or KC expressions) of a breakpoint /
+        watchpoint into its request"""
+        conds = []
+        for words in a.cond or []:
+            if len(words) == 3 and words[1] in ('==', '!=', '<', '<=', '>', '>='):
+                try:
+                    conds.append({'path': comp.compile(words[0]), 'op': words[1], 'value': parse_literal(words[2])})
+                    continue
+                except DbgError:
+                    pass
+            if 'ifCode' in req:
+                raise DbgError('one --if expression (join them with &&)')
+            s = self.snippet(info, ' '.join(words), frame, cls)
+            req['ifCode'] = {k: s[k] for k in ('code', 'jumps', 'strings', 'low', 'high')}
+        if conds:
+            req['if'] = conds
+        if a.log:
+            items = split_top(','.join(a.log))
+            req['log'] = True
+            req['labels'] = items
+            req['depth'] = a.depth
+            try:
+                req['paths'] = [comp.compile(x) for x in items]
+            except DbgError:
+                # not all paths: the items as one KC array, compiled and run at each hit
+                s = self.snippet(info, '{%s}' % ', '.join(items), frame, cls)
+                req['logCode'] = {k: s[k] for k in ('code', 'jumps', 'strings', 'low', 'high')}
 
     def resolve_location(self, info, text):
         """LOCATION -> [(pc, method)]: File.kc:LINE, Class::Method / Function (its first statement), 0xPC"""
@@ -756,6 +864,10 @@ class Cli:
             print('%d: %s [0x%x] hits %d%s' % (b['bp'], b.get('tag', ''), b['pc'], b['hits'],
                                                 (' (' + ', '.join(flags) + ')') if flags else ''))
         print('%d patched pcs, %d unbound native bindings' % (r['patched'], r['unboundBindings']))
+        if 'codeBlocks' in r:
+            print('debugger code: %d blocks (%d bytes), %d bytes of added strings, %d reloaded methods, %d bindings '
+                  'retired by reloads' % (r['codeBlocks'], r['codeBlockBytes'], r['poolTailBytes'], r['reloads'],
+                                          r['retiredBindings']))
         return 0
 
     def print_events(self, events):
@@ -933,6 +1045,181 @@ class Cli:
         self.emit(r, 'stop timeout %d s' % r['stopTimeout'])
         return 0
 
+    # ---- stage 2b -----------------------------------------------------------------------------------------------
+    def object_class(self, oid):
+        v = self.session().conn.call('read', paths=[[['object', oid]] if oid < 0 else [['class', oid]]],
+                                     depth=0)['values'][0]
+        if v.get('t') != 'obj' or 'class' not in v:
+            raise DbgError('#%d: %s' % (oid, v.get('error', 'not an object')))
+        return v['class']
+
+    def c_eval(self, a):
+        s = self.session()
+        info = s.main_info()
+        text = open(a.file, encoding='utf-8').read() if a.file else ' '.join(a.expr)
+        if not text.strip():
+            raise DbgError('eval EXPR | --file F')
+        block = bool(a.file) or a.block
+        req = {'depth': a.depth, 'items': a.items}
+        frame = None
+        cls = 0
+        if a.on is not None:
+            cls = self.object_class(a.on)
+            req['on'] = a.on
+        elif self.stop_state() is not None:
+            _, frame = self.frame_of(None, a.frame)
+            req['frame'] = a.frame
+        if a.budget:
+            req['budget'] = a.budget
+        if a.ms:
+            req['ms'] = a.ms
+        snip = self.snippet(info, text, frame, cls if frame is None else None, block)
+        req.update({k: snip[k] for k in ('code', 'jumps', 'strings', 'low', 'high')})
+        if a.write:
+            req['write'] = snip['written']      # (only the variables it assigns)
+        r = s.conn.call('eval', **req)
+        if 'failed' in r:
+            line = kcsnip_line(snip, r.get('pc'))
+            raise DbgError('eval%s: %s (%d instructions)' % (' line %d' % line if line else '', r['failed'],
+                                                             r.get('instructions', 0)))
+        v = r.get('value')
+        where = (' in %s' % frame.where()) if frame else (' on #%d' % a.on if a.on is not None else '')
+        self.emit({'value': v, 'instructions': r.get('instructions'), 'natives': snip['natives']},
+                  '%s%s' % (format_value(info, v), '' if not a.verbose else ' (%d instructions%s)'
+                            % (r.get('instructions', 0), where)))
+        return 0
+
+    def watch_target(self, info, text):
+        """this.FIELD | #ID.FIELD | class.CLASS.FIELD | global.NAME -> (request part, class of the object, label)"""
+        m = re.match(r'^global\.([A-Za-z_]\w*)$', text)
+        if m:
+            if m.group(1) not in info.globals:
+                raise DbgError('no global %s' % m.group(1))
+            return {'global': info.globals.index(m.group(1))}, None
+        m = re.match(r'^(this|#-?\d+|class\.[A-Za-z_]\w*)\.([A-Za-z_]\w*)$', text)
+        if not m:
+            raise DbgError('watch this.FIELD | #ID.FIELD | class.CLASS.FIELD | global.NAME')
+        base, field = m.groups()
+        pc = PathCompiler(self.session(), info)
+        if base == 'this':
+            stop = self.stop_state()
+            if stop is None or stop.get('this') is None:
+                raise DbgError('this: at a stop whose frame has a receiver (else #ID.FIELD)')
+            oid = stop['this']
+            cid = self.object_class(oid)
+        elif base.startswith('#'):
+            oid = int(base[1:])
+            cid = self.object_class(oid)
+        else:
+            cid = pc.class_id(base[6:])
+            oid = cid
+        return {'on': oid, 'slot': pc.field_slot(cid, field)}, cid
+
+    def c_watch(self, a):
+        s = self.session()
+        info = s.main_info()
+        obj = s.main_object()
+        part, cid = self.watch_target(info, a.target)
+        req = {'object': obj['name'], 'tag': 'watch ' + a.target}
+        req.update(part)
+        if a.change:
+            req['change'] = True
+        if a.count:
+            req['count'] = a.count
+        if a.once:
+            req['once'] = True
+        # --if / --log run in the writer's frame: for a field the writer is the object itself (its `this`), a global's
+        # writer is any method - a global function's names then (no frame variables)
+        comp = PathCompiler(s, info, None, dynamic=False)
+        self.compiled_parts(a, info, req, None, comp, cls=cid or 0)
+        r = s.conn.call('watch', **req)
+        self.emit(r, 'watchpoint %d on %s%s' % (r['bp'], a.target, ' (log)' if r.get('log') else ''))
+        return 0
+
+    def c_snapshot(self, a):
+        s = self.session()
+        info = s.main_info()
+        req = {'chars': a.chars}
+        if a.objects:
+            pc = PathCompiler(s, info)
+            names = [x.strip() for x in a.objects.split(',') if x.strip()]
+            ids = set()
+            for n in names:
+                cid = pc.class_id(n)
+                ids.add(cid)
+                ids |= {c for c in info.classes if cid in class_chain(info, c)}
+            req['classes'] = sorted(ids)
+        t0 = time.time()
+        r = s.conn.call('snapshot', deadline=max(Conn.reply_timeout, 300), **req)
+        took = time.time() - t0
+        snap = named_snapshot(info, r)
+        data = json.dumps(snap, ensure_ascii=False, separators=(',', ':'), sort_keys=True)
+        with open(a.output, 'w', encoding='utf-8') as h:
+            h.write(data)
+        self.emit({'file': a.output, 'bytes': len(data), 'objects': len(snap['objects']),
+                   'arrays': len(snap['arrays']), 'tables': len(snap['tables']), 'tasks': len(snap['tasks']),
+                   'seconds': round(took, 2)},
+                  '%s: %d objects, %d arrays, %d tables, %d tasks, %d globals; %.1f MB (%.1f s)'
+                  % (a.output, len(snap['objects']), len(snap['arrays']), len(snap['tables']), len(snap['tasks']),
+                     len(snap['globals']), len(data) / 1e6, took))
+        return 0
+
+    def c_diff(self, a):
+        with open(a.a, encoding='utf-8') as h:
+            A_ = json.load(h)
+        with open(a.b, encoding='utf-8') as h:
+            B_ = json.load(h)
+        lines = snapshot_diff(A_, B_, a.max)
+        if self.json:
+            print(json.dumps({'changes': lines}))
+        else:
+            print('\n'.join(lines) if lines else 'no changes')
+        return 0
+
+    def c_reload(self, a):
+        from . import kcreload
+        s = self.session()
+        info = s.main_info()
+        obj = s.main_object()
+        try:
+            plan = kcreload.plan(info, obj, a.src, a.what, self.object_file(obj, info))
+        except kcreload.ReloadError as x:
+            raise DbgError(str(x))
+        if not plan['methods']:
+            self.emit({'reloaded': 0}, 'nothing changed in %s' % (a.what or a.src))
+            return 0
+        # the breakpoints in the methods replaced: dropped by the game (set them again by their tags)
+        listed = s.conn.call('list')['breakpoints']
+        ranges = [(m['entry'], m['end']) for m in plan['methods']]
+        hit = [b for b in listed if b.get('watch') is None and info.method_at(b['pc']) is not None and
+               any(info.method_at(b['pc']).entry == e for e, _ in ranges)]
+        # the reload's serial (the game's next): its sidecar's name, the game log's `reload N` line
+        side = kcreload.sidecar_path(s.conn.pid, obj, obj.get('reloadSerial', 0) + 1)
+        r = s.conn.call('reload', object=obj['name'], size=obj['size'], crc32=obj['crc32'],
+                        methods=[{k: m[k] for k in ('entry', 'end', 'frame', 'code', 'jumps', 'strings', 'revert')}
+                                 for m in plan['methods']], sidecar=side)
+        s.hello = s.conn.call('hello')     # (the reloaded state for the rest of this process: a `run` file's later lines)
+        s.infos = {}
+        now = [o for o in s.hello['objects'] if o['name'] == obj['name']][0]
+        kcreload.write_sidecar(side, plan, now.get('reloads', []), obj, r.get('serial'))
+        names = ', '.join(m['name'] for m in plan['methods'])
+        self.emit(dict(r, methods=[m['name'] for m in plan['methods']], sidecar=side),
+                  'reloaded %d methods (%s)%s' % (r['reloaded'], names,
+                                                 ''.join('\n  breakpoint %d dropped: set it again: x3kc dbg break %s'
+                                                         % (b['bp'], b.get('tag', '0x%x' % b['pc'])) for b in hit)))
+        return 0
+
+    def object_file(self, obj, info):
+        """the loaded object's .obj: its -kc file, else beside its sidecar"""
+        if obj.get('file') and os.path.isfile(obj['file']):
+            return obj['file']
+        if info.path:
+            p = os.path.splitext(info.path[:-3] if info.path.endswith('.gz') else info.path)[0] + '.obj'
+            if os.path.isfile(p):
+                return p
+        raise DbgError('the object file of %s is not found (a -kc object, or the .obj beside its sidecar)'
+                       % obj['name'])
+
     def c_run(self, a):
         rc = 0
         with open(a.file, encoding='utf-8') as h:
@@ -957,6 +1244,138 @@ class Cli:
         return rc
 
 
+def kcsnip_line(snip, pc):
+    from . import kcsnip
+    return kcsnip.line_of(snip, pc) if pc is not None else None
+
+
+def split_top(text):
+    """comma-separated items, commas inside (), [], {} and strings kept"""
+    out, depth, cur, q = [], 0, '', None
+    for ch in text:
+        if q:
+            cur += ch
+            if ch == q:
+                q = None
+            continue
+        if ch in '"\'':
+            q = ch
+        elif ch in '([{':
+            depth += 1
+        elif ch in ')]}':
+            depth -= 1
+        elif ch == ',' and depth == 0:
+            if cur.strip():
+                out.append(cur.strip())
+            cur = ''
+            continue
+        cur += ch
+    if cur.strip():
+        out.append(cur.strip())
+    return out
+
+
+def class_chain(info, cid):
+    out, seen = [], set()
+    while cid in info.classes and cid not in seen:
+        seen.add(cid)
+        out.append(cid)
+        cid = info.classes[cid].get('parent')
+    return out
+
+
+def named_snapshot(info, r):
+    """the game's snapshot reply with the sidecar's names: objects {id: {class, fields {name: value}}}, globals
+    {name: value}, statics {class: {field: value}}, arrays {id: [values]}, tables {id: [[key, value]]}, tasks
+    {id: {state, object, location}}"""
+    def fields_of(cid, values):
+        names = class_fields(info, cid)
+        return {(names[i] if i < len(names) else 'f%d' % i): v for i, v in enumerate(values)}
+    out = {'format': 'x3kc-snapshot', 'version': 1, 'object': r.get('object'), 'state': r.get('state'),
+           'globals': {(info.globals[i] if i < len(info.globals) else 'g%d' % i): v for i, v in enumerate(r.get('f', []))},
+           'statics': {}, 'objects': {}, 'arrays': {}, 'tables': {}, 'tasks': {}}
+    for k in r.get('classes', []):
+        out['statics'][info.class_name(k['id']) or str(k['id'])] = fields_of(k['id'], k['f'])
+    for o in r.get('objects', []):
+        out['objects'][str(o['id'])] = {'class': info.class_name(o['c']) or str(o['c']), 'fields': fields_of(o['c'], o['f'])}
+    for x in r.get('arrays', []):
+        out['arrays'][str(x['id'])] = x['v']
+    for x in r.get('tables', []):
+        out['tables'][str(x['id'])] = x['v']
+    for t in r.get('tasks', []):
+        rec = {'state': t.get('state'), 'frames': t.get('frames')}
+        if 'object' in t:
+            rec['object'] = t['object']
+        if 'pc' in t:
+            rec['location'] = location_text(info, t['pc'], t.get('resume', True))
+        if t.get('msci'):
+            rec['msci'] = '%s:%d' % (t['msci']['script'], t['msci']['index'])
+        out['tasks'][str(t['task'])] = rec
+    return out
+
+
+def snap_text(v):
+    if v is None:
+        return 'null'
+    if isinstance(v, dict):
+        k, x = next(iter(v.items()))
+        return {'s': lambda: json.dumps(x, ensure_ascii=False), 'd': lambda: repr(x), 'l': lambda: '%sL' % x,
+                'o': lambda: '#%s' % x, 'a': lambda: 'array#%s' % x, 'm': lambda: 'table#%s' % x,
+                'r': lambda: '<ret 0x%x>' % x}.get(k, lambda: json.dumps(v))()
+    return json.dumps(v)
+
+
+def snapshot_diff(A_, B_, limit=200):
+    """what changed from snapshot A to B, one line each (objects created / deleted, fields, globals, statics,
+    containers, tasks); at most limit lines per section, the rest counted"""
+    out = []
+
+    def section(title, rows):
+        if not rows:
+            return
+        out.append('%s (%d):' % (title, len(rows)))
+        out.extend('  ' + r for r in rows[:limit])
+        if len(rows) > limit:
+            out.append('  ... %d more' % (len(rows) - limit))
+
+    def changed(a, b):
+        return ['%s: %s -> %s' % (k, snap_text(a.get(k)), snap_text(b.get(k)))
+                for k in sorted(set(a) | set(b)) if a.get(k) != b.get(k)]
+    section('globals', changed(A_['globals'], B_['globals']))
+    st = []
+    for c in sorted(set(A_['statics']) | set(B_['statics'])):
+        st += ['%s.%s' % (c, x) for x in changed(A_['statics'].get(c, {}), B_['statics'].get(c, {}))]
+    section('static fields', st)
+    oa, ob = A_['objects'], B_['objects']
+    section('objects created', ['#%s %s' % (i, ob[i]['class']) for i in sorted(set(ob) - set(oa), key=int)])
+    section('objects deleted', ['#%s %s' % (i, oa[i]['class']) for i in sorted(set(oa) - set(ob), key=int)])
+    fl = []
+    for i in sorted(set(oa) & set(ob), key=int):
+        fl += ['#%s %s.%s' % (i, ob[i]['class'], x) for x in changed(oa[i]['fields'], ob[i]['fields'])]
+    section('fields changed', fl)
+    for kind in ('arrays', 'tables'):
+        ca, cb = A_[kind], B_[kind]
+        rows = ['%s#%s created (%d)' % (kind[:-1], i, len(cb[i])) for i in sorted(set(cb) - set(ca), key=int)]
+        rows += ['%s#%s deleted' % (kind[:-1], i) for i in sorted(set(ca) - set(cb), key=int)]
+        for i in sorted(set(ca) & set(cb), key=int):
+            if ca[i] != cb[i]:
+                if kind == 'arrays' and len(ca[i]) == len(cb[i]):
+                    d = ['[%d] %s -> %s' % (k, snap_text(x), snap_text(y)) for k, (x, y) in enumerate(zip(ca[i], cb[i]))
+                         if x != y]
+                    rows.append('array#%s: %s%s' % (i, ', '.join(d[:5]), ' ...' if len(d) > 5 else ''))
+                else:
+                    rows.append('%s#%s: %d -> %d elements' % (kind[:-1], i, len(ca[i]), len(cb[i])))
+        section(kind, rows)
+    ta, tb = A_['tasks'], B_['tasks']
+    rows = ['task %s started at %s' % (i, tb[i].get('location')) for i in sorted(set(tb) - set(ta), key=int)]
+    rows += ['task %s ended (was at %s)' % (i, ta[i].get('location')) for i in sorted(set(ta) - set(tb), key=int)]
+    rows += ['task %s: %s %s -> %s %s' % (i, ta[i]['state'], ta[i].get('location'), tb[i]['state'], tb[i].get('location'))
+             for i in sorted(set(ta) & set(tb), key=int)
+             if (ta[i]['state'], ta[i].get('location')) != (tb[i]['state'], tb[i].get('location'))]
+    section('tasks', rows)
+    return out
+
+
 def parse_literal(text):
     if text in ('null', 'none'):
         return None
@@ -974,11 +1393,13 @@ def parse_literal(text):
 
 
 def add_bp_options(p):
-    p.add_argument('--if', dest='cond', nargs=3, action='append', metavar=('PATH', 'OP', 'VALUE'),
-                   help='stop / log only when PATH OP VALUE (== != < <= > >=; a number, "text" or null); repeatable: '
-                        'all must hold')
-    p.add_argument('--log', action='append', metavar='PATHS', help='a tracepoint: log these paths (comma-separated) '
-                   'into the event stream and go on (no stop)')
+    p.add_argument('--if', dest='cond', nargs='+', action='append', metavar='EXPR',
+                   help='stop / log only when the KC expression EXPR is true (compiled against the sidecar, run in the '
+                        'hit frame: its variables, this, fields, globals, constants, calls of at-once natives); the '
+                        'old form PATH OP VALUE (== != < <= > >=; a number, "text" or null) is a path compare; '
+                        'repeatable: all must hold (one expression)')
+    p.add_argument('--log', action='append', metavar='ITEMS', help='a tracepoint: log these paths or KC expressions '
+                   '(comma-separated) into the event stream and go on (no stop)')
     p.add_argument('--depth', type=int, default=1, help='--log: the depth of the logged values (default 1)')
     p.add_argument('--count', type=int, default=0, help='only from the Nth hit on (the hits that pass --if/--this)')
     p.add_argument('--once', action='store_true', help='removed after its first stop / log')
@@ -1029,6 +1450,33 @@ def build_parser():
                    'game clears the breakpoints and goes on (default 120)')
     p = sub.add_parser('run', help='a batch of commands, one per line')
     p.add_argument('file')
+    p = sub.add_parser('eval', help='a KC expression / block run in the stopped frame (or --on #ID, or the globals)')
+    p.add_argument('expr', nargs='*')
+    p.add_argument('--file', help='a statement block from a file (`return X;` gives the value)')
+    p.add_argument('--block', action='store_true', help='EXPR is a statement block')
+    p.add_argument('--frame', type=int, default=0, help='the frame of the stop (0: the innermost)')
+    p.add_argument('--on', type=int, help='run on object #ID (its fields, this->Method()) instead of a frame')
+    p.add_argument('--write', action='store_true', help='write the frame variables the block assigned back')
+    p.add_argument('--depth', type=int, default=1)
+    p.add_argument('--items', type=int, default=50)
+    p.add_argument('--budget', type=int, default=0, help='instructions (default 10 million)')
+    p.add_argument('--ms', type=int, default=0, help='wall time (default 2000)')
+    p.add_argument('--verbose', '-v', action='store_true')
+    p = sub.add_parser('watch', help='a watchpoint: this.FIELD | #ID.FIELD | class.CLASS.FIELD | global.NAME')
+    p.add_argument('target')
+    p.add_argument('--change', action='store_true', help='only writes that change the value')
+    add_bp_options(p)
+    p = sub.add_parser('snapshot', help='the script world into a JSON file (objects, globals, containers, tasks)')
+    p.add_argument('--objects', help='only the objects of these classes (and their subclasses), comma-separated')
+    p.add_argument('--chars', type=int, default=400, help='the characters of a string kept')
+    p.add_argument('-o', '--output', required=True)
+    p = sub.add_parser('diff', help='what changed between two snapshots')
+    p.add_argument('a')
+    p.add_argument('b')
+    p.add_argument('--max', type=int, default=200, help='lines per section')
+    p = sub.add_parser('reload', help='recompile and replace changed methods in the running game')
+    p.add_argument('what', nargs='?', help='File.kc (its changed methods) or Class::Method; none: every changed one')
+    p.add_argument('--src', required=True, help='the object\'s KC project (kc/ap/x3story: the folder or its .kcs)')
     return ap
 
 
