@@ -238,6 +238,54 @@ freed it at its own interpreter depth (a task that returned inside a run the nat
 engine writer's offset is named by the `.map` beside it; the client undecorates the name with dbghelp, a name it
 cannot read is marked `(mangled)`).
 
+### Script profiler
+
+`profile` collects where the game thread's script time goes, without stopping (x3_src `src/script/README.md` "Script
+debugging: the profiler"). One profile at a time; its tables are bounded and given back at `stop`, `detach` and a load
+or clear of the VM (a `profileEnded` event: the pcs were that code's).
+
+| `op` | arguments | reply |
+|---|---|---|
+| `start` | `hz` (samples a second, 0..20000, default 2000; 0: no samples, the timing only), `frames` (collect N frames, then stop collecting: `state` `done`, `ended` `frames`; the data stays until `stop`), `untimed` (no exact times: the samples only) | the status |
+| `status` | | `state` (`none`, `running`, `done`) and the counters below |
+| `dump` | | the status + the tables below (one reply, up to 256 MB) |
+| `stop` | | `had`, `samples`, `freed` (bytes), `bytes` (left: 0) |
+
+The status: `timed`, `hz`, `frameLimit`, `ended`, `object` {`name`, `size`, `crc32`} (the code the pcs are in),
+`frequency` (the ticks' clock: the time stamp counter, measured against QueryPerformanceCounter; an invariant TSC
+synchronized across the cores is assumed), `elapsedTicks`, `heldTicks` (debugger stops and the debugger's own work -
+serving the pipe, code runs -: left out of every time), `frames`, `stoppedFrames` (a debugger stop in them: no slowest
+candidate), `frameTicks`, `maxFrameTicks`, `scriptTicks` (every top-level script run: the scheduler's tasks and the
+engine's calls into scripts), `nativeTicks`, `runs`, `samples` (the sampler's ticks in scripts that were taken: a
+sample weighs the ticks pending when it was taken), `taken` (the walks), `requests` (the asks: a tick with none
+pending), `coalesced` (ticks counted while one was pending: in the next sample's weight), `idle` (the sampler's ticks
+while no script ran), `heldSamplerTicks` (its ticks during a hold), `skipped` (ticks of a debugger code run's sample),
+`lost` (ticks asked after a run's last point or before a run), `dropped` (over a table's limit), `sitesDropped`,
+`latencySumTicks` / `latencyMaxTicks` (per walk: the ask to the sample; a sample asked during a native is taken at its
+end), `overheadTicks` (the samples' own cost), `nodes`, `stacks`, `bytes`. `hello` gives `frames` (the main loop's
+iterations: two hellos give the frame rate) and `profile` (the state); `list` gives `profile`, `profileBytes`,
+`profileSampler`.
+
+The dump's tables (pcs are code offsets; KC pcs of stack frames are resume pcs, `x3kc` reads the line of pc - 1):
+
+- `nodes`: `[1, pc, mark]` a KC frame (mark 1: the sample was in the method's native body C++, 2: in its native case
+  C++; a body's own node has the method's entry as pc), `[2, group, command, name]` a native, `[3, script, index]` an
+  MSCI script and the code index of its line (above its `__runScript` frame), `[4]` the frames deeper than 96 (or below
+  a native whose task is gone).
+- `stacks`: `[samples (weighted), node, node, ...]` root first. A sample in a script run a native made (a native running scripts at
+  once) has that native and its caller's frames below the run's frames, out to the scheduler's task.
+- `natives`: `[site pc (the native instruction), group, command, name, calls, ticks, nested, max, samples]` - ticks are
+  the native's own (without the script runs it made: `nested`) and without debugger stops.
+- `bodies`, `cases`: `[method entry, calls, ticks, max, samples]` (a body's time holds the bodies and methods it runs).
+- `roots`: `[root method entry, MSCI script ("" none), runs, ticks, max]` - the top-level runs by their task's bottom
+  frame (a `__runScript` task: the first script the walk saw it run).
+- `slowest`: the 32 slowest frames: `index`, `ticks`, `scriptTicks`, `nativeTicks`, `runs`, `samples`, `topRuns`
+  [[root entry, script, ticks, runs]], `topNatives` [[site pc, ticks, calls]], `topLeaves` [[node, samples]] (six each:
+  a key that adds up from small parts may be missing).
+
+The client's saved file is the dump plus `sidecar` (the path it symbolized with) and `msciLines` {script: {index:
+[editor line, command id]}} (read from the loaded scripts while the game runs).
+
 ### Read-only runs
 
 `eval` with `readOnly`, and the compiled conditions and log expressions of every breakpoint and watchpoint unless it
@@ -352,6 +400,11 @@ The game: `--pid`, else the only pipe `x3dbg-*`. A reply is awaited `--deadline 
 | `history start #ID \| this \| PATH [--depth N] [--size N] [--fields a,b] [--if EXPR]` | an object's change history, recorded by the game without stopping (Object histories); `this`: the stop's receiver, PATH: a print path that holds an object |
 | `history show #ID \| this \| PATH [--last N] [--field F] [--changed]` | the records, oldest first: `t=<game s> f<frame> <field>: old -> new  by File.kc:line Class::Method <- caller  msci SCRIPT:editor line  task N`; a container's `field [level] table #id set [key] old -> new (size)`; `native NAME at ...`, `engine x3 exe+0x... (function from the .map)`; `--json`: the reply with `text` per record |
 | `history stop #ID \| --all`, `history list`, `history dump -o FILE` | stop frees the ring; dump writes every history (one JSON line each, records symbolized) |
+| `profile start [--hz N] [--frames N] [--untimed]` | the script profiler (Script profiler) |
+| `profile stop [-o FILE]`, `profile dump -o FILE`, `profile status` | stop saves the profile (default `%TEMP%\x3kc_dbg\profile-<pid>.json`, MSCI lines resolved), then frees the game's; dump saves without stopping |
+| `profile report [--by method\|native\|msci\|task\|body] [--top N] [--from FILE]` | method: exclusive (its bytecode, or its body / case C++ marked `[body]` / `[case]`), `+nat` (natives it calls itself), inclusive, in % of the samples and ms (the share of the measured script time), with the method's source; native: timed calls, ms, avg / max and the calling methods with their lines; msci: per script, editor line, command id; task: the timed top-level runs by task root; body: the bodies and cases timed. The game's profile, else `--from`, else the newest saved one; `--json` |
+| `profile frames [--top N] [--from FILE]` | the slowest frames: ms, scripts, natives, the runs, natives and sample leaves that filled them |
+| `profile flame -o FILE [--format folded\|speedscope] [--from FILE]` | `.json`: a speedscope file (checked against the format's rules before it is written; open it at speedscope.app), else folded stacks (`root;...;leaf count`: flamegraph.pl, inferno, speedscope) |
 
 `--if` takes one KC expression (compiled against the sidecar in the hit frame; all `--if` of a breakpoint hold; read-only
 unless `--writable`), or the old form `PATH OP VALUE` (a path compare); `--log` takes paths or KC expressions (comma-separated at the top level:
@@ -390,3 +443,6 @@ while one exists).
 - `x3kc/kcreload.py`: `plan(info, obj, src, what, objpath)` (ReloadError: why not), `write_sidecar(path, plan,
   placed, obj)`.
 - `x3kc/dbg.py`: `snapshot_diff(a, b, limit)`, `named_snapshot(info, reply)`.
+- `x3kc/dbgprof.py`: `Profile(dump, info, msci_line)` / `Profile.load(path, dirs)`: `by_method()`, `by_native()`,
+  `by_msci()`, `by_task()`, `by_cxx()`, `frames(top)`, `folded()`, `speedscope()`, `header()`; `check_speedscope(doc)`
+  (the format's rules: [] when valid), `text_report(p, by, top)`, `text_frames(p, top)`.

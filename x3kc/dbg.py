@@ -805,6 +805,10 @@ class Cli:
 
     def script_lines(self, info, script_path):
         """the editor lines of a script's code indices, as ScriptDatabase.GetEditorLineFromCodeIndex counts them"""
+        return self.script_lines_cmds(info, script_path)[0]
+
+    def script_lines_cmds(self, info, script_path):
+        """(the editor lines, the command ids) of a script's code indices"""
         s = self.session()
         code = s.conn.call('read', paths=[script_path + [['index', 6]]], depth=2, items=100000)['values'][0]
         if code.get('t') != 'array':
@@ -829,7 +833,7 @@ class Cli:
             line = i + 1 - sum(1 for j in range(i) if cmds[j] is not None and flags.get(cmds[j], 0) & 131072)
             line += sum(1 for c in cpos if c <= i)
             lines.append(line)
-        return lines
+        return lines, cmds
 
     def loaded_script_path(self, info, name):
         s = self.session()
@@ -1351,6 +1355,145 @@ class Cli:
         lines = cache[script]
         return lines[index] if lines and 0 <= index < len(lines) else None
 
+    def msci_line_cmd(self, info, script, index):
+        """an MSCI script's code index -> (editor line, command id) of the loaded script (None: not known)"""
+        cache = self.__dict__.setdefault('_msci_line_cmds', {})
+        if script not in cache:
+            try:
+                cache[script] = self.script_lines_cmds(info, self.loaded_script_path(info, script))
+            except DbgError:
+                cache[script] = None
+        got = cache[script]
+        if not got or not 0 <= index < len(got[0]):
+            return None
+        return got[0][index], got[1][index]
+
+    # -- the script profiler (dbgprof; docs/debugging.md "Script profiler") --
+    def profile_dump(self):
+        """the game's profile (its dump, symbolized with the MSCI lines resolved while the scripts are loaded) or
+        None when the game has none"""
+        s = self.session()
+        st = s.conn.call('profile', op='status')
+        if st.get('state') == 'none':
+            return None
+        d = s.conn.call('profile', op='dump', deadline=max(Conn.reply_timeout, 120.0))
+        for k in ('id', 'ok'):
+            d.pop(k, None)
+        o = d.get('object', {})
+        info = None
+        try:
+            info = s.info(dict(o, file=next((x.get('file') for x in s.objects() if x['name'] == o.get('name')), None)))
+            d['sidecar'] = info.path
+        except DbgError:
+            pass
+        # (the MSCI nodes' editor lines and commands now: the scripts are loaded; a saved dump keeps them)
+        lines = {}
+        if info is not None:
+            for n in d.get('nodes', []):
+                if n[0] == 3 and n[2] >= 0:
+                    got = self.msci_line_cmd(info, n[1], n[2])
+                    if got is not None:
+                        lines.setdefault(n[1], {})[str(n[2])] = list(got)
+        d['msciLines'] = lines
+        return d
+
+    def profile_of(self, a):
+        """the profile a report reads: --from FILE, else the game's, else the newest saved one"""
+        from . import dbgprof
+        path = getattr(a, 'source', None)
+        dump = None
+        if not path:
+            try:
+                dump = self.profile_dump()
+            except DbgError as x:
+                if 'no ScriptDebug game' not in str(x):
+                    raise
+            if dump is None:
+                path = dbgprof.newest_saved()
+                if path is None:
+                    raise DbgError('no profile: the game has none (profile start) and none is saved')
+                print('(the saved profile %s)' % path, file=sys.stderr)
+        if path:
+            with open(path, encoding='utf-8') as h:
+                dump = json.load(h)
+        ml = dump.get('msciLines', {})
+
+        def msci_line(script, index):
+            got = ml.get(script, {}).get(str(index))
+            return tuple(got) if got else None
+        return dbgprof.Profile(dump, dbgprof.find_info(dump, self.args.dbg), msci_line)
+
+    def c_profile(self, a):
+        from . import dbgprof
+        if a.what == 'start':
+            r = self.session().conn.call('profile', op='start', hz=a.hz, frames=a.frames, untimed=a.untimed)
+            self.emit(r, 'profile started: %s, %d Hz%s' % ('timed' if r.get('timed') else 'untimed', r['hz'],
+                                                            ', %d frames' % a.frames if a.frames else ''))
+            return 0
+        if a.what == 'status':
+            r = self.session().conn.call('profile', op='status')
+            if r['state'] == 'none':
+                self.emit(r, 'no profile')
+                return 0
+            p = dbgprof.Profile(r)
+            self.emit(r, '%s; %d nodes, %d stacks, %d bytes' % (p.header(), r['nodes'], r['stacks'], r['bytes']))
+            return 0
+        if a.what in ('stop', 'dump'):
+            s = self.session()
+            dump = self.profile_dump()
+            path = a.output or dbgprof.saved_path(s.conn.pid)
+            if dump is not None:
+                os.makedirs(os.path.dirname(os.path.abspath(path)), exist_ok=True)
+                with open(path, 'w', encoding='utf-8') as h:
+                    json.dump(dump, h, separators=(',', ':'))
+            elif a.what == 'dump':
+                raise DbgError('the game has no profile')
+            if a.what == 'dump':
+                self.emit({'file': path}, 'profile written to %s' % path)
+                return 0
+            r = s.conn.call('profile', op='stop')
+            self.emit(dict(r, file=path if dump is not None else None),
+                      'profile stopped: %d samples, %d bytes given back (%d left)%s'
+                      % (r['samples'], r['freed'], r['bytes'], ', saved to %s' % path if dump is not None else ''))
+            return 0
+        p = self.profile_of(a)
+        if a.what == 'report':
+            if self.json:
+                data = {'method': p.by_method, 'native': p.by_native, 'msci': p.by_msci, 'task': p.by_task,
+                        'body': p.by_cxx}[a.by]()
+                print(json.dumps({'header': p.header(), 'by': a.by, 'rows': data[:a.top] if isinstance(data, list)
+                                  else {k: v[:a.top] for k, v in data.items()}}, ensure_ascii=False))
+                return 0
+            print('\n'.join(dbgprof.text_report(p, a.by, a.top)))
+            return 0
+        if a.what == 'frames':
+            if self.json:
+                print(json.dumps({'header': p.header(), 'frames': p.frames(a.top)}, ensure_ascii=False))
+                return 0
+            print('\n'.join(dbgprof.text_frames(p, a.top)))
+            return 0
+        if a.what == 'flame':
+            if not a.output:
+                raise DbgError('profile flame -o FILE (.json: speedscope, else folded stacks)')
+            fmt = a.format or ('speedscope' if a.output.lower().endswith('.json') else 'folded')
+            if fmt == 'speedscope':
+                doc = p.speedscope()
+                errs = dbgprof.check_speedscope(doc)
+                if errs:
+                    raise DbgError('the speedscope file would be invalid: %s' % ', '.join(errs))
+                with open(a.output, 'w', encoding='utf-8') as h:
+                    json.dump(doc, h, ensure_ascii=False)
+                n = len(doc['profiles'][0]['samples'])
+            else:
+                lines = p.folded()
+                with open(a.output, 'w', encoding='utf-8') as h:
+                    h.write('\n'.join(lines) + '\n')
+                n = len(lines)
+            self.emit({'file': a.output, 'format': fmt, 'stacks': n}, '%d stacks written to %s (%s)'
+                      % (n, a.output, fmt))
+            return 0
+        raise DbgError('profile %s' % a.what)
+
     def map_symbol(self, offset):
         """an exe offset -> the function the .map beside the game's exe names (None: no map)"""
         if not hasattr(self, '_map'):
@@ -1787,6 +1930,23 @@ def build_parser():
                    'the value the cell had is left out)')
     p.add_argument('--all', action='store_true', help='stop: every history')
     p.add_argument('-o', '--output', help='dump: the file (one JSON line per history, the records symbolized)')
+    p = sub.add_parser('profile', help='the script profiler: start, stop (saves the profile, frees the game\'s), '
+                       'status, dump, report, flame, frames')
+    p.add_argument('what', choices=['start', 'stop', 'status', 'dump', 'report', 'flame', 'frames'])
+    p.add_argument('--hz', type=int, default=2000, help='start: samples a second (0: the timing only; at most 20000)')
+    p.add_argument('--frames', type=int, default=0, help='start: collect N frames, then stop collecting (the data '
+                   'stays until stop)')
+    p.add_argument('--untimed', action='store_true', help='start: the samples only - no exact times of natives, '
+                   'bodies, cases and task runs (less overhead: docs/debugging.md "Script profiler")')
+    p.add_argument('--top', type=int, default=25, help='report / frames: the rows shown')
+    p.add_argument('--by', default='method', choices=['method', 'native', 'msci', 'task', 'body'],
+                   help='report: by KC method (exclusive / inclusive), native (timed, with its callers), MSCI script / '
+                        'line / command, task root (timed runs), body (native bodies and cases, timed)')
+    p.add_argument('--format', choices=['folded', 'speedscope'], help='flame: the format (default by the extension: '
+                   '.json speedscope, else folded stacks)')
+    p.add_argument('--from', dest='source', help='report / flame / frames: a saved profile (profile stop / dump -o)')
+    p.add_argument('-o', '--output', help='stop / dump: where the profile is saved (default %%TEMP%%\\x3kc_dbg\\'
+                   'profile-<pid>.json); flame: the file')
     p = sub.add_parser('snapshot', help='the script world into a JSON file (objects, globals, containers, tasks)')
     p.add_argument('--objects', help='only the objects of these classes (and their subclasses), comma-separated')
     p.add_argument('--chars', type=int, default=400, help='the characters of a string kept')
