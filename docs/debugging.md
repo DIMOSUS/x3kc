@@ -56,9 +56,10 @@ The load line, once per object load:
 
 ## x3kc symbolize
 
-    x3kc symbolize [<log> | -] [--dbg FILE|DIR]... [-o OUT] [--raw]
+    x3kc symbolize [<log>... | -] [--dbg FILE|DIR]... [-o OUT] [--raw]
 
-Reads a log (x3rw.log in the mod folder, or stdin) and rewrites every raw location to
+Reads the logs in their order (`x3rw_previous.log x3rw.log`: the load lines of an earlier log give the identities
+for the later one; nothing or `-`: stdin) and rewrites every raw location to
 `File.kc:line:col Class::Method` (`(msci=...)` kept after it; `--raw` keeps the raw location too). The sidecars: the
 load lines' `file` (the `.kcdbg` beside it), then the `--dbg` folders and files: `<name>.kcdbg`, `<name>.<build>.kcdbg`
 and their gzipped `.kcdbg.gz`, the one whose identity (first line) is the loaded object's. A sidecar whose identity
@@ -69,7 +70,11 @@ was not checked.
 A release keeps its sidecar: x3_src `tools/kcrelease.py` stores `kc/<edition>/base/<name>.<build>.kcdbg[.gz]` beside the
 released object, so a player's log is symbolized with `--dbg kc/<edition>/base` without a rebuild.
 
-## The engine's log lines (x3_src, x3rw.log beside x3rw.ini)
+## The engine's log lines (x3_src, x3rw.log)
+
+The game log is `x3rw.log` in the mod folder (`addon_mod`, FL `addon2_mod`, or the `-mod` folder; when that folder is
+not writable: the saves folder in Documents; a stand run: `x3rw_<pid>.log` in its TEMP). The previous run's log is
+`x3rw_previous.log` beside it, a log rotates there at 8 MB, and every line starts with `hh:mm:ss.mmm `.
 
 - `script dprintf <location>: <text>` / `script dmprintf ...` - SE_Dprintf, SE_DMprintf (debugPrintMask applies),
   one line per line of the text; a line over 1000 characters is cut and ends with ` [cut]`. An entry is one write.
@@ -83,6 +88,145 @@ released object, so a player's log is symbolized with `--dbg kc/<edition>/base` 
 - `kc: 702::__runScript of x3story build <n> is not a known build ...` - once per load: MSCI locations are not given
   (the engine trusts the method's cells only for the builds whose hash it knows).
 - The crash log's story call stack (X3Crash.log) and the hitch log's slowest script runs use the same raw locations.
+- `script debugger: listening on \\.\pipe\x3dbg-<pid>` - a ScriptDebug build (below) at its first frame.
+
+## Live debugger (x3_src ScriptDebug build, protocol 1)
+
+Only the x3_src ScriptDebug build has it (`-p:X3ScriptDebug=1`, the configurations `AP ScriptDebug` / `FL ScriptDebug`;
+x3_src `docs/script_debugging.md` is the agent guide: building, launching, a worked session). The game serves a named
+pipe `\\.\pipe\x3dbg-<pid>` on its game thread: once per frame while it runs, continuously while it is stopped. One
+client at a time; `x3kc dbg` connects per command (and `wait` per poll, so other commands get in between), so the
+breakpoints and the stop live in the game. A second client waits until the first one closes the pipe.
+
+### Transport
+
+Byte stream, UTF-8, one JSON object per line (`\n`). Every request `{"id": N, "cmd": "...", ...}` gets exactly one reply
+`{"id": N, "ok": true, ...}` or `{"id": N, "ok": false, "error": "..."}`, in order; several requests may be sent at once
+(all lines that arrived are served in the same frame). Nothing is pushed: stops and tracepoint logs wait in an event
+queue (1 MB, the oldest dropped and counted) that `events` takes. A request line is at most 1 MB, a reply 16 MB.
+
+The server knows no names. The client resolves them with the loaded object's sidecar (its identity from `hello`):
+source lines -> code offsets (pcs), variables -> stack cells relative to the frame's return cell R ("Frames"), fields
+-> slots of the object's class chain, globals -> slots of class 0.
+
+### Paths (what `read`, `if` and log `paths` evaluate)
+
+A path is an array of steps; the first step is a start:
+
+    ["frame", F, CELL]   the cell R + CELL of frame F of the task (0: the innermost)
+    ["this", F]          frame F's receiver
+    ["global", SLOT]     a global
+    ["object", ID]       an object by id (the VM's object table)
+    ["class", CID]       a class's own object (its static fields)
+
+then any of `["field", SLOT]` (an object's field), `["index", N]` (an array element, or a table's integer key),
+`["key", "TEXT"]` (a table's string key). Frame starts need a task: the stopped one, or `"task": ID` (its saved state:
+a waiting or ready task).
+
+### Values
+
+`{"t": "int", "v": 5}`, `"double"`, `"int64"`, `{"t": "str", "v": "...", "length": N}` (length when cut at `chars`),
+`{"t": "empty"}`, `{"t": "ret", "v": pc}`, `{"t": "obj", "id": ID, "class": CID, "size": FIELDS, "fields": [...]}`
+(`"static": true` a class object, `"deleted": true`, `"null": true`), `{"t": "array", "id", "size", "items": [...]}`,
+`{"t": "table", "id", "size", "items": [[key, value], ...]}`, `{"error": "..."}` for a path that does not resolve.
+Containers are expanded `depth` levels (default 1, at most 8), at most `items` elements (50, at most 100000), strings
+to `chars` (2000, at most 1 MB); one reply writes at most a million values, the rest as `{"t": "more"}`.
+
+### Frames (`stack`, `stop`)
+
+`{"pc", "resume", "method" (its entry), "class", "name", "this" (id | null), "depth" (stackEnd - R, larger = deeper),
+"argc", "nativeBody", "nativeCase", "msci": {"script", "index"}}`. `resume: false`: pc is the instruction itself (the
+stop's frame 0), `true`: a resume pc (callers, a waiting task): its line is pc - 1's ("Raw locations").
+
+### Requests
+
+| cmd | arguments | reply |
+|---|---|---|
+| `hello` | | `protocol`, `pid`, `edition`, `state` (running / stopped), `stopTimeout`, `objects` [{name, build, size, crc32, file, main}], `msciHead` (the MSCI line loop's head pc, 0: unknown build), `breakpoints` |
+| `config` | `stopTimeout` (s) | `stopTimeout` |
+| `break` | `object`, `size`, `crc32` (must be the loaded object's), `pc`; options `log`, `paths`, `labels`, `depth`, `if` [{path, op (== != < <= > >=), value (number, string, null)}], `count`, `once`, `this`, `tag` | `bp` (id), `applied`, `unbound` [the native bindings unbound for it] |
+| `clear` | `bp` or `all` | `cleared` |
+| `list` | | `breakpoints` [...], `patched` (pcs), `unboundBindings` |
+| `events` | `max` (16) | `events` [...], `dropped`, `state`, `stop` (when stopped) |
+| `tasks` | `max` | `object`, `tasks` [{task, state (ready / waiting / stopped), object, frames, + the top frame}], `count` |
+| `stack` | `task` | `frames` |
+| `read` | `paths`, `depth`, `items`, `chars`, `task` | `values` (one per path) |
+| `continue` | | (stopped only) |
+| `step` | `targets` [{pc, depth: "le" / "lt" / "any"}], `into` | `targets` (set) |
+| `pause` | | stops the next task that enters a method |
+| `detach` | | `cleared`: every breakpoint removed, the game goes on |
+
+Breakpoint options: `count N` - it fires from its Nth passing hit on; `once` - removed after it fired; `this ID` - only
+when the frame's receiver is #ID; `if` - every condition must hold (a path with no value equals null only; an object
+compares by its id). `log` makes a tracepoint: the `paths` (with their `labels`) go into a `log` event, no stop. The
+conditions are the server's pluggable piece (a kind per condition; stage 2b adds compiled KC expressions).
+
+`step`: the stopped task goes on until it reaches one of the targets with its frame depth relation to the stop's frame
+(`le`: the same frame or a caller, `lt`: a caller, `any`); `into` also stops at the first statement of the next method
+the task enters. The client computes the targets (below). Any breakpoint's stop ends a step; so does `continue`.
+
+### Events
+
+    {"event": "stop", "seq", "reason": "breakpoint" | "step" | "pause", "bp", "tag", "task", "object", <frame 0>, "frames"}
+    {"event": "log", "seq", "bp", "tag", "task", "object", <frame 0>, "labels": [...], "values": [...]}
+    {"event": "resumed", "seq", "reason": "timeout"}     the client was silent for stopTimeout at a stop
+    {"event": "dropped", "seq", "bp", "reason"}          another build of the object was loaded
+    {"event": "stepEnded", "seq", "reason": "task gone"} the stepping task ended before a target
+
+### The stop
+
+The game thread stays in the breakpoint: the world does not advance, the window's messages are pumped (keyboard and
+mouse dropped, the mouse released), the pipe is served. No request for `stopTimeout` seconds (default 120; `config`,
+the environment variable `X3_DBG_STOP_TIMEOUT`): every breakpoint is cleared and the game goes on (a `resumed` event).
+
+### Mechanism (engine side)
+
+A breakpoint replaces the first byte of its instruction by `0xb4` (an opcode the VM does not have); the interpreter's
+case for it asks the debugger and runs the replaced opcode. A native body or native case whose C++ runs in place of the
+breakpoint's method (a body bound at the method, a body or case that relies on its bytes - FindShip's in-line callees
+among them -, the case bound inside it) is unbound while a breakpoint is there (reported in `unbound`); the last
+breakpoint gone writes the bytes back exactly (the byte, then the binding). A pc that is not the start of an
+instruction (the method walked from its entry) is refused. A load of the object drops the patches with the code and,
+at once (in a save's load: once its tasks were checked against the new code), writes them into it when its identity is
+the breakpoint's. Breakpoints are at statement starts (the sidecar's line table); a statement that is only a jump
+(`break`, `continue`, an `else` jump) may be passed by: the loader threads jumps through such statements.
+
+## x3kc dbg (the client)
+
+    x3kc dbg [--pid N] [--json] [--dbg DIR]... <command> [args]
+
+The game: `--pid`, else the only pipe `x3dbg-*`. A reply is awaited `--deadline S` (default 30, `X3KC_DBG_DEADLINE`): a loading screen or a hung game ends the command with "no reply" (wait: its `--timeout`, exit 2). The sidecars: beside a `-kc` object (hello's `file`), else `--dbg`.
+`--json`: one JSON object per line (the replies, events with a `location` added). Exit 0, 1 an error, 2 wait's timeout.
+
+| command | does |
+|---|---|
+| `games` | the running ScriptDebug games |
+| `hello` | the game's state and objects |
+| `break LOC [--if PATH OP VALUE]... [--log PATHS] [--depth N] [--count N] [--once] [--this ID] [--object NAME]` | LOC: `File.kc:LINE` (one source file of the sidecar: a folder prefix tells equal names apart; the line's first statement, or the next line with code within 20), `Class::Method` / `Function` (its first statement), `0xPC` |
+| `msci break SCRIPT LINE [...]` | an MSCI breakpoint: script name + the editor's line (as ScriptDatabase counts lines: its code array, the commands with flag 131072, the comments), the script loaded in ScriptDatabase.scripts |
+| `msci vars [--frame N]` / `msci stack` | the MSCI script's variables (`$name = value (type)`) / the scripts of the stack's `__runScript` frames |
+| `wait [--timeout S] [--all]` | the next queued stop or log; at once when stopped |
+| `events` | every queued event |
+| `stack [--task ID]`, `locals [--frame N] [--depth N]`, `print PATH... [--frame N] [--depth N] [--items N]` | |
+| `tasks [--max N]` | the main VM's tasks with their top location (MSCI script and code index) |
+| `continue`, `step [over|into|out|msci]`, `pause`, `detach`, `clear [ID | --all]`, `list`, `config --stop-timeout S` | |
+| `run FILE` | the commands of FILE, one per line (`#` comments); stops at the first error |
+
+Locations print as `File.kc:line Class::Method`. PATH: a base - `NAME` (a live variable of the frame, else a field of
+`this`, else a global), `local.NAME` / `param.NAME`, `this`, `global.NAME`, `#ID`, `class.CLASS`, `@CELL` (a raw cell of
+the frame) - then `.FIELD`, `[N]`, `["KEY"]` and a cast `:CLASS` (whose fields the next `.FIELD` names). `print` reads
+an unknown object's class from the game; `--if` / `--log` paths are compiled at `break`, so a field of an object whose
+class is not known then needs the cast (`local.target:Ship.hull`).
+
+Steps (client side, from the sidecar): `over` - every statement start of the method outside the current line (depth
+`le`) and the caller's return pc (`lt`); `into` - the same with `into`; `out` - the caller's return pc (`lt`); `msci` -
+the MSCI line loop's head (`le`): the next MSCI line the task runs in that `__runScript` frame (a script it calls with
+`call script` runs in the same frame: msci steps into it).
+
+MSCI breakpoints are KC breakpoints at the line loop head of `702::__runScript` (hello's `msciHead`, checked to be a
+statement of the method in the sidecar) with two conditions from the sidecar's `__runScript` variables by name:
+`script[0] == SCRIPT` and `pc == the code index`. They unbind the MSCI native case (every script then runs as bytecode
+while one exists).
 
 ## Module API (`x3kc/kcdbg.py`)
 

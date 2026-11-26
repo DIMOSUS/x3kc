@@ -59,10 +59,16 @@ Checking a build without the game
 
 Debugging (docs/debugging.md)
   compile writes <out>.kcdbg next to every object: the debug info (pc -> file:line, variables, fields, globals)
-  symbolize [<log> | -] [--dbg FILE|DIR]... [-o OUT] [--raw]
+  symbolize [<log>... | -] [--dbg FILE|DIR]... [-o OUT] [--raw]
                                         a game log's raw script locations kc[<object> 0x<pc> ...] ->
                                         File.kc:line:col Class::Method (the log's load lines name the objects'
                                         files: their .kcdbg beside them; --dbg: other places)
+  dbg [--pid N] [--json] [--dbg DIR] <command> ...
+                                        the live debugger of a running x3_src ScriptDebug game (its pipe):
+                                        games, hello, break LOC [--if P OP V] [--log PATHS] [--count N]
+                                        [--once] [--this ID], msci break SCRIPT LINE | vars | stack, wait,
+                                        events, stack, locals, print PATH, tasks, continue,
+                                        step [over|into|out|msci], pause, list, clear, detach, run FILE
 
 MSCI scripts (addon/scripts/*.pck|xml)
   msci-setup <game dir> <work dir> [--addon addon2] [--lang 044] [--xscript x3fl.xml]
@@ -144,7 +150,7 @@ def main(argv=None):
              'smoke': ('smoke', 'main'), 'bugscan': ('bugscan', 'main'),
              'split': ('kcsplit', 'main_split'), 'join': ('kcsplit', 'main_join'),
              'add': ('kcadd', 'main_add'), 'remove': ('kcadd', 'main_remove'), 'natives': ('targets', 'main'),
-             'natives-ref': ('natives_ref', 'main'), 'symbolize': ('kcdbg', 'main')}
+             'natives-ref': ('natives_ref', 'main'), 'symbolize': ('kcdbg', 'main'), 'dbg': ('dbg', 'main')}
     if cmd not in table:
         print('unknown command %r (x3kc help)' % cmd)
         return 2

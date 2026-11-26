@@ -1,7 +1,7 @@
 """Debug info of a compiled KC object (the ".kcdbg" sidecar, docs/debugging.md) and the mapping of raw script
 locations back to the source.
 
-    x3kc symbolize [<log> | -] [--dbg FILE|DIR]... [-o OUT] [--raw]
+    x3kc symbolize [<log>... | -] [--dbg FILE|DIR]... [-o OUT] [--raw]
 
 `x3kc compile` writes <out>.kcdbg next to every object it writes (collect + write below); the object's bytes do not
 depend on it. A reader (DebugInfo) maps a code offset (pc) to its method, source file, line and column, names the
@@ -381,7 +381,8 @@ class Symbolizer:
 def main():
     ap = argparse.ArgumentParser(prog='x3kc symbolize', description='raw script locations kc[<object> 0x<pc> ...] '
                                  'of a game log -> File.kc:line:col Class::Method')
-    ap.add_argument('log', nargs='?', default='-', help='the log (x3rw.log; - or nothing: stdin)')
+    ap.add_argument('log', nargs='*', default=['-'], help='the logs in their order (x3rw_previous.log x3rw.log: the '
+                    'load lines of an earlier one give the identities for the later ones); - or nothing: stdin')
     ap.add_argument('--dbg', action='append', default=[], metavar='FILE|DIR',
                     help='a .kcdbg file or a folder of them (repeatable); the load lines of the log name the object '
                          'files too (their .kcdbg beside them)')
@@ -389,14 +390,17 @@ def main():
     ap.add_argument('--raw', action='store_true', help='keep the raw location after the symbolized one')
     a = ap.parse_args()
     S = Symbolizer(a.dbg, raw=a.raw)
-    src = sys.stdin if a.log == '-' else open(a.log, encoding='utf-8', errors='replace')
     out = open(a.out, 'w', encoding='utf-8', newline='') if a.out else sys.stdout
     try:
-        for line in src:
-            out.write(S.line(line))
+        for log in a.log or ['-']:
+            src = sys.stdin if log == '-' else open(log, encoding='utf-8', errors='replace')
+            try:
+                for line in src:
+                    out.write(S.line(line))
+            finally:
+                if src is not sys.stdin:
+                    src.close()
     finally:
-        if src is not sys.stdin:
-            src.close()
         if out is not sys.stdout:
             out.close()
     return 0
