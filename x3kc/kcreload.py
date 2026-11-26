@@ -106,9 +106,10 @@ def _as_loaded(rel, jumps, strings, at, old_index):
     return bytes(b)
 
 
-def plan(info, obj, src, what, objpath):
+def plan(info, obj, src, what, objpath, edition=None):
     """the methods to reload: [{entry, end (the loaded method), frame, code (hex), jumps, strings, name, new}] plus
-    what write_sidecar needs"""
+    what write_sidecar needs. edition: the game's ('AP' / 'FL', hello's `edition`): the exe the compile checks native
+    calls against; without it guessed from a folder named fl in src"""
     old = kcobj.load(objpath)
     # the methods the game runs reloaded now (the current sidecar a reload wrote): sent again even when the source is
     # back to the loaded object's (a revert)
@@ -121,7 +122,10 @@ def plan(info, obj, src, what, objpath):
         base = kcdbg.DebugInfo.load(base_side)  # (the loaded object's own sidecar: its entries, not a reload's)
         if base.matches(obj['size'], obj['crc32']):
             info = base
-    target = 'x3_src-' + ('fl' if 'fl' in os.path.normpath(src).lower().split(os.sep) else 'ap')
+    if edition:
+        target = 'x3_src-' + edition.lower()
+    else:
+        target = 'x3_src-' + ('fl' if 'fl' in os.path.normpath(src).lower().split(os.sep) else 'ap')
     cache = kccache.Cache(os.path.join(tempfile.gettempdir(), 'x3kc_dbg', 'cache'))
     try:
         o, pool, fns = kcc.compile_source(src, cache, {}, quiet=True, target=target)

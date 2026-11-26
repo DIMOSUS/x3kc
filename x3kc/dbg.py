@@ -1182,7 +1182,8 @@ class Cli:
         info = s.main_info()
         obj = s.main_object()
         try:
-            plan = kcreload.plan(info, obj, a.src, a.what, self.object_file(obj, info))
+            plan = kcreload.plan(info, obj, a.src, a.what, self.object_file(obj, info),
+                                 edition=s.hello.get('edition'))
         except kcreload.ReloadError as x:
             raise DbgError(str(x))
         if not plan['methods']:
