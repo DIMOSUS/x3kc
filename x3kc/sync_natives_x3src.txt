@@ -3,6 +3,8 @@
 # SaContinuation::AnswerInteger / AnswerZero, sa_dispatcher.cpp; X2_GetStoryBuild: resumeInt,
 # x2_command_dispatcher.cpp). Targets x3_src-ap, x3_src-fl.
 KN_GetSectorShipRadiusCandidates
+B3D_CreateShipPreview
+B3D_UpdateShipPreview
 P_CaptureJoyAxis
 P_GetJoyDevice
 P_GetJoyRole

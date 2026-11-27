@@ -848,3 +848,5 @@ X2_StartBenchmarkScene	mutating	starts benchmark measurement (benchmark mode)
 X2_StopBenchmarkScene	mutating	ends benchmark, writes FPS slots
 X2_UpdateCursorSteering	mutating	sets cursor marker, aim flag, cursor position
 X2_XMLImportGalaxy	pure	parses XML text into new nested arrays
+B3D_CreateShipPreview	mutating	allocates an isolated display model
+B3D_UpdateShipPreview	mutating	moves the studio camera and updates the projected mount positions
