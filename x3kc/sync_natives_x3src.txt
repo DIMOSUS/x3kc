@@ -2,6 +2,7 @@
 # returns (P_ joystick natives: resumeBridgeInt / resumeBridgeText, src/script/script.cpp; SA_GetBulletTypeHalfZ:
 # SaContinuation::AnswerInteger / AnswerZero, sa_dispatcher.cpp; X2_GetStoryBuild: resumeInt,
 # x2_command_dispatcher.cpp). Targets x3_src-ap, x3_src-fl.
+KN_GetSectorShipRadiusCandidates
 P_CaptureJoyAxis
 P_GetJoyDevice
 P_GetJoyRole

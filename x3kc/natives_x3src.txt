@@ -3,6 +3,7 @@
 # natives_fl.txt. All of them are in both editions' builds (the engine's AP build has X2_GetModName and not FL's
 # two B3D quality natives, as the originals). Targets x3_src-ap, x3_src-fl. Descriptions:
 # docs/natives/spec_x3src.jsonl.
+KN_GetSectorShipRadiusCandidates
 P_CaptureJoyAxis
 P_GetJoyDevice
 P_GetJoyRole
